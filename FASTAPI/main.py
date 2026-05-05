@@ -33,6 +33,7 @@ def get_camaras():
     #return HTMLResponse("<h1>Hola mundo!!</h1>")
     return camara
 
+#parametros por ruta:
 @app.get("/camaras/{id}", tags = ["Home"])
 #funcion encargada de devolver un mensaje al acceder a la ruta raíz del servidor
 def get_camara(id: int):
@@ -45,4 +46,11 @@ def get_camara(id: int):
             return cam
     return[]
 
+#parametros por query:
+@app.get("/camaras/", tags = ["Home"])
+def get_modelos_por_cat(categoria: str, año: str):
+    for cam in camara:
+        if cam["modelo"] == categoria:
+            return cam
+    return[]
 

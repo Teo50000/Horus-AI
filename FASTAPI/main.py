@@ -9,6 +9,12 @@ camara = [
     "prediccion": "Robo",
     "modelo": "Alpha 7 III",
     "confianza": 0.95
+    },
+    {
+    "id": 2,
+    "prediccion": "Normal",
+    "modelo": "EOS R5",
+    "confianza": 0.99
     }
 ]
 
@@ -33,5 +39,10 @@ def get_camara(id: int):
     #puede devolver distintos tipos de datos como diccionarios:
     #return {"Hello": "World!!"}
     #return HTMLResponse("<h1>Hola mundo!!</h1>")
-    return id
+    #return id
+    for cam in camara:
+        if cam["id"] == id:
+            return cam
+    return[]
+
 

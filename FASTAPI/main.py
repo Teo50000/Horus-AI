@@ -54,3 +54,5 @@ def get_modelos_por_cat(categoria: str, año: str):
             return cam
     return[]
 
+#metodo post
+

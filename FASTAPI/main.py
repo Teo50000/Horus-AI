@@ -1,8 +1,15 @@
 from fastapi import FastAPI, Body
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from typing import Optional
 
 app = FastAPI()
+
+class Camara(BaseModel):
+    camera_id: Optional[int] = None # Optional indica que este campo no es obligatorio, si no se proporciona se asignará el valor None
+    event_type: str
+    confidence: float
+    timestamp: str
 
 camara = [
     {
@@ -57,31 +64,21 @@ def get_modelos_por_cat(categoria: str, año: str):
 
 #metodo post
 @app.post("/camaras", tags=["Camaras"])
-def añadir_camara(camera_id: int = Body(),
-                    event_type: str = Body(), 
-                    confidence: float = Body(), 
-                    timestamp: str = Body()):
-    camara.append({
-        "camera_id": camera_id,
-        "event_type": event_type,
-        "confidence": confidence,
-        "timestamp": timestamp
-    })
+def añadir_camara(nueva_camara: Camara):
+    camara.append(nueva_camara.model_dump())# model_dump convierte el objeto Camara en un diccionario para que pueda ser añadido a la lista camara
     return camara
 
 # metodo put
 @app.put("/camaras/{id}", tags=["Camaras"])
 def actualizar_camara(
     id: int,
-    event_type: str = Body(), 
-    confidence: float = Body(), 
-    timestamp: str = Body()
+    cam: Camara
 ):
-    for cam in camara:
-        if cam["camera_id"] == id:
-            cam["event_type"] = event_type
-            cam["confidence"] = confidence
-            cam["timestamp"] = timestamp
+    for i in camara:
+        if i["camera_id"] == id:
+            i["event_type"] = cam.event_type
+            i["confidence"] = cam.confidence
+            i["timestamp"] = cam.timestamp
     return camara
 
 #metodo delete

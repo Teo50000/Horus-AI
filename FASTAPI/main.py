@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Body
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -66,3 +67,27 @@ def añadir_camara(camera_id: int = Body(),
         "confidence": confidence,
         "timestamp": timestamp
     })
+    return camara
+
+# metodo put
+@app.put("/camaras/{id}", tags=["Camaras"])
+def actualizar_camara(
+    id: int,
+    event_type: str = Body(), 
+    confidence: float = Body(), 
+    timestamp: str = Body()
+):
+    for cam in camara:
+        if cam["camera_id"] == id:
+            cam["event_type"] = event_type
+            cam["confidence"] = confidence
+            cam["timestamp"] = timestamp
+    return camara
+
+#metodo delete
+@app.delete("/camaras/{id}", tags=["Camaras"])
+def eliminar_camara(id: int):
+    for cam in camara:
+        if cam["camera_id"] == id:
+            camara.remove(cam)
+    return camara

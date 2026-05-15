@@ -6,3 +6,6 @@
     
 ## Para clonar Branch especifico:
     C:\Users\48861938\Documents\GitHub\Horus-AI
+
+## Para ejecutar el pograma:
+

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Body, Path, Query
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 import datetime
 
@@ -11,6 +11,19 @@ class Camara(BaseModel):
     event_type: str
     confidence: float
     timestamp: str
+
+    
+    @field_validator("confidence")
+    def validate_confidence(cls, value):
+        if value < 0.9 or value> 1:
+            raise ValueError("La confianza debe ser mayor al 90% pero menor al 100%")
+        return value
+    #@field_validator("event_type")
+    #@classmethod
+    #def validate_event_type(cls, value):
+    #        if value not in ["fire", "desmayo", "robos"]:
+    #            raise ValueError("El tipo de evento debe ser 'fire', 'desmayo' o 'robos'")
+    #        return value
 
 camara = [
     Camara(camera_id=1, event_type="fire", confidence=0.94, timestamp="2026-05-07T10:32:00"),
@@ -24,14 +37,14 @@ app.title =  "Mi primer API con FastAPI"
 def home():
     return "Hello world!!"
 
-@app.get("/camaras", tags = ["Camaras"])
+@app.get("/camaras", tags = ["Camaras"], status_code=200, response_description="Nos debe devolver una respuesta exitosa")
 #funcion encargada de devolver un mensaje al acceder a la ruta raíz del servidor
 def get_camaras() -> List[Camara]:
     #puede devolver distintos tipos de datos como diccionarios:
     #return {"Hello": "World!!"}
     #return HTMLResponse("<h1>Hola mundo!!</h1>")
     content = [movie.model_dump() for movie in camara] # model_dump convierte cada objeto Camara en un diccionario para que pueda ser devuelto como respuesta
-    return JSONResponse(content=content)
+    return JSONResponse(content=content, status_code = 200)
 
 #parametros por ruta:
 @app.get("/camaras/{id}", tags = ["Camaras"])
@@ -43,8 +56,8 @@ def get_camara(id: int = Path(gt=0)) -> Camara | dict:
     #return id
     for cam in camara:
         if cam.camera_id == id:
-            return JSONResponse(content=cam.model_dump()) # model_dump convierte el objeto Camara en un diccionario para que pueda ser devuelto como respuesta
-    return JSONResponse(content={})
+            return JSONResponse(content=cam.model_dump(), status_code = 200) # model_dump convierte el objeto Camara en un diccionario para que pueda ser devuelto como respuesta
+    return JSONResponse(content={}, status_code = 404) # si no se encuentra la cámara con el id proporcionado, se devuelve un diccionario vacío con un código de estado 404 (No encontrado)
 
 #parametros por query:
 @app.get("/camaras/", tags = ["Camaras"])

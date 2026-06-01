@@ -1,41 +1,13 @@
-from fastapi import FastAPI, Body, Path, Query
-from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List
-import datetime
+from typing import List
 
-app = FastAPI()
+from fastapi import Query
+from fastapi.responses import JSONResponse
+from src.routers.models.camara_model import Camara
 
-class Camara(BaseModel):
-    camera_id: Optional[int] = None # Optional indica que este campo no es obligatorio, si no se proporciona se asignará el valor None
-    event_type: str
-    confidence: float
-    timestamp: str
-
-    
-    @field_validator("confidence")
-    def validate_confidence(cls, value):
-        if value < 0.9 or value> 1:
-            raise ValueError("La confianza debe ser mayor al 90% pero menor al 100%")
-        return value
-    #@field_validator("event_type")
-    #@classmethod
-    #def validate_event_type(cls, value):
-    #        if value not in ["fire", "desmayo", "robos"]:
-    #            raise ValueError("El tipo de evento debe ser 'fire', 'desmayo' o 'robos'")
-    #        return value
-
-camara = [
+camaras: List[Camara] = [
     Camara(camera_id=1, event_type="fire", confidence=0.94, timestamp="2026-05-07T10:32:00"),
     Camara(camera_id=2, event_type="normal", confidence=0.99, timestamp="2026-05-07T10:35:00")
 ]
-
-app.title =  "Mi primer API con FastAPI"
-
-@app.get("/", tags = ["Home"])
-#funcion encargada de devolver un mensaje al acceder a la ruta raíz del servidor
-def home():
-    return "Hello world!!"
 
 @app.get("/camaras", tags = ["Camaras"], status_code=200, response_description="Nos debe devolver una respuesta exitosa")
 #funcion encargada de devolver un mensaje al acceder a la ruta raíz del servidor

@@ -2,7 +2,7 @@ from typing import List
 
 from fastapi import Query, Path, APIRouter
 from fastapi.responses import JSONResponse
-from src.routers.models.camara_model import Camara
+from src.models.camara_model import Camara
 
 camara_router = APIRouter()
 

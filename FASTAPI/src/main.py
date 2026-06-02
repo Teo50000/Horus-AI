@@ -3,12 +3,19 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 import datetime
+from contextlib import asynccontextmanager
+
+from sqlmodel import SQLModel
 from src.routers.camara_rutas import camara_router
+from src.database import crear_tablas
+from src.models import camara_model # IMPORTANTE para que SQLModel reconozca la tabla antes de crearla
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    crear_tablas()
+    yield
 
-
-
+app = FastAPI(lifespan=lifespan)
 
 app.title =  "Mi primer API con FastAPI"
 

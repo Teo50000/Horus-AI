@@ -1,10 +1,10 @@
 from typing import Optional
-
 from pydantic import BaseModel, field_validator
+from sqlmodel import SQLModel, Field
 
 
-class Camara(BaseModel):
-    camera_id: Optional[int] = None # Optional indica que este campo no es obligatorio, si no se proporciona se asignará el valor None
+class Camara(SQLModel, table=True):
+    camera_id: Optional[int] = Field(default=None, primary_key=True)
     event_type: str
     confidence: float
     timestamp: str

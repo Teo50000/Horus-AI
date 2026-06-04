@@ -2,6 +2,8 @@ from typing import List
 
 from fastapi import Query, Path, APIRouter
 from fastapi.responses import JSONResponse
+from sqlmodel import Session
+from src.database import engine
 from src.models.camara_model import Camara
 
 camara_router = APIRouter()
@@ -47,6 +49,15 @@ def añadir_camara(nueva_camara: Camara) -> List[Camara]:
     camaras.append(nueva_camara)# model_dump convierte el objeto Camara en un diccionario para que pueda ser añadido a la lista camaras
     content = [cam.model_dump() for cam in camaras] # model_dump convierte cada objeto Camara en un diccionario para que pueda ser devuelto como respuesta
     return JSONResponse(content=content)
+
+#metodo post pero guardandolo en la base de datos
+@camara_router.post("/prediccion", tags=["Camaras"])
+def recibir_prediccion(camara: Camara):
+    with Session(engine) as session:
+        session.add(camara)
+        session.commit()
+        session.refresh(camara)
+        return camara
 
 # metodo put
 @camara_router.put("/{id}", tags=["Camaras"])

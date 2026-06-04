@@ -24,5 +24,6 @@ app.title =  "Mi primer API con FastAPI"
 def home():
     return "Hello world!!"
 
+
 app.include_router(prefix='/camaras', router=camara_router)
 

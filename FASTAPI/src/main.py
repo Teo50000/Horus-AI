@@ -9,6 +9,7 @@ from sqlmodel import SQLModel
 from src.routers.camara_rutas import camara_router
 from src.database import crear_tablas
 from src.models import camara_model # IMPORTANTE para que SQLModel reconozca la tabla antes de crearla
+from src.routers.video_rutas import video_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,4 +27,5 @@ def home():
 
 
 app.include_router(prefix='/camaras', router=camara_router)
+app.include_router(prefix='/video', router=video_router)
 

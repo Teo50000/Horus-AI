@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <h2>Test WebSocket Horus</h2>
+    <div id="alertas"></div>
+
+    <script>
+        const ws = new WebSocket('ws://localhost:8000/camaras/ws');
+        
+        ws.onopen = () => {
+            console.log('Conectado al WebSocket!');
+        };
+        
+        ws.onmessage = (event) => {
+            const alerta = JSON.parse(event.data);
+            console.log('Alerta recibida:', alerta);
+            
+            // la muestra en pantalla
+            document.getElementById('alertas').innerHTML += 
+                `<p>Evento: ${alerta.event_type} | Confianza: ${alerta.confidence}</p>`;
+        };
+    </script>
+</body>
+</html>

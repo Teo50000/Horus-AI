@@ -5,13 +5,23 @@ from fastapi.responses import JSONResponse
 from sqlmodel import Session
 from src.database import engine
 from src.models.camara_model import Camara
-
+from src.services.websockets import manager
+from fastapi import WebSocket, WebSocketDisconnect
 camara_router = APIRouter()
 
 camaras: List[Camara] = [
     Camara(camera_id=1, event_type="fire", confidence=0.94, timestamp="2026-05-07T10:32:00"),
     Camara(camera_id=2, event_type="normal", confidence=0.99, timestamp="2026-05-07T10:35:00")
 ]
+
+@camara_router.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()  # solo mantiene la conexión abierta
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 @camara_router.get("", tags = ["Camaras"], status_code=200, response_description="Nos debe devolver una respuesta exitosa")
 #funcion encargada de devolver un mensaje al acceder a la ruta raíz del servidor
@@ -52,11 +62,12 @@ def añadir_camara(nueva_camara: Camara) -> List[Camara]:
 
 #metodo post pero guardandolo en la base de datos
 @camara_router.post("/prediccion", tags=["Camaras"])
-def recibir_prediccion(camara: Camara):
+async def recibir_prediccion(camara: Camara):
     with Session(engine) as session:
         session.add(camara)
         session.commit()
         session.refresh(camara)
+        await manager.broadcast(camara.model_dump_json())
         return camara
 
 # metodo put

@@ -8,6 +8,7 @@ class Camara(SQLModel, table=True):
     event_type: str
     confidence: float
     timestamp: str
+    camara_config_id: int = Field(foreign_key="camaraconfig.id")
 
     
     @field_validator("confidence")
@@ -21,3 +22,9 @@ class Camara(SQLModel, table=True):
     #        if value not in ["fire", "desmayo", "robos"]:
     #            raise ValueError("El tipo de evento debe ser 'fire', 'desmayo' o 'robos'")
     #        return value
+
+class CamaraConfig(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    rstp_url: str
+    user_id: int
+    nombre: Optional[str] = None

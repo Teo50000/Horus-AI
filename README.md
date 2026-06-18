@@ -7,6 +7,11 @@
 ## Para clonar Branch especifico:
     C:\Users\48861938\Documents\GitHub\Horus-AI
 
+## Arrancar video con direccion IP
+PS C:\Users\48861938\Downloads\ffmpeg\ffmpeg-8.1.1-essentials_build\bin>
+.\ffmpeg.exe -re -stream_loop -1 -i C:\Users\48861938\Downloads\video_test_2.mp4 -c:v copy -c:a aac -f rtsp rtsp://localhost:8554/live
+Ejecutar aplicacion mdmtx
+
 
 ### Sprint 1: Aprender fundamentos de FastAPI y Estructuración
 En esta etapa, el objetivo fue levantar el servidor y entender cómo FastAPI maneja las peticiones web.

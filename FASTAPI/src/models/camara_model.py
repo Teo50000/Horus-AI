@@ -26,5 +26,5 @@ class Camara(SQLModel, table=True):
 class CamaraConfig(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     rstp_url: str
-    user_id: int
+    user_id: int #FK hacia el usuario que la eligió/agregó
     nombre: Optional[str] = None

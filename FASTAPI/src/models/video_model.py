@@ -7,7 +7,8 @@ import cv2
 
 class VideoCamera(object):
     def __init__(self):
-        self.video = cv2.VideoCapture(1)
+        #self.video = cv2.VideoCapture(1)
+        self.video = cv2.VideoCapture("rtsp://localhost:8554/live")
         #si lo queremos hacer con direccion IP, habria que cambiarlo a self.video = cv2.VideoCapture('rstp://direccion_ip:puerto/video_feed')
         self.video.set(3, 1920)  # float `width`
         self.video.set(4, 1080)  # float `height`

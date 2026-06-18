@@ -1,0 +1,37 @@
+.sidebar {
+  width: fit-content;
+  height: 100vh;
+
+  padding: 2vh 25px;
+
+  display: flex;
+  flex-direction: column;
+
+  justify-content: space-between;
+  align-items: center;
+  background-color: #3527ff;
+}
+
+  
+  .sidebar-logo {
+    width: 24px;
+    height: 24px;
+  }
+  
+  .sidebar-buttons {
+    display: flex;
+    flex-direction: column;
+  
+    gap: 24px;
+  }
+  
+  .help-button {
+    background: transparent;
+    border: none;
+  
+    color: #ff8427;
+  
+    font-size: 12px;
+  
+    cursor: pointer;
+  }

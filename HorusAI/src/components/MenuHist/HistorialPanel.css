@@ -1,0 +1,154 @@
+/* ─── HistorialPanel ─────────────────────────────────────────── */
+
+.historial-panel {
+  position: absolute;
+  top: 0;
+  left: 100%; /* se despliega a la derecha de la sidebar */
+  height: 100%;
+  width: 260px;
+
+  background: #0b1120;
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 16px 12px;
+  box-sizing: border-box;
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  z-index: 10;
+}
+
+/* ─── Búsqueda ───────────────────────────────────────────────── */
+
+.historial-panel__search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.historial-panel__input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  padding: 8px 32px 8px 12px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.historial-panel__input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.historial-panel__input:focus {
+  border-color: rgba(224, 124, 36, 0.6);
+}
+
+.historial-panel__search-icon {
+  position: absolute;
+  right: 10px;
+  font-size: 12px;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.historial-panel__clear {
+  position: absolute;
+  right: 28px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  line-height: 1;
+}
+
+/* ─── Filtros ────────────────────────────────────────────────── */
+
+.historial-panel__filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.historial-panel__filter-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.historial-panel__filter-btn:hover {
+  border-color: rgba(224, 124, 36, 0.5);
+  color: #fff;
+}
+
+.historial-panel__filter-btn--active {
+  background: rgba(224, 124, 36, 0.15);
+  border-color: #e07c24;
+  color: #e07c24;
+}
+
+/* ─── Lista ──────────────────────────────────────────────────── */
+
+.historial-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.historial-panel__item {
+  display: grid;
+  /* camara : tipo : fecha */
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  align-items: center;
+
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.historial-panel__item-camara {
+  font-weight: 500;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.historial-panel__item-tipo {
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+}
+
+.historial-panel__item-fecha {
+  color: rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Estado vacío ───────────────────────────────────────────── */
+
+.historial-panel__empty {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 12px;
+  text-align: center;
+  margin-top: 20px;
+}

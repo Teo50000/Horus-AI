@@ -9,6 +9,7 @@ class Camara(SQLModel, table=True):
     confidence: float
     timestamp: str
     camara_config_id: int = Field(foreign_key="camaraconfig.id")
+    clip_url: Optional[str] = None # = "/clips/camera_3_2026-06-18_14-32.mp4" , para agregar dsp en otro sprint
 
     
     @field_validator("confidence")

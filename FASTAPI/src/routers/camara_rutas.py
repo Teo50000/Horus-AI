@@ -4,10 +4,11 @@ from fastapi import Query, Path, APIRouter
 from fastapi.responses import JSONResponse
 from sqlmodel import Session
 from src.database import engine
-from src.models.camara_model import Camara
+from src.models.camara_model import Camara, CamaraConfig
 from src.services.websockets import manager
 from fastapi import WebSocket, WebSocketDisconnect
 camara_router = APIRouter()
+import cv2
 
 camaras: List[Camara] = [
     Camara(camera_id=1, event_type="fire", confidence=0.94, timestamp="2026-05-07T10:32:00"),
@@ -69,6 +70,20 @@ async def recibir_prediccion(camara: Camara):
         session.refresh(camara)
         await manager.broadcast(camara.model_dump_json())
         return camara
+    
+@camara_router.post("/config", tags=["Camaras"])
+def agregar_camara_config(config: CamaraConfig):
+    test_cap = cv2.VideoCapture(config.rtsp_url)
+    if not test_cap.isOpened():
+        test_cap.release()
+        return JSONResponse(content={"error": "No se pudo conectar a la cámara"}, status_code=400)
+    test_cap.release()
+    
+    with Session(engine) as session:
+        session.add(config)
+        session.commit()
+        session.refresh(config)
+        return config
 
 # metodo put
 @camara_router.put("/{id}", tags=["Camaras"])

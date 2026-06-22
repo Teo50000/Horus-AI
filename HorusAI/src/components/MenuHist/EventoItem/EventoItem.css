@@ -1,0 +1,32 @@
+.evento-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  align-items: center;
+
+  background: rgba(26, 63, 142, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  list-style: none;
+}
+
+.evento-item__camara {
+  font-weight: 500;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.evento-item__tipo {
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+}
+
+.evento-item__fecha {
+  color: rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}

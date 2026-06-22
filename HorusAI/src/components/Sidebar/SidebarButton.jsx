@@ -1,3 +1,4 @@
+import "./SidebarButton.css";
 export default function SidebarButton({ icon, active, onClick }) {
   return (
     <button
@@ -7,4 +8,4 @@ export default function SidebarButton({ icon, active, onClick }) {
       <img src={icon} alt="" />
     </button>
   );
-}
+} 

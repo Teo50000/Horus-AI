@@ -1,7 +1,9 @@
 import { useState } from "react";
 import Sidebar from "../components/Sidebar/Sidebar";
 import HistorialPanel from "../components/MenuHist/HistorialPanel";
+import AjustesPanel from "../components/MenuAjustes/AjustesPanel";
 import { useHistorial } from "../components/MenuHist/useHistorial";
+import { useAjustes } from "../components/MenuAjustes/useAjustes";
 import "./Dashboard.css";
 
 const EVENTOS_EJEMPLO = [
@@ -15,12 +17,27 @@ const EVENTOS_EJEMPLO = [
 export default function Dashboard() {
   const [activeSection, setActiveSection] = useState("cameras");
 
-  // Una sola instancia del hook, acá arriba
   const historial = useHistorial(EVENTOS_EJEMPLO);
+  const ajustes   = useAjustes();
+
+  // Abre solo el panel correspondiente, cierra el otro
+  const [panelAbierto, setPanelAbierto] = useState(null); // "historial" | "ajustes" | null
 
   const handleSectionChange = (section) => {
     setActiveSection(section);
-    if (section !== "history") historial.closePanel();
+
+    if (section === "history") {
+      setPanelAbierto((prev) => (prev === "historial" ? null : "historial"));
+    } else if (section === "settings") {
+      setPanelAbierto((prev) => (prev === "ajustes" ? null : "ajustes"));
+    } else {
+      setPanelAbierto(null);
+    }
+  };
+
+  const cerrarPanel = () => {
+    setPanelAbierto(null);
+    setActiveSection("cameras");
   };
 
   return (
@@ -29,10 +46,15 @@ export default function Dashboard() {
       <Sidebar
         activeSection={activeSection}
         onSectionChange={handleSectionChange}
-        onHistoryClick={historial.togglePanel}
       />
 
-      {historial.isOpen && <HistorialPanel {...historial} />}
+      {panelAbierto === "historial" && (
+        <HistorialPanel {...historial} onClose={cerrarPanel} />
+      )}
+
+      {panelAbierto === "ajustes" && (
+        <AjustesPanel {...ajustes} isOpen onClose={cerrarPanel} />
+      )}
 
       <main className="dashboard-main">
         {/* Cámaras */}

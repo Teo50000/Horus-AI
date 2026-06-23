@@ -1,19 +1,26 @@
 .filter-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  justify-content: space-between;
 }
 
 .filter-buttons__btn {
+  flex: 0 0 auto;
+
   background: transparent;
-  flex: 1;
+
   border-top: 1px solid #ff8427;
   border-bottom: 1px solid #ff8427;
-  border-left: 1px transparent;
-  border-right: 1px transparent;
+
+  border-left: none;
+  border-right: none;
+
   border-radius: 20px;
+
+  padding: 4px 12px;
   color: rgba(255, 255, 255, 0.6);
   font-size: 11px;
-  padding: 1vh 10px;
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }

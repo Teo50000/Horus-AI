@@ -1,7 +1,6 @@
+import lapizIcon from "../../../assets/Lapiz.svg";
 import "./EditButton.css";
 
-// modo: "editar" | "guardar"
-// El padre decide qué modo mostrar según si la fila está en edición
 export default function EditButton({ modo = "editar", onClick }) {
   return (
     <button
@@ -10,7 +9,10 @@ export default function EditButton({ modo = "editar", onClick }) {
       title={modo === "editar" ? "Editar" : "Guardar"}
       aria-label={modo === "editar" ? "Editar número" : "Guardar número"}
     >
-      {modo === "editar" ? "✏" : "✓"}
+      {modo === "editar"
+        ? <img src={lapizIcon} alt="" />
+        : <span className="edit-button__check">✓</span>
+      }
     </button>
   );
 }

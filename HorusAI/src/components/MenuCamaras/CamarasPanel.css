@@ -1,0 +1,51 @@
+.camaras-panel {
+  position: relative;
+  width: 22vw;
+  height: 100vh;
+  background: #090326;
+  border: 7px solid rgba(26, 63, 142, 0.78);
+  border-radius: 0 12px 12px 0;
+  padding: 3vh 1vw;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4vh;
+  flex-shrink: 0;
+}
+
+/* Lista scrolleable */
+.camaras-panel__lista {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 2px;
+}
+
+/* Scrollbar sutil */
+.camaras-panel__lista::-webkit-scrollbar { width: 4px; }
+.camaras-panel__lista::-webkit-scrollbar-track { background: transparent; }
+.camaras-panel__lista::-webkit-scrollbar-thumb { background: rgba(255,132,39,0.3); border-radius: 4px; }
+
+/* Botón de acción principal (placeholder) */
+.camaras-panel__action-btn {
+  background: transparent;
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 18px;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.camaras-panel__action-btn:hover {
+  border-color: #ff8427;
+  color: #ff8427;
+}

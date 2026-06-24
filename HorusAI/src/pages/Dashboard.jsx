@@ -2,6 +2,7 @@ import { useState } from "react";
 import Sidebar from "../components/Sidebar/Sidebar";
 import HistorialPanel from "../components/MenuHist/HistorialPanel";
 import AjustesPanel from "../components/MenuAjustes/AjustesPanel";
+import CamarasPanel from "../components/MenuCamaras/CamarasPanel";
 import { useHistorial } from "../components/MenuHist/useHistorial";
 import { useAjustes } from "../components/MenuAjustes/useAjustes";
 import "./Dashboard.css";
@@ -15,24 +16,20 @@ const EVENTOS_EJEMPLO = [
 ];
 
 export default function Dashboard() {
-  const [activeSection, setActiveSection] = useState("cameras");
+  const [activeSection, setActiveSection]   = useState("cameras");
+  const [panelAbierto, setPanelAbierto]     = useState(null); // "camaras" | "historial" | "ajustes" | null
 
   const historial = useHistorial(EVENTOS_EJEMPLO);
   const ajustes   = useAjustes();
 
-  // Abre solo el panel correspondiente, cierra el otro
-  const [panelAbierto, setPanelAbierto] = useState(null); // "historial" | "ajustes" | null
-
   const handleSectionChange = (section) => {
     setActiveSection(section);
-
-    if (section === "history") {
-      setPanelAbierto((prev) => (prev === "historial" ? null : "historial"));
-    } else if (section === "settings") {
-      setPanelAbierto((prev) => (prev === "ajustes" ? null : "ajustes"));
-    } else {
-      setPanelAbierto(null);
-    }
+    setPanelAbierto((prev) => {
+      if (section === "cameras")  return prev === "camaras"   ? null : "camaras";
+      if (section === "settings") return prev === "ajustes"   ? null : "ajustes";
+      if (section === "history")  return prev === "historial" ? null : "historial";
+      return null;
+    });
   };
 
   const cerrarPanel = () => {
@@ -48,16 +45,12 @@ export default function Dashboard() {
         onSectionChange={handleSectionChange}
       />
 
-      {panelAbierto === "historial" && (
-        <HistorialPanel {...historial} onClose={cerrarPanel} />
-      )}
-
-      {panelAbierto === "ajustes" && (
-        <AjustesPanel {...ajustes} isOpen onClose={cerrarPanel} />
-      )}
+      {panelAbierto === "camaras"   && <CamarasPanel  onClose={cerrarPanel} />}
+      {panelAbierto === "historial" && <HistorialPanel {...historial} onClose={cerrarPanel} />}
+      {panelAbierto === "ajustes"   && <AjustesPanel  {...ajustes}   onClose={cerrarPanel} />}
 
       <main className="dashboard-main">
-        {/* Cámaras */}
+        {/* Grid de cámaras */}
       </main>
 
     </div>

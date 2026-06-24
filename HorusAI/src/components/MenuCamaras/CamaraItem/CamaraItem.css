@@ -1,0 +1,38 @@
+.camara-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(80, 100, 255, 0.2);
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-height: 32px;
+}
+
+.camara-item__nombre {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.camara-item__input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #ff8427;
+  color: #fff;
+  font-size: 12px;
+  outline: none;
+  padding: 0 2px;
+}
+
+.camara-item__acciones {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}

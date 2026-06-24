@@ -1,3 +1,4 @@
+import { useState } from "react";
 import SearchBar from "../MenuHist/SearchBar/SearchBar";
 import SectorItem from "./SectorItem/SectorItem";
 import CamaraItem from "./CamaraItem/CamaraItem";
@@ -15,21 +16,15 @@ export default function CamarasPanel({ onClose }) {
     toggleEdicion, guardarNombre,
     actualizarNombreSector, actualizarNombreCamara,
     crearSector, crearCamara,
-    previewId, abrirPreview, cerrarPreview,
     pinearCamara,
   } = useCamaras();
 
-  // Encuentra el nombre de la cámara en preview
-  const nombrePreview = (() => {
-    for (const item of items) {
-      if (item.tipo === "camara" && item.id === previewId) return item.nombre;
-      if (item.tipo === "sector") {
-        const c = item.camaras.find((c) => c.id === previewId);
-        if (c) return c.nombre;
-      }
-    }
-    return null;
-  })();
+  // Preview: guarda la lista de cámaras a mostrar en el carrusel
+  const [camarasPreview, setCamarasPreview] = useState([]);
+
+  const abrirPreviewSector = (sector) => setCamarasPreview(sector.camaras);
+  const abrirPreviewCamara = (camara)  => setCamarasPreview([camara]);
+  const cerrarPreview = () => setCamarasPreview([]);
 
   return (
     <>
@@ -37,19 +32,17 @@ export default function CamarasPanel({ onClose }) {
 
         <CloseButton onClick={onClose} />
 
-        {/* Barra de búsqueda — mismo componente que Historial */}
         <SearchBar
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onClear={() => setQuery("")}
         />
 
-        {/* Botón de acción principal (funcionalidad pendiente) */}
+        {/* Botón de acción principal — funcionalidad pendiente */}
         <button className="camaras-panel__action-btn" title="Acción principal">
           ⊞
         </button>
 
-        {/* Lista de sectores y cámaras sueltas */}
         <div className="camaras-panel__lista">
           {items.map((item) =>
             item.tipo === "sector" ? (
@@ -62,33 +55,33 @@ export default function CamarasPanel({ onClose }) {
                 onActualizarNombreSector={actualizarNombreSector}
                 onActualizarNombreCamara={actualizarNombreCamara}
                 onCrearCamara={crearCamara}
-                onPreview={abrirPreview}
+                onPreviewSector={abrirPreviewSector}
                 onPinear={pinearCamara}
               />
             ) : (
+              // Cámara suelta — sí tiene sus propios botones
               <CamaraItem
                 key={item.id}
                 camara={item}
                 sectorId={null}
+                enSector={false}
                 editando={editandoId === `c-${item.id}`}
                 onToggleEdicion={toggleEdicion}
                 onGuardar={guardarNombre}
                 onActualizarNombre={actualizarNombreCamara}
-                onPreview={abrirPreview}
+                onPreview={() => abrirPreviewCamara(item)}
                 onPinear={pinearCamara}
               />
             )
           )}
         </div>
 
-        {/* Crear sector nuevo */}
         <AddButton onClick={crearSector} label="Crear sector" />
 
       </div>
 
-      {/* Preview fuera del panel para que no quede recortado */}
-      {previewId && (
-        <PreviewModal nombre={nombrePreview} onClose={cerrarPreview} />
+      {camarasPreview.length > 0 && (
+        <PreviewModal camaras={camarasPreview} onClose={cerrarPreview} />
       )}
     </>
   );

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import CamaraItem from "../CamaraItem/CamaraItem";
 import AddButton from "../../MenuAjustes/AddButton/AddButton";
 import IconButton from "../IconButton/IconButton";
@@ -15,16 +16,21 @@ export default function SectorItem({
   onActualizarNombreSector,
   onActualizarNombreCamara,
   onCrearCamara,
-  onPreview,
+  onPreviewSector,  // abre el carrusel con todas las cámaras del sector
   onPinear,
 }) {
   const idEdicionSector = `s-${sector.id}`;
   const editandoSector  = editandoId === idEdicionSector;
 
+  // Cuando el sector está en edición, las cámaras internas
+  // también muestran su input para editar nombre
+  const camaraEnEdicion = (camaraId) =>
+    editandoSector || editandoId === `c-${camaraId}`;
+
   return (
     <div className="sector-item">
 
-      {/* ── Cabecera del sector ── */}
+      {/* ── Cabecera ── */}
       <div className="sector-item__header">
         {editandoSector ? (
           <input
@@ -42,13 +48,17 @@ export default function SectorItem({
           <IconButton
             icon={lapizIcon}
             label={editandoSector ? "Guardar" : "Editar sector"}
-            onClick={() => editandoSector ? onGuardar(idEdicionSector) : onToggleEdicion(idEdicionSector)}
+            onClick={() =>
+              editandoSector
+                ? onGuardar(idEdicionSector)
+                : onToggleEdicion(idEdicionSector)
+            }
             active={editandoSector}
           />
           <IconButton
             icon={<IconOjo />}
-            label="Preview sector"
-            onClick={() => onPreview(sector.id)}
+            label="Ver cámaras del sector"
+            onClick={() => onPreviewSector(sector)}
           />
           <IconButton
             icon={<IconPin />}
@@ -58,24 +68,24 @@ export default function SectorItem({
         </div>
       </div>
 
-      {/* ── Cámaras del sector ── */}
+      {/* ── Cámaras (sin botones propios) ── */}
       <div className="sector-item__camaras">
         {sector.camaras.map((camara) => (
           <CamaraItem
             key={camara.id}
             camara={camara}
             sectorId={sector.id}
-            editando={editandoId === `c-${camara.id}`}
+            enSector={true}
+            editando={camaraEnEdicion(camara.id)}
             onToggleEdicion={onToggleEdicion}
             onGuardar={onGuardar}
             onActualizarNombre={onActualizarNombreCamara}
-            onPreview={onPreview}
-            onPinear={onPinear}
+            onPreview={() => {}}
+            onPinear={() => {}}
           />
         ))}
       </div>
 
-      {/* ── Agregar cámara al sector ── */}
       <AddButton
         onClick={() => onCrearCamara(sector.id)}
         label="Agregar cámara al sector"

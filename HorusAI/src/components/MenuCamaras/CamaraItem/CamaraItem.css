@@ -8,7 +8,7 @@
   border: 1px solid rgba(80, 100, 255, 0.2);
   border-radius: 8px;
   padding: 6px 8px;
-  min-height: 32px;
+  min-height: 15px;
 }
 
 .camara-item__nombre {
@@ -35,4 +35,7 @@
   display: flex;
   gap: 4px;
   flex-shrink: 0;
+}
+.camara-item.enSector{
+  background-color: #090326;
 }

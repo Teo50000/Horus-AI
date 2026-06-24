@@ -6,14 +6,16 @@
   background: #090326;
   border: 7px solid rgba(26, 63, 142, 0.78);
   border-radius: 0 12px 12px 0;
-  padding: 1vh 1vw;
+  padding: 1vh 0.1vw;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 4vh;
   flex-shrink: 0;
 }
-
+.ajustes-numeros-lista::-webkit-scrollbar { width: 4px; }
+.ajustes-numeros-lista::-webkit-scrollbar-track { background: transparent; }
+.ajustes-numeros-lista::-webkit-scrollbar-thumb { background: rgba(255,132,39,0.3); border-radius: 4px; }
 .ajustes-panel__content {
   flex: 1;
   overflow-y: auto;
@@ -41,6 +43,7 @@
 /* ─── Números de emergencia ──────────────────────────────────── */
 .ajustes-numeros-lista {
   display: flex;
+  overflow-y: auto;
   flex-direction: column;
   gap: 10px;
 }

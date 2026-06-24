@@ -1,7 +1,7 @@
 .preview-modal__overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.65);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -10,41 +10,107 @@
 
 .preview-modal {
   position: relative;
-  width: 480px;
+  width: 520px;
   aspect-ratio: 16 / 9;
-  background: #0b1120;
+  background: #060d1a;
   border: 2px solid #ff8427;
-  border-radius: 12px;
-  overflow: hidden;
+  border-radius: 16px;
+  overflow: visible;   /* para que las flechas sobresalgan */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
+/* ── Pantalla ── */
 .preview-modal__screen {
   width: 100%;
   height: 100%;
+  border-radius: 14px;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .preview-modal__label {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.35);
   font-size: 16px;
   font-family: monospace;
+  user-select: none;
 }
 
-.preview-modal__close {
+/* ── Flechas — sobresalen del recuadro como en el diseño ── */
+.preview-modal__arrow {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  background: rgba(0,0,0,0.5);
-  border: 1px solid rgba(255,255,255,0.2);
-  border-radius: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
   color: #fff;
-  width: 28px;
-  height: 28px;
+  font-size: 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  transition: background 0.15s;
+  z-index: 10;
+}
+
+.preview-modal__arrow:hover {
+  background: rgba(255, 132, 39, 0.35);
+}
+
+.preview-modal__arrow--left  { left: -48px; }
+.preview-modal__arrow--right { right: -48px; }
+
+/* ── Dots ── */
+.preview-modal__dots {
+  position: absolute;
+  bottom: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+}
+
+.preview-modal__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s;
+}
+
+.preview-modal__dot--active {
+  background: #ff8427;
+}
+
+/* ── Cerrar ── */
+.preview-modal__close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: #fff;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  transition: background 0.15s;
+}
+
+.preview-modal__close:hover {
+  background: rgba(255, 132, 39, 0.3);
 }

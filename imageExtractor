@@ -1,0 +1,87 @@
+import cv2
+import time
+import os
+
+def detectar_camaras(max_probar=10):
+    """Prueba índices secuenciales para encontrar cámaras activas."""
+    camaras_activas = []
+    print("Buscando cámaras conectadas...")
+    for i in range(max_probar):
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            ret, _ = cap.read()
+            if ret:
+                print(f"-> Cámara detectada en el índice: {i}")
+                camaras_activas.append((i, cap))  # se guarda el índice junto con la captura
+            else:
+                cap.release()
+        else:
+            cap.release()
+    return camaras_activas
+
+# 1. Detectar todas las cámaras disponibles
+camaras = detectar_camaras()
+
+if not camaras:
+    print("No se detecto ninguna cámara")
+    exit()
+
+
+ruta_del_script = os.path.dirname(os.path.abspath(__file__))
+
+# crea las carpetas para cada cámara si no existen
+CARPETA_BASE = os.path.join(ruta_del_script, "Horus.Image", "capturas_camaras")
+
+print(f"\nCreando directorios de guardado en la carpeta '{CARPETA_BASE}'...")
+
+for indice, _ in camaras:
+    ruta_carpeta = os.path.join(CARPETA_BASE, f"camara_{indice}")
+    os.makedirs(ruta_carpeta, exist_ok=True)
+
+# configurar el objetivo de FPS y variables de control
+FPS_OBJETIVO = 5
+INTERVALO = 1.0 / FPS_OBJETIVO  # 0.2 segundos por frame
+contador_frames = 0
+
+print(f"\nIniciando captura a {FPS_OBJETIVO} FPS de {len(camaras)} cámara(s).")
+try:
+    while True:
+        tiempo_inicio = time.time()
+        
+        # Capturar, guardar y mostrar el frame de cada cámara
+        for indice, cap in camaras:
+            ret, frame = cap.read()
+            if ret:
+                # Nombre del archivo (ej: capturas_camaras/camara_0/frame_00001.jpg)
+                nombre_archivo = os.path.join(
+                    CARPETA_BASE, 
+                    f"camara_{indice}", 
+                    f"frame_{contador_frames:06d}.jpg"
+                )
+                
+                # Guardar la imagen en su respectiva carpeta
+                cv2.imwrite(nombre_archivo, frame)
+                
+                # Mostrar en pantalla (opcional)
+                cv2.imshow(f"Camara Indice {indice}", frame)
+        
+        # Incrementar el contador de frames
+        contador_frames += 1
+        
+        # tecla 'q' para salir
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+            
+        # mantener los 5 FPS
+        tiempo_transcurrido = time.time() - tiempo_inicio
+        tiempo_restante = INTERVALO - tiempo_transcurrido
+        
+        if tiempo_restante > 0:
+            time.sleep(tiempo_restante)
+
+finally:
+    # Limpiar recursos al cerrar
+    for _, cap in camaras:
+        cap.release()
+    cv2.destroyAllWindows()
+    print("Programa finalizado.")

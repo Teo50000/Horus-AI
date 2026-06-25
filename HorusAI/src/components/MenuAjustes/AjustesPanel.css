@@ -17,8 +17,7 @@
 .ajustes-numeros-lista::-webkit-scrollbar-track { background: transparent; }
 .ajustes-numeros-lista::-webkit-scrollbar-thumb { background: rgba(255,132,39,0.3); border-radius: 4px; }
 .ajustes-panel__content {
-  flex: 1;
-  overflow-y: auto;
+  height: 100%;
   padding: 28px 24px;
   display: flex;
   flex-direction: column;
@@ -42,10 +41,10 @@
 
 /* ─── Números de emergencia ──────────────────────────────────── */
 .ajustes-numeros-lista {
-  display: flex;
+  height: 40vh;
   overflow-y: auto;
   flex-direction: column;
-  gap: 10px;
+  gap: 10%;
 }
 
 .ajustes-numero {

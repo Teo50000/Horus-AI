@@ -2,10 +2,8 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid #ff8427;
   background: transparent;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 18px;
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -14,8 +12,11 @@
   transition: border-color 0.15s, color 0.15s;
   flex-shrink: 0;
 }
-
+.add-button img{
+  width: 95%;
+  height: 95%;
+  object-fit: contain;
+}
 .add-button:hover {
-  border-color: #ff8427;
-  color: #ff8427;
+  background-color:rgba(255, 132, 39, 0.5);
 }

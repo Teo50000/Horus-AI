@@ -5,8 +5,8 @@ import IconButton from "../IconButton/IconButton";
 import lapizIcon from "../../../assets/Lapiz.svg";
 import "./SectorItem.css";
 
-const IconOjo = () => <span style={{ fontSize: 12, color: "#fff" }}>👁</span>;
-const IconPin = () => <span style={{ fontSize: 12, color: "#fff" }}>📌</span>;
+import IconOjo from "../../../assets/PreView.svg";
+import IconPin from "../../../assets/Pin.svg";
 
 export default function SectorItem({
   sector,
@@ -56,12 +56,12 @@ export default function SectorItem({
             active={editandoSector}
           />
           <IconButton
-            icon={<IconOjo />}
+            icon={IconOjo }
             label="Ver cámaras del sector"
             onClick={() => onPreviewSector(sector)}
           />
           <IconButton
-            icon={<IconPin />}
+            icon={IconPin }
             label="Pinear sector"
             onClick={() => onPinear(sector.id)}
           />

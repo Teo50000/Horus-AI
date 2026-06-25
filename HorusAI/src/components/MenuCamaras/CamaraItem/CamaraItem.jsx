@@ -2,9 +2,8 @@ import IconButton from "../IconButton/IconButton";
 import lapizIcon from "../../../assets/Lapiz.svg";
 import "./CamaraItem.css";
 
-const IconOjo = () => <span style={{ fontSize: 12, color: "#fff" }}>👁</span>;
-const IconPin = () => <span style={{ fontSize: 12, color: "#fff" }}>📌</span>;
-
+import IconOjo from "../../../assets/PreView.svg";
+import IconPin from "../../../assets/Pin.svg";
 export default function CamaraItem({
   camara,
   sectorId = null,
@@ -42,12 +41,12 @@ export default function CamaraItem({
             active={editando}
           />
           <IconButton
-            icon={<IconOjo />}
+            icon={IconOjo}
             label="Preview"
             onClick={() => onPreview(camara.id)}
           />
           <IconButton
-            icon={<IconPin />}
+            icon={IconPin}
             label="Pinear"
             onClick={() => onPinear(camara.id)}
           />

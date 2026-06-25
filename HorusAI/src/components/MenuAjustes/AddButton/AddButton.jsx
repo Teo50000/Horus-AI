@@ -1,4 +1,5 @@
 import "./AddButton.css";
+import Add from "../../../assets/Add.svg"
 
 export default function AddButton({ onClick, label = "Agregar" }) {
   return (
@@ -8,7 +9,7 @@ export default function AddButton({ onClick, label = "Agregar" }) {
       title={label}
       aria-label={label}
     >
-      +
+      <img className=".add-button img"src={Add}/>
     </button>
   );
 }

@@ -4,7 +4,7 @@ from fastapi import Query, Path, APIRouter
 from fastapi.responses import JSONResponse
 from sqlmodel import Session
 from src.database import engine
-from src.models.camara_model import Camara, CamaraConfig
+from src.models.camara_model import Camara, CamaraConfig, NumeroEmergencia
 from src.services.websockets import manager
 from fastapi import WebSocket, WebSocketDisconnect
 camara_router = APIRouter()
@@ -14,6 +14,8 @@ camaras: List[Camara] = [
     Camara(camera_id=1, event_type="fire", confidence=0.94, timestamp="2026-05-07T10:32:00"),
     Camara(camera_id=2, event_type="normal", confidence=0.99, timestamp="2026-05-07T10:35:00")
 ]
+telefono: List[NumeroEmergencia] = []
+config_camaras: List[CamaraConfig] = []
 
 @camara_router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -56,12 +58,20 @@ def get_modelos_por_cat(categoria: str = Query(min_length=5, max_length=20)) -> 
 
 
 #metodo get para la configuracion de camaras
-@camara_router.get("config/", tags = ["Camaras"])
+@camara_router.get("/config", tags = ["Camaras"])
 def get_camara_config(id: int) -> CamaraConfig | dict:
-    for cam in camaras:
-        if cam.camera_id == id:
+    for cam in config_camaras:
+        if cam.id == id:
             return JSONResponse(content=cam.model_dump(), status_code = 200) # model_dump convierte el objeto Camara en un diccionario para que pueda ser devuelto como respuesta
     return JSONResponse(content={}, status_code = 404)
+
+@camara_router.get("/emergencia", tags = ["Telefonos"])
+def get_tel_emergencia(id: int) -> NumeroEmergencia | dict:
+    for tel in telefono:
+        if tel.id == id:
+            return JSONResponse(content=tel.model_dump(), status_code = 200)
+    return JSONResponse(content={}, status_code = 404)
+
 #metodo post
 @camara_router.post("", tags=["Camaras"])
 def añadir_camara(nueva_camara: Camara) -> List[Camara]:
@@ -92,18 +102,62 @@ def agregar_camara_config(config: CamaraConfig):
         session.commit()
         session.refresh(config)
         return config
+    
 
-# metodo put
+@camara_router.post("/emergencia", tags=["Telefonos"])
+def agregar_telefono(nuevo_tel: NumeroEmergencia) -> List[NumeroEmergencia]:
+
+    with Session(engine) as session:
+        session.add(nuevo_tel)
+        session.commit()
+        session.refresh(nuevo_tel)
+        return nuevo_tel
+
+
+# metodo put para el config de camaras
 @camara_router.put("/config/{id}", tags=["Camaras"])
 def actualizar_camara(id: int, cam: CamaraConfig) -> List[CamaraConfig]:
-    for i in camaras:
-        if i.id == id:
-            i.rstp_url = cam.rstp_url
-            i.nombre = cam.nombre
-    content = [c.model_dump() for c in camaras] # model_dump convierte cada objeto Camara en un diccionario para que pueda ser devuelto como respuesta
-    return JSONResponse(content=content)
+    with Session(engine) as session:
+        # 1. Buscar el registro en la base de datos
+        db_item = session.get(CamaraConfig, id)
+        if not db_item:
+            return JSONResponse(status_code=404, detail="Item no encontrado")
+        cam_data = cam.model_dump(exclude_unset=True)
+        
+        # 3. Actualizar los campos del modelo con los nuevos valores
+        db_item.sqlmodel_update(cam_data)
+        
+        # 4. Guardar los cambios
+        session.add(db_item)
+        session.commit()
+        session.refresh(db_item)
+        
+        return db_item
 
-#metodo put para el config de camaras
+@camara_router.put("/emergencia/{id}", tags=["Telefonos"])
+def actualizar_telefono(id: int, tel: NumeroEmergencia) -> List[NumeroEmergencia]:
+    with Session(engine) as session:
+    # 1. buscarlo en la DB
+        tel_db = session.get(NumeroEmergencia, id)
+    
+    # 2. si no existe, error
+        if not tel_db:
+            return JSONResponse(content={"error": "No encontrado"}, status_code=404)
+        
+        tel_data = tel.model_dump(exclude_unset=True)
+    
+    # 3. modificar los campos
+        tel_db.telefono = tel.telefono
+        tel_db.nombre = tel.nombre
+        
+        tel_db.sqlmodel_update(tel_data)
+        # 4. guardar
+        session.add(tel_db)
+        session.commit()
+        session.refresh(tel_db)
+        return tel_db
+
+#metodo put 
 @camara_router.put("/{id}", tags=["Camaras"])
 def actualizar_camara(id: int, cam: Camara) -> List[Camara]:
     for i in camaras:

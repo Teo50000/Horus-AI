@@ -5,7 +5,11 @@
     para desactivarlo: <deactivate>
     
 ## Para clonar Branch especifico:
+    git clone -b main --single-branch https://github.com/Teo50000/Horus-AI.git
     C:\Users\48861938\Documents\GitHub\Horus-AI
+
+## Dar permisos para mi ventana actual:
+ < Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass >
 
 ## Arrancar video con direccion IP
 PS C:\Users\48861938\Downloads\ffmpeg\ffmpeg-8.1.1-essentials_build\bin>

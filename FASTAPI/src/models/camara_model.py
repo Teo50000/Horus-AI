@@ -33,5 +33,5 @@ class CamaraConfig(SQLModel, table=True):
 
 class NumeroEmergencia(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    telefono = str
+    telefono: str
     nombre: Optional[str] = None  # ej: "Policía", "Bomberos", "Jefe"

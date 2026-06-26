@@ -16,7 +16,7 @@ const EVENTOS_EJEMPLO = [
 ];
 
 export default function Dashboard() {
-  const [activeSection, setActiveSection]   = useState("cameras");
+  const [activeSection, setActiveSection]   = useState("null");
   const [panelAbierto, setPanelAbierto]     = useState(null); // "camaras" | "historial" | "ajustes" | null
 
   const historial = useHistorial(EVENTOS_EJEMPLO);
@@ -34,7 +34,7 @@ export default function Dashboard() {
 
   const cerrarPanel = () => {
     setPanelAbierto(null);
-    setActiveSection("cameras");
+    setActiveSection("null");
   };
 
   return (

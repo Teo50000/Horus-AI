@@ -3,10 +3,11 @@ import CamaraItem from "../CamaraItem/CamaraItem";
 import AddButton from "../../MenuAjustes/AddButton/AddButton";
 import IconButton from "../IconButton/IconButton";
 import lapizIcon from "../../../assets/Lapiz.svg";
-import "./SectorItem.css";
-
 import IconOjo from "../../../assets/PreView.svg";
 import IconPin from "../../../assets/Pin.svg";
+import "./SectorItem.css";
+
+
 
 export default function SectorItem({
   sector,
@@ -15,22 +16,19 @@ export default function SectorItem({
   onGuardar,
   onActualizarNombreSector,
   onActualizarNombreCamara,
-  onCrearCamara,
-  onPreviewSector,  // abre el carrusel con todas las cámaras del sector
+  onCrearCamara,       // () => abre el modal "agregarASector" con este sector
+  onPreviewSector,
   onPinear,
 }) {
   const idEdicionSector = `s-${sector.id}`;
   const editandoSector  = editandoId === idEdicionSector;
 
-  // Cuando el sector está en edición, las cámaras internas
-  // también muestran su input para editar nombre
   const camaraEnEdicion = (camaraId) =>
     editandoSector || editandoId === `c-${camaraId}`;
 
   return (
     <div className="sector-item">
 
-      {/* ── Cabecera ── */}
       <div className="sector-item__header">
         {editandoSector ? (
           <input
@@ -61,14 +59,13 @@ export default function SectorItem({
             onClick={() => onPreviewSector(sector)}
           />
           <IconButton
-            icon={IconPin }
+            icon={IconPin}
             label="Pinear sector"
             onClick={() => onPinear(sector.id)}
           />
         </div>
       </div>
 
-      {/* ── Cámaras (sin botones propios) ── */}
       <div className="sector-item__camaras">
         {sector.camaras.map((camara) => (
           <CamaraItem
@@ -86,10 +83,8 @@ export default function SectorItem({
         ))}
       </div>
 
-      <AddButton
-        onClick={() => onCrearCamara(sector.id)}
-        label="Agregar cámara al sector"
-      />
+      {/* + dentro del sector → abre modal "agregar a este sector" */}
+      <AddButton onClick={onCrearCamara} label="Agregar cámara al sector" />
 
     </div>
   );

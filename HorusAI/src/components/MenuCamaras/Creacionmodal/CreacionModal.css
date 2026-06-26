@@ -1,0 +1,217 @@
+/* ── Overlay ── */
+.creacion-modal__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+/* ── Caja del modal ── */
+.creacion-modal {
+  width: 320px;
+  background: #0d1530;
+  border: 1.5px solid rgba(80, 100, 255, 0.4);
+  border-radius: 14px;
+  padding: 20px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Tabs ── */
+.creacion-modal__tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 4px;
+}
+
+.creacion-modal__tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 13px;
+  padding: 6px 0 10px;
+  cursor: pointer;
+  transition: color 0.15s;
+  position: relative;
+}
+
+.creacion-modal__tab--active {
+  color: #ff8427;
+}
+
+.creacion-modal__tab--active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #ff8427;
+  border-radius: 2px 2px 0 0;
+}
+
+/* ── Input de nombre ── */
+.creacion-modal__nombre-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(80, 100, 255, 0.3);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.creacion-modal__nombre-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 13px;
+  font-family: monospace;
+  outline: none;
+}
+
+.creacion-modal__nombre-icon {
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+/* ── Subtítulo (modo agregar a sector) ── */
+.creacion-modal__subtitulo {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0;
+}
+
+.creacion-modal__subtitulo strong {
+  color: #fff;
+}
+
+/* ── Lista scrolleable ── */
+.creacion-modal__lista {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.creacion-modal__lista::-webkit-scrollbar { width: 4px; }
+.creacion-modal__lista::-webkit-scrollbar-track { background: transparent; }
+.creacion-modal__lista::-webkit-scrollbar-thumb { background: rgba(255,132,39,0.3); border-radius: 4px; }
+
+/* ── Fila genérica ── */
+.creacion-modal__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(80, 100, 255, 0.2);
+  border-radius: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  user-select: none;
+}
+
+.creacion-modal__row:hover {
+  border-color: rgba(255, 132, 39, 0.4);
+}
+
+.creacion-modal__row--selected {
+  border-color: #ff8427;
+  background: rgba(255, 132, 39, 0.08);
+}
+
+.creacion-modal__row--check {
+  cursor: pointer;
+}
+
+.creacion-modal__row-nombre {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Botón preview dentro de la fila */
+.creacion-modal__row-preview {
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.creacion-modal__row-preview:hover { opacity: 1; }
+
+/* Checkbox */
+.creacion-modal__checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #ff8427;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── Empty state ── */
+.creacion-modal__empty {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.3);
+  text-align: center;
+  padding: 12px 0;
+  margin: 0;
+}
+
+/* ── Footer con botones ── */
+.creacion-modal__footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.creacion-modal__btn {
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.creacion-modal__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.creacion-modal__btn--cancelar {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.creacion-modal__btn--cancelar:hover { border-color: rgba(255,255,255,0.5); }
+
+.creacion-modal__btn--confirmar {
+  background: #ff8427;
+  color: #fff;
+  font-weight: 600;
+}
+
+.creacion-modal__btn--confirmar:not(:disabled):hover { opacity: 0.85; }

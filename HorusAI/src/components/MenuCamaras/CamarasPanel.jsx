@@ -4,6 +4,7 @@ import SectorItem from "./SectorItem/SectorItem";
 import CamaraItem from "./CamaraItem/CamaraItem";
 import AddButton from "../MenuAjustes/AddButton/AddButton";
 import PreviewModal from "./PreviewModal/PreviewModal";
+import CreacionModal from "./CreacionModal/CreacionModal";
 import CloseButton from "../CloseButton/CloseButton";
 import { useCamaras } from "./useCamaras";
 import "./CamarasPanel.css";
@@ -11,20 +12,36 @@ import "./CamarasPanel.css";
 export default function CamarasPanel({ onClose }) {
   const {
     items,
+    camarasSueltas,
     query, setQuery,
     editandoId,
     toggleEdicion, guardarNombre,
     actualizarNombreSector, actualizarNombreCamara,
-    crearSector, crearCamara,
+    confirmarCreacion,
     pinearCamara,
   } = useCamaras();
 
-  // Preview: guarda la lista de cámaras a mostrar en el carrusel
+  // ── Preview carrusel ─────────────────────────────────────────
   const [camarasPreview, setCamarasPreview] = useState([]);
-
   const abrirPreviewSector = (sector) => setCamarasPreview(sector.camaras);
   const abrirPreviewCamara = (camara)  => setCamarasPreview([camara]);
   const cerrarPreview = () => setCamarasPreview([]);
+
+  // ── Modal de creación ────────────────────────────────────────
+  // modo: null | "camara" | "sector" | "agregarASector"
+  const [modalConfig, setModalConfig] = useState(null);
+
+  const abrirModalGeneral    = ()       => setModalConfig({ modo: "camara" });
+  const abrirModalAgregarA   = (sector) => setModalConfig({ modo: "agregarASector", sector });
+  const cerrarModal          = ()       => setModalConfig(null);
+
+  const handleConfirmar = (resultado) => {
+    confirmarCreacion(resultado);
+    cerrarModal();
+  };
+
+  // Preview de cámara hardware dentro del modal
+  const [previewHardware, setPreviewHardware] = useState(null);
 
   return (
     <>
@@ -38,11 +55,6 @@ export default function CamarasPanel({ onClose }) {
           onClear={() => setQuery("")}
         />
 
-        {/* Botón de acción principal — funcionalidad pendiente */}
-        <button className="camaras-panel__action-btn" title="Acción principal">
-          ⊞
-        </button>
-
         <div className="camaras-panel__lista">
           {items.map((item) =>
             item.tipo === "sector" ? (
@@ -54,12 +66,11 @@ export default function CamarasPanel({ onClose }) {
                 onGuardar={guardarNombre}
                 onActualizarNombreSector={actualizarNombreSector}
                 onActualizarNombreCamara={actualizarNombreCamara}
-                onCrearCamara={crearCamara}
+                onCrearCamara={() => abrirModalAgregarA(item)}
                 onPreviewSector={abrirPreviewSector}
                 onPinear={pinearCamara}
               />
             ) : (
-              // Cámara suelta — sí tiene sus propios botones
               <CamaraItem
                 key={item.id}
                 camara={item}
@@ -76,12 +87,34 @@ export default function CamarasPanel({ onClose }) {
           )}
         </div>
 
-        <AddButton onClick={crearSector} label="Crear sector" />
+        {/* + general al final de la lista */}
+        <AddButton onClick={abrirModalGeneral} label="Crear cámara o sector" />
 
       </div>
 
+      {/* Preview carrusel */}
       {camarasPreview.length > 0 && (
         <PreviewModal camaras={camarasPreview} onClose={cerrarPreview} />
+      )}
+
+      {/* Modal de creación */}
+      {modalConfig && (
+        <CreacionModal
+          modoInicial={modalConfig.modo}
+          sectorDestino={modalConfig.sector ?? null}
+          camarasSueltas={camarasSueltas}
+          onConfirmar={handleConfirmar}
+          onCancelar={cerrarModal}
+          onPreviewHardware={(cam) => setPreviewHardware(cam)}
+        />
+      )}
+
+      {/* Preview de cámara hardware (dentro del modal de creación) */}
+      {previewHardware && (
+        <PreviewModal
+          camaras={[{ id: previewHardware.id, nombre: previewHardware.nombre }]}
+          onClose={() => setPreviewHardware(null)}
+        />
       )}
     </>
   );

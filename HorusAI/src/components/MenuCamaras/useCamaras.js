@@ -10,41 +10,35 @@ const DATOS_INICIALES = [
       { id: 104, nombre: "Camara 8" },
     ],
   },
-  { id: 2, tipo: "sector", nombre: "Sector2",
-    camaras: [
-      { id: 201, nombre: "Camara 1" },
-      { id: 202, nombre: "Camara 2" },
-      { id: 203, nombre: "Camara 3" },
-      { id: 204, nombre: "Camara 4" },
-    ],
-  },
-  { id: 3, tipo: "camara", nombre: "Camara 9" },  // suelta
+  { id: 3, tipo: "camara", nombre: "Camara 1" },
+  { id: 4, tipo: "camara", nombre: "Camara 2" },
+  { id: 5, tipo: "camara", nombre: "Camara 3" },
+  { id: 6, tipo: "camara", nombre: "Camara 4" },
 ];
 
 export function useCamaras() {
   const [items, setItems]           = useState(DATOS_INICIALES);
   const [query, setQuery]           = useState("");
-  const [editandoId, setEditandoId] = useState(null); // "s-1" | "c-101" | null
-  const [previewId, setPreviewId]   = useState(null); // id de cámara en preview
+  const [editandoId, setEditandoId] = useState(null);
 
-  // ── Búsqueda ────────────────────────────────────────────────
-  // Filtra sectores (por nombre de sector o nombre de cámara interna)
-  // y cámaras sueltas. Un sector aparece si su nombre o alguna cámara coincide.
+  // ── Cámaras sueltas (sin sector) ────────────────────────────
+  // Usadas por el modal de creación de sector y agregar a sector
+  const camarasSueltas = useMemo(
+    () => items.filter((i) => i.tipo === "camara"),
+    [items]
+  );
+
+  // ── Búsqueda ─────────────────────────────────────────────────
   const itemsFiltrados = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return items;
-
     return items.reduce((acc, item) => {
       if (item.tipo === "sector") {
         const camarasFiltradas = item.camaras.filter((c) =>
           c.nombre.toLowerCase().includes(q)
         );
-        const sectorCoincide = item.nombre.toLowerCase().includes(q);
-        if (sectorCoincide || camarasFiltradas.length > 0) {
-          acc.push({
-            ...item,
-            camaras: sectorCoincide ? item.camaras : camarasFiltradas,
-          });
+        if (item.nombre.toLowerCase().includes(q) || camarasFiltradas.length > 0) {
+          acc.push({ ...item, camaras: item.nombre.toLowerCase().includes(q) ? item.camaras : camarasFiltradas });
         }
       } else {
         if (item.nombre.toLowerCase().includes(q)) acc.push(item);
@@ -59,95 +53,84 @@ export function useCamaras() {
 
   const guardarNombre = (id) => {
     setEditandoId(null);
-    console.log("Guardar:", id, items);
+    console.log("Guardar:", id);
   };
 
   const actualizarNombreSector = (id, valor) =>
     setItems((prev) =>
       prev.map((item) =>
-        item.tipo === "sector" && item.id === id
-          ? { ...item, nombre: valor }
-          : item
+        item.tipo === "sector" && item.id === id ? { ...item, nombre: valor } : item
       )
     );
 
   const actualizarNombreCamara = (sectorId, camaraId, valor) =>
     setItems((prev) =>
       prev.map((item) => {
-        // Cámara suelta
-        if (item.tipo === "camara" && item.id === camaraId) {
-          return { ...item, nombre: valor };
-        }
-        // Cámara dentro de sector
+        if (item.tipo === "camara" && item.id === camaraId) return { ...item, nombre: valor };
         if (item.tipo === "sector" && item.id === sectorId) {
-          return {
-            ...item,
-            camaras: item.camaras.map((c) =>
-              c.id === camaraId ? { ...c, nombre: valor } : c
-            ),
-          };
+          return { ...item, camaras: item.camaras.map((c) => c.id === camaraId ? { ...c, nombre: valor } : c) };
         }
         return item;
       })
     );
 
-  // ── Crear ────────────────────────────────────────────────────
-  const crearSector = () => {
-    const nuevoId = Date.now();
-    setItems((prev) => [
-      ...prev,
-      { id: nuevoId, tipo: "sector", nombre: "Nuevo sector", camaras: [] },
-    ]);
-    setEditandoId(`s-${nuevoId}`);
-    console.log("Crear sector");
-  };
+  // ── Confirmar creación desde el modal ────────────────────────
+  const confirmarCreacion = ({ tipo, nombre, hardwareId, camaraIds, sectorId }) => {
+    if (tipo === "camara") {
+      // Cámara nueva suelta desde hardware
+      const nuevoId = Date.now();
+      setItems((prev) => [...prev, { id: nuevoId, tipo: "camara", nombre }]);
+      console.log("Cámara creada:", nombre, "hardware:", hardwareId);
 
-  const crearCamara = (sectorId = null) => {
-    const nuevoId = Date.now();
-    if (sectorId === null) {
-      // Cámara suelta
-      setItems((prev) => [
-        ...prev,
-        { id: nuevoId, tipo: "camara", nombre: "Nueva cámara" },
-      ]);
-      setEditandoId(`c-${nuevoId}`);
-    } else {
-      setItems((prev) =>
-        prev.map((item) =>
-          item.id === sectorId
-            ? { ...item, camaras: [...item.camaras, { id: nuevoId, nombre: "Nueva cámara" }] }
+    } else if (tipo === "sector") {
+      // Sector nuevo: mueve las cámaras seleccionadas dentro del sector
+      const nuevoId = Date.now();
+      const camarasDelSector = items
+        .filter((i) => i.tipo === "camara" && camaraIds.includes(i.id))
+        .map(({ id, nombre }) => ({ id, nombre }));
+
+      setItems((prev) => {
+        const sinMovidas = prev.filter(
+          (i) => !(i.tipo === "camara" && camaraIds.includes(i.id))
+        );
+        return [...sinMovidas, { id: nuevoId, tipo: "sector", nombre, camaras: camarasDelSector }];
+      });
+      console.log("Sector creado:", nombre, "con cámaras:", camaraIds);
+
+    } else if (tipo === "agregarASector") {
+      // Mueve cámaras sueltas al sector destino
+      const camarasAMover = items
+        .filter((i) => i.tipo === "camara" && camaraIds.includes(i.id))
+        .map(({ id, nombre }) => ({ id, nombre }));
+
+      setItems((prev) => {
+        const sinMovidas = prev.filter(
+          (i) => !(i.tipo === "camara" && camaraIds.includes(i.id))
+        );
+        return sinMovidas.map((item) =>
+          item.tipo === "sector" && item.id === sectorId
+            ? { ...item, camaras: [...item.camaras, ...camarasAMover] }
             : item
-        )
-      );
-      setEditandoId(`c-${nuevoId}`);
+        );
+      });
+      console.log("Cámaras agregadas al sector:", sectorId, camaraIds);
     }
-    console.log("Crear cámara en sector:", sectorId);
   };
-
-  // ── Preview ──────────────────────────────────────────────────
-  const abrirPreview = (id) => setPreviewId(id);
-  const cerrarPreview = () => setPreviewId(null);
 
   // ── Pinear ───────────────────────────────────────────────────
   const pinearCamara = (id) => {
     console.log("Pinear cámara:", id);
-    // TODO: conectar con el grid de cámaras
+    // TODO: conectar con el grid
   };
 
   return {
     items: itemsFiltrados,
-    query,
-    setQuery,
+    camarasSueltas,
+    query, setQuery,
     editandoId,
-    toggleEdicion,
-    guardarNombre,
-    actualizarNombreSector,
-    actualizarNombreCamara,
-    crearSector,
-    crearCamara,
-    previewId,
-    abrirPreview,
-    cerrarPreview,
+    toggleEdicion, guardarNombre,
+    actualizarNombreSector, actualizarNombreCamara,
+    confirmarCreacion,
     pinearCamara,
   };
 }

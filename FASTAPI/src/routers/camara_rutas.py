@@ -86,7 +86,7 @@ async def recibir_prediccion(camara: Camara):
         session.add(camara)
         session.commit()
         session.refresh(camara)
-        await manager.broadcast(camara.model_dump_json())
+        await manager.broadcast(camara.model_dump_json()) #aca va lo de websocket para enviar alerta al frontend
         return camara
     
 @camara_router.post("/config", tags=["Camaras"])

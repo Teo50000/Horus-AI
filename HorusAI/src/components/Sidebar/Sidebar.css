@@ -1,0 +1,45 @@
+.sidebar {
+  /* Ancho fijo pequeño; el padding lateral define el espacio interior */
+  width: 7vw;
+  height: 100vh;
+
+  padding: 1vh 2vw;
+  box-sizing: border-box;
+
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;   /* los hijos se estiran al ancho completo */
+  gap: 0;
+
+  background-color: #090326;
+}
+
+/* ── Logo ──────────────────────────────────────────────────── */
+.sidebar-logo {
+  width: 100%;
+  aspect-ratio: 1;
+  display: block;
+  flex-shrink: 0;
+}
+
+/* ── Contenedor de botones ─────────────────────────────────── */
+.sidebar-buttons {
+  flex: 1;              /* ocupa todo el espacio entre logo y ayuda */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;   /* centra verticalmente el grupo de botones */
+  gap: clamp(12px, 3vh, 40px);  /* gap responsive */
+  padding: 2vh 0;
+}
+
+/* ── Ayuda ─────────────────────────────────────────────────── */
+.help-button {
+  background: transparent;
+  border: none;
+  color: #ff8427;
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}

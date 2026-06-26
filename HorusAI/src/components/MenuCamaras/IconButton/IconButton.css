@@ -1,0 +1,28 @@
+.icon-button {
+  width: 1.5vw;
+  aspect-ratio: 1;
+  flex-shrink: 0;
+
+  background: #090326;
+  border: 1.5px solid #ff8427;
+  border-radius: 8px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s;
+}
+
+.icon-button:hover,
+.icon-button--active {
+  background: rgba(255, 132, 39, 0.2);
+}
+
+.icon-button__img {
+  width: 55%;
+  height: 55%;
+  object-fit: contain;
+}

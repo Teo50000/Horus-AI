@@ -1,0 +1,119 @@
+/* ─── HistorialPanel ─────────────────────────────────────────── */
+.historial-panel {
+  position: relative;
+  width: 22vw;
+  height: 100vh;
+  background: #090326;
+  border: 7px solid rgba(26, 63, 142, 0.78);
+  border-radius: 0 12px 12px 0;
+  padding: 3vh 1vw;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4vh;
+  flex-shrink: 0;
+}
+
+/* ─── Botón cerrar (compartido con AjustesPanel) ─────────────── */
+
+
+/* ─── Búsqueda ───────────────────────────────────────────────── */
+.historial-panel__search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.historial-panel__input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  padding: 8px 32px 8px 12px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.historial-panel__input::placeholder { color: rgba(255, 255, 255, 0.35); }
+.historial-panel__input:focus { border-color: rgba(255, 132, 39, 0.6); }
+
+.historial-panel__search-icon {
+  pointer-events: none;
+}
+
+.historial-panel__clear {
+  position: absolute;
+  right: 28px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+}
+
+/* ─── Filtros ────────────────────────────────────────────────── */
+.historial-panel__filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.historial-panel__filter-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.historial-panel__filter-btn:hover {
+  border-color: rgba(255, 132, 39, 0.5);
+  color: #fff;
+}
+
+.historial-panel__filter-btn--active {
+  background: rgba(255, 132, 39, 0.15);
+  border-color: #ff8427;
+  color: #ff8427;
+}
+
+/* ─── Lista ──────────────────────────────────────────────────── */
+.historial-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.historial-panel__item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.historial-panel__item-camara { font-weight: 500; color: #fff; }
+.historial-panel__item-tipo   { color: rgba(255,255,255,0.55); white-space: nowrap; }
+.historial-panel__item-fecha  { color: rgba(255,255,255,0.4);  white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.historial-panel__empty {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 12px;
+  text-align: center;
+  margin-top: 20px;
+}

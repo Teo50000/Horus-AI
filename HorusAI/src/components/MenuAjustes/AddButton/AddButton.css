@@ -1,0 +1,22 @@
+.add-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid #ff8427;
+  background: transparent;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.add-button img{
+  width: 95%;
+  height: 95%;
+  object-fit: contain;
+}
+.add-button:hover {
+  background-color:rgba(255, 132, 39, 0.5);
+}

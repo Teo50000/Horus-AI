@@ -1,0 +1,50 @@
+.numero-item {
+  display: flex;
+  background: rgba(26, 63, 142, 0.78);
+  flex-direction: column;
+  gap: 4px;
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.numero-item__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.numero-item__label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.numero-item__input {
+  width: 100%;
+  background: #090326;
+  border: 1px solid rgba(80, 100, 255, 0.3);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.numero-item__input--nombre {
+  font-size: 12px;
+  padding: 4px 8px;
+  width: 100%;
+  flex: 1;
+}
+
+.numero-item__input:disabled {
+  color: rgba(255, 255, 255, 0.6);
+  cursor: default;
+}
+
+.numero-item__input:not(:disabled):focus {
+  border-color: #ff8427;
+  background: rgba(255, 132, 39, 0.06);
+}

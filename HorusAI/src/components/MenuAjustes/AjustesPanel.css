@@ -43,6 +43,7 @@
 .ajustes-numeros-lista {
   height: 40vh;
   overflow-y: auto;
+  display: flex;
   flex-direction: column;
   gap: 10%;
 }
@@ -95,7 +96,7 @@
 .ajustes-numero__input--nombre {
   font-size: 12px;
   padding: 4px 8px;
-  width: auto;
+  width: 100%;
   flex: 1;
 }
 

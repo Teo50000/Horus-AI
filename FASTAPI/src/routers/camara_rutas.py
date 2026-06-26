@@ -54,6 +54,14 @@ def get_modelos_por_cat(categoria: str = Query(min_length=5, max_length=20)) -> 
             return JSONResponse(content=cam.model_dump()) # model_dump convierte el objeto Camara en un diccionario para que pueda ser devuelto como respuesta
     return JSONResponse(content={})
 
+
+#metodo get para la configuracion de camaras
+@camara_router.get("config/", tags = ["Camaras"])
+def get_camara_config(id: int) -> CamaraConfig | dict:
+    for cam in camaras:
+        if cam.camera_id == id:
+            return JSONResponse(content=cam.model_dump(), status_code = 200) # model_dump convierte el objeto Camara en un diccionario para que pueda ser devuelto como respuesta
+    return JSONResponse(content={}, status_code = 404)
 #metodo post
 @camara_router.post("", tags=["Camaras"])
 def añadir_camara(nueva_camara: Camara) -> List[Camara]:

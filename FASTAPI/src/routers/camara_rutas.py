@@ -86,6 +86,16 @@ def agregar_camara_config(config: CamaraConfig):
         return config
 
 # metodo put
+@camara_router.put("/config/{id}", tags=["Camaras"])
+def actualizar_camara(id: int, cam: CamaraConfig) -> List[CamaraConfig]:
+    for i in camaras:
+        if i.id == id:
+            i.rstp_url = cam.rstp_url
+            i.nombre = cam.nombre
+    content = [c.model_dump() for c in camaras] # model_dump convierte cada objeto Camara en un diccionario para que pueda ser devuelto como respuesta
+    return JSONResponse(content=content)
+
+#metodo put para el config de camaras
 @camara_router.put("/{id}", tags=["Camaras"])
 def actualizar_camara(id: int, cam: Camara) -> List[Camara]:
     for i in camaras:

@@ -1,0 +1,88 @@
+.celda-camara {
+  position: relative;
+  border: 1px solid rgba(80, 100, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  height: 100%;
+  min-height: 0; /* necesario para que el grid controle la altura */
+}
+
+.celda-camara--vacia {
+  border: 1px solid rgba(80, 100, 255, 0.15);
+}
+
+/* ── Nombre de la cámara ── */
+.celda-camara__nombre {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ── Tag del sector ── */
+.celda-camara__sector-tag {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  font-size: 10px;
+  color: #ff8427;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* ── Botón unpin ── */
+.celda-camara__unpin {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.4);
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.celda-camara:hover .celda-camara__unpin {
+  opacity: 1;
+}
+
+/* ── Flechas de navegación de sector ── */
+.celda-camara__arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.celda-camara:hover .celda-camara__arrow {
+  opacity: 1;
+}
+
+.celda-camara__arrow:hover {
+  background: rgba(255, 132, 39, 0.45);
+}
+
+.celda-camara__arrow--left  { left: 8px; }
+.celda-camara__arrow--right { right: 8px; }

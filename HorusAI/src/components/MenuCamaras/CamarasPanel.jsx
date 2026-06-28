@@ -9,7 +9,7 @@ import CloseButton from "../CloseButton/CloseButton";
 import { useCamaras } from "./useCamaras";
 import "./CamarasPanel.css";
 
-export default function CamarasPanel({ onClose }) {
+export default function CamarasPanel({ onClose, onPinearCamara, onPinearSector }) {
   const {
     items,
     camarasSueltas,
@@ -18,7 +18,6 @@ export default function CamarasPanel({ onClose }) {
     toggleEdicion, guardarNombre,
     actualizarNombreSector, actualizarNombreCamara,
     confirmarCreacion,
-    pinearCamara,
   } = useCamaras();
 
   // ── Preview carrusel ─────────────────────────────────────────
@@ -28,25 +27,21 @@ export default function CamarasPanel({ onClose }) {
   const cerrarPreview = () => setCamarasPreview([]);
 
   // ── Modal de creación ────────────────────────────────────────
-  // modo: null | "camara" | "sector" | "agregarASector"
-  const [modalConfig, setModalConfig] = useState(null);
+  const [modalConfig, setModalConfig]       = useState(null);
+  const [previewHardware, setPreviewHardware] = useState(null);
 
-  const abrirModalGeneral    = ()       => setModalConfig({ modo: "camara" });
-  const abrirModalAgregarA   = (sector) => setModalConfig({ modo: "agregarASector", sector });
-  const cerrarModal          = ()       => setModalConfig(null);
+  const abrirModalGeneral  = ()       => setModalConfig({ modo: "camara" });
+  const abrirModalAgregarA = (sector) => setModalConfig({ modo: "agregarASector", sector });
+  const cerrarModal        = ()       => setModalConfig(null);
 
   const handleConfirmar = (resultado) => {
     confirmarCreacion(resultado);
     cerrarModal();
   };
 
-  // Preview de cámara hardware dentro del modal
-  const [previewHardware, setPreviewHardware] = useState(null);
-
   return (
     <>
       <div className="camaras-panel" role="region" aria-label="Cámaras">
-
         <CloseButton onClick={onClose} />
 
         <SearchBar
@@ -68,7 +63,7 @@ export default function CamarasPanel({ onClose }) {
                 onActualizarNombreCamara={actualizarNombreCamara}
                 onCrearCamara={() => abrirModalAgregarA(item)}
                 onPreviewSector={abrirPreviewSector}
-                onPinear={pinearCamara}
+                onPinear={() => onPinearSector(item)}   // ← sector completo
               />
             ) : (
               <CamaraItem
@@ -81,23 +76,19 @@ export default function CamarasPanel({ onClose }) {
                 onGuardar={guardarNombre}
                 onActualizarNombre={actualizarNombreCamara}
                 onPreview={() => abrirPreviewCamara(item)}
-                onPinear={pinearCamara}
+                onPinear={() => onPinearCamara(item)}   // ← cámara suelta
               />
             )
           )}
         </div>
 
-        {/* + general al final de la lista */}
         <AddButton onClick={abrirModalGeneral} label="Crear cámara o sector" />
-
       </div>
 
-      {/* Preview carrusel */}
       {camarasPreview.length > 0 && (
         <PreviewModal camaras={camarasPreview} onClose={cerrarPreview} />
       )}
 
-      {/* Modal de creación */}
       {modalConfig && (
         <CreacionModal
           modoInicial={modalConfig.modo}
@@ -109,7 +100,6 @@ export default function CamarasPanel({ onClose }) {
         />
       )}
 
-      {/* Preview de cámara hardware (dentro del modal de creación) */}
       {previewHardware && (
         <PreviewModal
           camaras={[{ id: previewHardware.id, nombre: previewHardware.nombre }]}

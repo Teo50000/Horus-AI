@@ -1,0 +1,35 @@
+.camara-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  grid-template-areas:
+    "pos0 pos1 pos2"
+    "pos3 pos4 pos5"
+    "pos6 pos7 pos8";
+  background: radial-gradient(circle 70vh, #000000 20%, #070930 47%, #000000 75%);
+  gap: 3%;
+  padding: 4PX;
+  min-height: 0; /* evita que el grid se expanda más allá del flex parent */
+  height: 100%;
+}
+
+.camara-grid__celda {
+  min-height: 0;
+  min-width: 0;
+}
+
+/* ── Logo central ── */
+.camara-grid__logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.camara-grid__logo-img {
+  width: 55%;
+  max-width: 120px;
+  aspect-ratio: 1;
+  object-fit: contain;
+  opacity: 0.9;
+}

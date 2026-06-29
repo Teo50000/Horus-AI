@@ -2,7 +2,7 @@ from typing import List
 
 from fastapi import Query, Path, APIRouter
 from fastapi.responses import JSONResponse
-from sqlmodel import Session
+from sqlmodel import Session, select
 from src.database import engine
 from src.models.camara_model import Camara, CamaraConfig, NumeroEmergencia
 from src.services.websockets import manager
@@ -26,7 +26,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
-@camara_router.get("", tags = ["Camaras"], status_code=200, response_description="Nos debe devolver una respuesta exitosa")
+@camara_router.get("", tags = ["Camaras de prueba"], status_code=200, response_description="Nos debe devolver una respuesta exitosa")
 #funcion encargada de devolver un mensaje al acceder a la ruta raíz del servidor
 def get_camaras() -> List[Camara]:
     #puede devolver distintos tipos de datos como diccionarios:
@@ -35,8 +35,25 @@ def get_camaras() -> List[Camara]:
     content = [cam.model_dump() for cam in camaras] # model_dump convierte cada objeto Camara en un diccionario para que pueda ser devuelto como respuesta
     return JSONResponse(content=content, status_code = 200)
 
+
+@camara_router.get("/prediccion", tags = ["Camaras"])
+def get_prediccion() -> List[Camara] | dict:
+    with Session(engine) as session:
+        db_item = session.exec(select(Camara)).all()
+        if not db_item:
+            return JSONResponse(status_code=404, content="Item no encontrado")
+        return db_item
+
+@camara_router.get("/config", tags = ["Camaras"])
+def get_camara_config() -> List[CamaraConfig] | dict:
+    with Session(engine) as session:
+        db_item = session.exec(select(CamaraConfig)).all()
+        if not db_item:
+            return JSONResponse(status_code=404, content="Item no encontrado")
+        return db_item
+
 #parametros por ruta:
-@camara_router.get("/{id}", tags = ["Camaras"])
+@camara_router.get("/{id}", tags = ["Camaras de prueba"])
 #funcion encargada de devolver un mensaje al acceder a la ruta raíz del servidor
 def get_camara(id: int = Path(gt=0)) -> Camara | dict:
     #puede devolver distintos tipos de datos como diccionarios:
@@ -49,7 +66,7 @@ def get_camara(id: int = Path(gt=0)) -> Camara | dict:
     return JSONResponse(content={}, status_code = 404) # si no se encuentra la cámara con el id proporcionado, se devuelve un diccionario vacío con un código de estado 404 (No encontrado)
 
 #parametros por query:
-@camara_router.get("/by_category", tags = ["Camaras"])
+@camara_router.get("/by_category", tags = ["Camaras de prueba"])
 def get_modelos_por_cat(categoria: str = Query(min_length=5, max_length=20)) -> Camara | dict:
     for cam in camaras:
         if cam.event_type == categoria:
@@ -58,22 +75,28 @@ def get_modelos_por_cat(categoria: str = Query(min_length=5, max_length=20)) -> 
 
 
 #metodo get para la configuracion de camaras
-@camara_router.get("/config", tags = ["Camaras"])
-def get_camara_config(id: int) -> CamaraConfig | dict:
-    for cam in config_camaras:
-        if cam.id == id:
-            return JSONResponse(content=cam.model_dump(), status_code = 200) # model_dump convierte el objeto Camara en un diccionario para que pueda ser devuelto como respuesta
-    return JSONResponse(content={}, status_code = 404)
 
-@camara_router.get("/emergencia", tags = ["Telefonos"])
-def get_tel_emergencia(id: int) -> NumeroEmergencia | dict:
-    for tel in telefono:
-        if tel.id == id:
-            return JSONResponse(content=tel.model_dump(), status_code = 200)
-    return JSONResponse(content={}, status_code = 404)
+
+@camara_router.get("/config/{id}", tags = ["Camaras"])
+def get_camara_config(id: int) -> CamaraConfig | dict:
+    with Session(engine) as session:
+        db_item = session.get(CamaraConfig, id)
+        if not db_item:
+            return JSONResponse(status_code=404, content="Item no encontrado")
+        return db_item
+
+@camara_router.get("/emergencia/{id}", tags = ["Telefonos"])
+def get_tel_emergencia(id: int) -> NumeroEmergencia | dict: 
+    
+    with Session(engine) as session:
+        db_item = session.get(NumeroEmergencia, id)
+        if not db_item:
+            return JSONResponse(status_code=404, content="Item no encontrado")
+        return db_item
+    
 
 #metodo post
-@camara_router.post("", tags=["Camaras"])
+@camara_router.post("", tags=["Camaras de prueba"])
 def añadir_camara(nueva_camara: Camara) -> List[Camara]:
     camaras.append(nueva_camara)# model_dump convierte el objeto Camara en un diccionario para que pueda ser añadido a la lista camaras
     content = [cam.model_dump() for cam in camaras] # model_dump convierte cada objeto Camara en un diccionario para que pueda ser devuelto como respuesta
@@ -91,11 +114,20 @@ async def recibir_prediccion(camara: Camara):
     
 @camara_router.post("/config", tags=["Camaras"])
 def agregar_camara_config(config: CamaraConfig):
-    test_cap = cv2.VideoCapture(config.rtsp_url)
-    if not test_cap.isOpened():
-        test_cap.release()
-        return JSONResponse(content={"error": "No se pudo conectar a la cámara"}, status_code=400)
-    test_cap.release()
+    # TODO: descomentar cuando haya camara real (usb o rtsp)
+    #if config.rtsp_url:
+        #source = config.rtsp_url
+    #elif config.usb_index is not None:
+    #    source = config.usb_index
+    #else:
+    #    return JSONResponse(content={"error": "Debe proveer rtsp_url o usb_index"}, status_code=400)
+    
+    # validar conexión
+    #test_cap = cv2.VideoCapture(source)
+    #if not test_cap.isOpened():
+    #    test_cap.release()
+    #    return JSONResponse(content={"error": "No se pudo conectar a la cámara"}, status_code=400)
+    #test_cap.release()
     
     with Session(engine) as session:
         session.add(config)
@@ -105,7 +137,7 @@ def agregar_camara_config(config: CamaraConfig):
     
 
 @camara_router.post("/emergencia", tags=["Telefonos"])
-def agregar_telefono(nuevo_tel: NumeroEmergencia) -> List[NumeroEmergencia]:
+def agregar_telefono(nuevo_tel: NumeroEmergencia):
 
     with Session(engine) as session:
         session.add(nuevo_tel)
@@ -121,7 +153,7 @@ def actualizar_camara(id: int, cam: CamaraConfig) -> List[CamaraConfig]:
         # 1. Buscar el registro en la base de datos
         db_item = session.get(CamaraConfig, id)
         if not db_item:
-            return JSONResponse(status_code=404, detail="Item no encontrado")
+            return JSONResponse(status_code=404, content="Item no encontrado")
         cam_data = cam.model_dump(exclude_unset=True)
         
         # 3. Actualizar los campos del modelo con los nuevos valores
@@ -158,7 +190,7 @@ def actualizar_telefono(id: int, tel: NumeroEmergencia) -> List[NumeroEmergencia
         return tel_db
 
 #metodo put 
-@camara_router.put("/{id}", tags=["Camaras"])
+@camara_router.put("/{id}", tags=["Camaras de prueba"])
 def actualizar_camara(id: int, cam: Camara) -> List[Camara]:
     for i in camaras:
         if i.camera_id == id:
@@ -169,7 +201,7 @@ def actualizar_camara(id: int, cam: Camara) -> List[Camara]:
     return JSONResponse(content=content)
 
 #metodo delete
-@camara_router.delete("/{id}", tags=["Camaras"])
+@camara_router.delete("/{id}", tags=["Camaras de prueba"])
 def eliminar_camara(id: int) -> List[Camara]:
     for cam in camaras:
         if cam.camera_id == id:

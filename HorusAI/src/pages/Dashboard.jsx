@@ -7,21 +7,17 @@ import CamaraGrid from "../components/CamaraGrid/CamaraGrid";
 import { useHistorial } from "../components/MenuHist/useHistorial";
 import { useAjustes } from "../components/MenuAjustes/useAjustes";
 import { useGrid } from "../components/CamaraGrid/useGrid";
+import { useWebSocketEventos } from "../hooks/useWebSocketEventos";
 import "./Dashboard.css";
 
-const EVENTOS_EJEMPLO = [
-  { id: 1, camara: "Camara 1", tipo: "Desmayo",  fecha: "12/06/25" },
-  { id: 2, camara: "Camara 3", tipo: "Desmayo",  fecha: "11/06/25" },
-  { id: 3, camara: "Camara 2", tipo: "Incendio", fecha: "10/06/25" },
-  { id: 4, camara: "Camara 5", tipo: "Agresión", fecha: "09/06/25" },
-  { id: 5, camara: "Camara 1", tipo: "Agresión", fecha: "08/06/25" },
-];
-
 export default function Dashboard() {
-  const [activeSection, setActiveSection] = useState("null");
-  const [panelAbierto, setPanelAbierto]   = useState(null);
+  const [activeSection, setActiveSection] = useState(null); // null, no "null" string
+  const [panelAbierto, setPanelAbierto]    = useState(null);
 
-  const historial = useHistorial(EVENTOS_EJEMPLO);
+  // El hook va ACÁ ADENTRO, no afuera del componente
+  const { eventos, conectado } = useWebSocketEventos("ws://localhost:8000/camaras/ws");
+
+  const historial = useHistorial(eventos);
   const ajustes   = useAjustes();
   const grid      = useGrid();
 
@@ -37,7 +33,7 @@ export default function Dashboard() {
 
   const cerrarPanel = () => {
     setPanelAbierto(null);
-    setActiveSection("null");
+    setActiveSection(null);
   };
 
   return (

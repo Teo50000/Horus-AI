@@ -29,7 +29,7 @@ class Camara(SQLModel, table=True):
 class CamaraConfig(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     rtsp_url: Optional[str] = None
-    usb_index: Optional[str] = None
+    usb_index: Optional[int] = None
     nombre: Optional[str] = None
 
 class NumeroEmergencia(SQLModel, table=True):

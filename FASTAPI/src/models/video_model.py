@@ -6,10 +6,11 @@ import cv2
 #templates = Jinja2Templates(directory="templates")
 
 class VideoCamera(object):
-    def __init__(self):
+    def __init__(self, source):
         #self.video = cv2.VideoCapture(1)
-        self.video = cv2.VideoCapture("rtsp://localhost:8554/live")
+        #self.video = cv2.VideoCapture("rtsp://localhost:8554/live")
         #si lo queremos hacer con direccion IP, habria que cambiarlo a self.video = cv2.VideoCapture('rstp://direccion_ip:puerto/video_feed')
+        self.video = cv2.VideoCapture(source)
         self.video.set(3, 1920)  # float `width`
         self.video.set(4, 1080)  # float `height`
         # self.video = cv2.VideoCapture('Class_Det.mp4')

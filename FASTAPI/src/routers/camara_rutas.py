@@ -1,6 +1,6 @@
 from typing import List
-
-from fastapi import Query, Path, APIRouter
+import json
+from fastapi import Query, Path, APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 from src.database import engine
@@ -18,13 +18,16 @@ telefono: List[NumeroEmergencia] = []
 config_camaras: List[CamaraConfig] = []
 
 @camara_router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
+async def websocket_endpoint(
+    websocket: WebSocket,
+    camara_config_id: int = Query(default=0)
+):
+    await manager.connect(websocket, camara_config_id)
     try:
         while True:
-            await websocket.receive_text()  # solo mantiene la conexión abierta
+            await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        manager.disconnect(websocket, camara_config_id)
 
 @camara_router.get("", tags = ["Camaras de prueba"], status_code=200, response_description="Nos debe devolver una respuesta exitosa")
 #funcion encargada de devolver un mensaje al acceder a la ruta raíz del servidor
@@ -109,7 +112,19 @@ async def recibir_prediccion(camara: Camara):
         session.add(camara)
         session.commit()
         session.refresh(camara)
-        await manager.broadcast(camara.model_dump_json()) #aca va lo de websocket para enviar alerta al frontend
+
+        config = session.get(CamaraConfig, camara.camara_config_id)
+
+        mensaje = {
+            **camara.model_dump(),
+            "nombre_camara": config.nombre if config else "Cámara desconocida"
+        }
+
+        if camara.camara_config_id is not None:
+            await manager.send_to_camera(json.dumps(mensaje), camara.camara_config_id)
+        else:
+            await manager.broadcast(json.dumps(mensaje))
+
         return camara
     
 @camara_router.post("/config", tags=["Camaras"])

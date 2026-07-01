@@ -1,23 +1,57 @@
 <!DOCTYPE html>
 <html>
+<head>
+    <meta charset="UTF-8">
+</head>
 <body>
     <h2>Test WebSocket Horus</h2>
+    <p id="estado">Estado: desconectado</p>
+
+    <input type="number" id="input-id" placeholder="camara_config_id" value="1"/>
+    <button id="btn-conectar">Conectar</button>
+    <button id="btn-alerta" disabled>Enviar alerta de prueba</button>
+
     <div id="alertas"></div>
 
     <script>
-        const ws = new WebSocket('ws://localhost:8000/camaras/ws');
-        
-        ws.onopen = () => {
-            console.log('Conectado al WebSocket!');
+        let ws = null;
+
+        document.getElementById('btn-conectar').onclick = () => {
+            const id = document.getElementById('input-id').value;
+
+            ws = new WebSocket(`ws://localhost:8000/camaras/ws?camara_config_id=${id}`);
+
+            ws.onopen = () => {
+                document.getElementById('estado').textContent = `Conectado a cámara ${id}`;
+                document.getElementById('btn-alerta').disabled = false;
+            };
+
+            ws.onclose = () => {
+                document.getElementById('estado').textContent = 'Desconectado';
+                document.getElementById('btn-alerta').disabled = true;
+            };
+
+            ws.onmessage = (event) => {
+                const alerta = JSON.parse(event.data);
+                document.getElementById('alertas').innerHTML +=
+                    `<p>${alerta.nombre_camara} — ${alerta.event_type} | ${alerta.confidence}</p>`;
+            };
         };
-        
-        ws.onmessage = (event) => {
-            const alerta = JSON.parse(event.data);
-            console.log('Alerta recibida:', alerta);
-            
-            // la muestra en pantalla
-            document.getElementById('alertas').innerHTML += 
-                `<p>Evento: ${alerta.event_type} | Confianza: ${alerta.confidence}</p>`;
+
+        document.getElementById('btn-alerta').onclick = async () => {
+            const id = document.getElementById('input-id').value;
+
+            await fetch('http://localhost:8000/camaras/prediccion', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    event_type: 'fire',
+                    confidence: 0.94,
+                    timestamp: new Date().toISOString(),
+                    camara_config_id: parseInt(id),
+                    description: 'Alerta de prueba'
+                })
+            });
         };
     </script>
 </body>

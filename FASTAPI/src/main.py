@@ -4,7 +4,6 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 import datetime
 from contextlib import asynccontextmanager
-
 from sqlmodel import SQLModel
 from fastapi.middleware.cors import CORSMiddleware
 from src.routers.camara_rutas import camara_router
@@ -24,10 +23,9 @@ app.title =  "Mi primer API con FastAPI"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://127.0.0.1:5500",
-        "http://localhost:5500",
-        "http://127.0.0.1:5501",
-        "http://localhost:5501",
+        #"http://127.0.0.1:5500",
+        #"http://localhost:5500",
+        "http://localhost:1420"
     ],
     allow_credentials=True,
     allow_methods=["*"],

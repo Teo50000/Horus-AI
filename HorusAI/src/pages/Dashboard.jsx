@@ -15,7 +15,7 @@ export default function Dashboard() {
   const [panelAbierto, setPanelAbierto]    = useState(null);
 
   // El hook va ACÁ ADENTRO, no afuera del componente
-  const { eventos, conectado } = useWebSocketEventos("ws://localhost:8000/camaras/ws");
+  const { eventos, conectado } = useWebSocketEventos("ws://localhost:8000/camaras/ws?camara_config_id=1");
 
   const historial = useHistorial(eventos);
   const ajustes   = useAjustes();

@@ -29,6 +29,11 @@ export default function PreviewModal({ camaras = [], onClose }) {
         <div className="preview-modal__screen">
           <span className="preview-modal__label">{camara.nombre}</span>
           {/* TODO: reemplazar con feed real de la cámara */}
+          <img 
+            src={`http://localhost:8000/video/video_feed/${camara.id}`}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            alt={camara.nombre}
+          />
         </div>
 
         {/* Flecha derecha */}

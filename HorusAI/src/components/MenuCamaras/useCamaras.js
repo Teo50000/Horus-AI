@@ -4,7 +4,7 @@ const DATOS_INICIALES = [
   {
     id: 1, tipo: "sector", nombre: "Sector1",
     camaras: [
-      { id: 101, nombre: "Camara 5" },
+      { id: 4, nombre: "Camara 1" },
       { id: 102, nombre: "Camara 6" },
       { id: 103, nombre: "Camara 7" },
       { id: 104, nombre: "Camara 8" },
@@ -75,12 +75,17 @@ export function useCamaras() {
     );
 
   // ── Confirmar creación desde el modal ────────────────────────
-  const confirmarCreacion = ({ tipo, nombre, hardwareId, camaraIds, sectorId }) => {
+  const confirmarCreacion = async ({ tipo, nombre, hardwareId, camaraIds, sectorId }) => {
     if (tipo === "camara") {
       // Cámara nueva suelta desde hardware
-      const nuevoId = Date.now();
-      setItems((prev) => [...prev, { id: nuevoId, tipo: "camara", nombre }]);
-      console.log("Cámara creada:", nombre, "hardware:", hardwareId);
+      const response = await fetch('http://localhost:8000/camaras/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usb_index: 0, nombre: nombre })
+      })
+      const data = await response.json()
+      // data.id es el id real de CamaraConfig en la DB
+      setItems((prev) => [...prev, { id: data.id, tipo: "camara", nombre }]);
 
     } else if (tipo === "sector") {
       // Sector nuevo: mueve las cámaras seleccionadas dentro del sector

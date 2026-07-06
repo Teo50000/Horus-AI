@@ -24,10 +24,29 @@ export function useWebSocketEventos(url) {
       console.log("WebSocket conectado:", url);
     };
 
+    function mapearTipo(eventType) {
+      const mapa = {
+        fire: "Incendio",
+        assault: "Agresión",
+        faint: "Desmayo",
+        desmayo: "Desmayo",
+        incendio: "Incendio",
+      };
+      return mapa[eventType?.toLowerCase()] ?? eventType;
+    }
+
     ws.onmessage = (event) => {
       try {
+        console.log("RAW mensaje recibido:", event.data);
         const nuevoEvento = JSON.parse(event.data);
         // Agrega el evento nuevo al principio de la lista
+        const eventoMapeado = {
+          tipo: mapearTipo(nuevoEvento.event_type),
+          camara: nuevoEvento.camera_id,
+          fecha: nuevoEvento.timestamp,
+          confidence: nuevoEvento.confidence,
+          detalle: nuevoEvento.description,
+        }
         setEventos((prev) => [nuevoEvento, ...prev]);
       } catch (err) {
         console.error("Error al parsear evento:", err);

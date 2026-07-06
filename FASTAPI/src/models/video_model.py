@@ -21,6 +21,8 @@ class VideoCamera(object):
 
     def get_frame(self):
         success, image = self.video.read()
+        if not success or image is None:  # ← línea nueva
+            return None  
         print(image.shape)
         image=cv2.resize(image,(640,360))
         # video stream.
@@ -52,6 +54,8 @@ def gen(camera):
             print("FPS_avg : {:.6f} ".format(FPS))
             start = time.time()
         frame = camera.get_frame()
+        if frame is None:  # ← línea nueva
+            continue
         yield (b'--frame\r\n'
                 b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
         end_1 = time.time()

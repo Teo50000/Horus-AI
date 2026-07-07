@@ -23,3 +23,13 @@ def video_feed(camara_config_id: int):
         # determinar la fuente
         source = config.rtsp_url if config.rtsp_url else config.usb_index
         return StreamingResponse(gen(VideoCamera(source)), media_type="multipart/x-mixed-replace;boundary=frame")
+    
+@video_router.get('/cameras/available')
+def get_available_cameras():
+    available = []
+    for i in range(5):
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            available.append({"usb_index": i, "nombre": f"Cámara {i}"})
+            cap.release()
+    return JSONResponse(content=available)

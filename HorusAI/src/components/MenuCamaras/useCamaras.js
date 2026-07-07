@@ -81,7 +81,7 @@ export function useCamaras() {
       const response = await fetch('http://localhost:8000/camaras/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usb_index: 0, nombre: nombre })
+        body: JSON.stringify({ usb_index: hardwareId, nombre: nombre })
       })
       const data = await response.json()
       // data.id es el id real de CamaraConfig en la DB

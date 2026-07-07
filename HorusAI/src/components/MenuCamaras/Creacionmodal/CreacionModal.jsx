@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import "./CreacionModal.css";
 
 // ── Cámaras de hardware disponibles (simuladas) ───────────────
@@ -70,9 +70,16 @@ function CamaraCheckRow({ camara, checked, onToggle }) {
 function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
   const [nombre, setNombre]         = useState("Nueva Cámara");
   const [seleccionada, setSeleccion] = useState(null);
+  const [camarasDisponibles, setCamarasDisponibles] = useState([]);
+
+  useEffect(() => {
+    fetch('http://localhost:8000/video/cameras/available')
+      .then(res => res.json())
+      .then(data => setCamarasDisponibles(data))
+  }, []);
 
   const confirmar = () => {
-    if (!seleccionada) return;
+    if (seleccionada === null) return;
     onConfirmar({ tipo: "camara", nombre, hardwareId: seleccionada });
   };
 
@@ -91,12 +98,12 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
 
       {/* Lista de hardware */}
       <div className="creacion-modal__lista">
-        {HARDWARE_CAMARAS.map((cam) => (
+        {camarasDisponibles.map((cam) => (
           <HardwareCamaraRow
-            key={cam.id}
-            camara={cam}
-            seleccionada={seleccionada === cam.id}
-            onToggle={() => setSeleccion((prev) => prev === cam.id ? null : cam.id)}
+            key={cam.usb_index}
+            camara={{ id: cam.usb_index, nombre: cam.nombre }}
+            seleccionada={seleccionada === cam.usb_index}
+            onToggle={() => setSeleccion((prev) => prev === cam.usb_index ? null : cam.usb_index)}
             onPreview={onPreview}
           />
         ))}
@@ -109,7 +116,7 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
         <button
           className="creacion-modal__btn creacion-modal__btn--confirmar"
           onClick={confirmar}
-          disabled={!seleccionada}
+          disabled={seleccionada === null}
         >
           Aceptar
         </button>

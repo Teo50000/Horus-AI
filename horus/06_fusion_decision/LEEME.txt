@@ -1,0 +1,3 @@
+Etapa pendiente — Fusion y decision.
+Combina las salidas del tracking con reglas + topologia de camaras
+(que camara ve que zona, transiciones fisicamente posibles) y decide si hay evento.

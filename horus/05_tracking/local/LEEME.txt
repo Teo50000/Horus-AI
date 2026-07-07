@@ -1,0 +1,3 @@
+Etapa pendiente — Tracking local por camara.
+Ventana temporal por clase (~0.5-1 s) para confirmar detecciones antes de propagarlas.
+Reemplaza a la vieja carpeta 06_tracking_persistencia.

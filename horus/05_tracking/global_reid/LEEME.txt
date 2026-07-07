@@ -1,0 +1,3 @@
+Etapa pendiente — Tracking global entre camaras (ReID).
+Matchea vectores 512-d en RAM (<10 ms) para seguir a la misma persona entre camaras.
+Recibe reingestas desde la galeria global (asincrono, no bloquea la alerta).

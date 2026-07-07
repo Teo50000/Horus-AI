@@ -1,0 +1,4 @@
+Etapa pendiente — Alerta.
+Notifica y registra el evento (ej: robo · ID 17), push <0.3 s.
+Fin del camino caliente: de camara a alerta ~2 s.
+Dispara en paralelo (asincrono): VLM de verificacion y guardado de clips de evidencia.

@@ -1,0 +1,14 @@
+Etapa 02 · Pre-proceso + ROI  (HECHO)
+
+Tapa por camara las zonas que no queremos mirar (ej: un TV que podria mostrar
+fuego en pantalla y disparar una falsa alarma). Se mete entre 01_camaras y
+03_backbone. NO redimensiona ni normaliza: eso ya lo hace el backbone por dentro
+(shared_backbone.py -> FramePreprocessor). Aca solo se enmascaran zonas y se
+aplican realces opcionales (CLAHE / denoise), devolviendo el frame igual que entro.
+
+Archivos:
+  preproceso_roi.py     -> el modulo (comentado por dentro). Corre solo: python3 preproceso_roi.py
+  zonas.example.json    -> config de zonas por camara. Copialo como zonas.json y editalo.
+
+Como enchufarlo (ver docstring de preproceso_roi.py): 2 lineas en procesar_capturas.py,
+justo despues de leer el frame y antes del cvtColor a RGB.

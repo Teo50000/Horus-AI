@@ -1,0 +1,1 @@
+Etapa pendiente — Cabeza de pose y caidas. Todavia no se construyo (ver README en la raiz del proyecto).

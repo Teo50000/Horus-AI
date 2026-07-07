@@ -1,0 +1,3 @@
+Etapa pendiente — Watchdog de salud.
+Monitorea camaras y pipeline: una camara caida genera una alerta propia.
+Corre fuera del camino caliente.

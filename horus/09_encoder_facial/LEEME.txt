@@ -1,0 +1,3 @@
+Etapa pendiente — Encoder facial (encoder propio, no comparte backbone). [ASINCRONO]
+Confirma la identidad de la persona asociada a la alerta.
+Sus embeddings de calidad pasan a la galeria global (10_galeria_global).

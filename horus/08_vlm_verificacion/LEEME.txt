@@ -1,0 +1,4 @@
+Etapa pendiente — VLM (verificacion). [ASINCRONO: no bloquea la alerta]
+Cambio respecto al plan viejo: el VLM ya NO esta gateado en el camino caliente;
+corre asincrono despues de la alerta y la enriquece (descripcion, contexto).
+No bloquea ni demora el push.

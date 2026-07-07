@@ -1,0 +1,19 @@
+{
+  "_ayuda": "Copiá este archivo como zonas.json y editá los polígonos. Cada clave es un camera_id (el nombre de subcarpeta camara_X que usa procesar_capturas.py). 'puntos' son vertices [x,y] en pixeles del frame original. modo: 'exclude' tapa la zona (ej: un TV); 'include' hace que SOLO se mire dentro de esas zonas.",
+
+  "camara_0": {
+    "clahe": true,
+    "denoise": false,
+    "zonas": [
+      { "modo": "exclude", "puntos": [[420, 80], [600, 80], [600, 220], [420, 220]] }
+    ]
+  },
+
+  "camara_1": {
+    "clahe": false,
+    "denoise": true,
+    "zonas": [
+      { "modo": "include", "puntos": [[0, 200], [640, 200], [640, 480], [0, 480]] }
+    ]
+  }
+}

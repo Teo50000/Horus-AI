@@ -1,0 +1,3 @@
+Etapa pendiente — Cabeza ReID de cuerpo: produce un vector 512-d por persona detectada.
+Alimenta al tracking global (matching en RAM) y a la galeria global (asincrono).
+Comparte el backbone; no vuelve a procesar la imagen.

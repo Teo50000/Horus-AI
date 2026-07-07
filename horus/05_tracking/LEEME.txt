@@ -1,0 +1,4 @@
+Capa de robustez: tracking en dos niveles (ver docs/arquitectura.png).
+  - local/        -> tracking por camara, ventana por clase (~0.5-1 s). Reduce falsas alarmas.
+  - global_reid/  -> tracking entre camaras usando el vector ReID 512-d, matching en RAM (<10 ms).
+El tracking local alimenta al global; el global alimenta a fusion y decision.

@@ -1,0 +1,3 @@
+Etapa pendiente — Clips de evidencia. [ASINCRONO]
+Buffer en anillo de 60 s por camara (alimentado directo desde 01_camaras).
+Cuando hay alerta (07_alerta), se recorta y persiste el clip asociado.

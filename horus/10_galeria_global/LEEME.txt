@@ -1,0 +1,4 @@
+Etapa pendiente — Galeria global de embeddings (cuerpo + rostro). [ASINCRONO]
+Quality gate: solo entran embeddings de buena calidad. TTL: expiran solos.
+Reingesta hacia el tracking global (05_tracking/global_reid) por linea punteada:
+nunca bloquea la alerta.

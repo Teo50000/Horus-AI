@@ -1,0 +1,7 @@
+Cabezas entrenadas sobre el backbone compartido (ResNet-50+FPN, TensorRT INT8).
+Las 4 cabezas del camino caliente (ver docs/arquitectura.png):
+  - pose/          -> eventos de postura (ej: caida)
+  - segmentacion/  -> superficies/regiones (ej: agua)
+  - objetos/       -> deteccion (personas, humo)
+  - reid_cuerpo/   -> embedding de cuerpo 512-d para re-identificacion
+Todas comparten el mismo backbone: la imagen se procesa UNA vez.

@@ -1,0 +1,3 @@
+Etapa pendiente — Revision + feedback. [ASINCRONO]
+Un humano valida matches y falsos positivos; con eso se reentrenan las cabezas (04_cabezas).
+Reemplaza a la vieja carpeta 10_revision_ajuste.

@@ -1,7 +1,13 @@
+import sys
+from pathlib import Path
+
 import numpy as np
 import torch
 
 from shared_backbone import BackboneConfig, SharedBackbone
+
+sys.path.append(str(Path(__file__).resolve().parents[1] / "06_fusion_decision"))
+from vlm_gate import VLMGate
 
 
 torch.manual_seed(0)
@@ -64,20 +70,22 @@ def main() -> None:
 
 
     line("=")
-    print("4) GATE DEL VLM  (novedad de la escena por cámara)")
+    print("4) GATE DEL VLM  (vive en 06_fusion_decision; el backbone solo aporta novelty)")
     line()
+    gate = VLMGate()
     bb.reset("cam-3")
     print("   alimentamos escena tranquila (aprende lo 'normal')...")
     for _ in range(8):
         f = bb.encode(calm_frame(), camera_id="cam-3")
-    print(f"   tranquila -> novelty={f.novelty:.1f}σ  vlm={bb.should_run_vlm(f)}")
+    print(f"   tranquila -> novelty={f.novelty:.1f}σ  vlm={gate.should_run(f)}")
 
     f = bb.encode(weird_frame(), camera_id="cam-3")
-    print(f"   RARA      -> novelty={f.novelty:.1f}σ  vlm={bb.should_run_vlm(f)}")
+    d = gate.decide(f)
+    print(f"   RARA      -> novelty={f.novelty:.1f}σ  vlm={d.run} ({d.reason})")
 
     f2 = bb.encode(calm_frame(), camera_id="cam-3")
-    print(f"   por duda  -> (cabezas inseguras 0.6) vlm="
-          f"{bb.should_run_vlm(f2, head_uncertainty=0.6)}")
+    d2 = gate.decide(f2, head_uncertainty=0.6)
+    print(f"   por duda  -> (cabezas inseguras 0.6) vlm={d2.run} ({d2.reason})")
 
 
     line("=")

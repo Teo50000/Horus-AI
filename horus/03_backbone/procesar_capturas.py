@@ -16,6 +16,11 @@ from shared_backbone import BackboneConfig, SharedBackbone
 sys.path.append(str(Path(__file__).resolve().parents[1] / "02_preproceso_roi"))
 from preproceso_roi import PreprocesadorROI, cargar_config_zonas
 
+sys.path.append(str(Path(__file__).resolve().parents[1] / "06_fusion_decision"))
+from vlm_gate import VLMGate
+
+GATE = VLMGate()
+
 
 _RUTA_ZONAS = Path(__file__).resolve().parents[1] / "02_preproceso_roi" / "zonas.json"
 PREPROCESO = PreprocesadorROI(cargar_config_zonas(_RUTA_ZONAS))
@@ -59,7 +64,7 @@ def procesar_archivo(
 
     frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
     features = backbone.encode(frame_rgb, camera_id=camera_id)
-    correr_vlm = backbone.should_run_vlm(features)
+    correr_vlm = GATE.should_run(features)
     if mostrar:
 
         txt = f"{camera_id} | novedad {features.novelty:.1f}sigma | VLM {'SI' if correr_vlm else 'no'}"

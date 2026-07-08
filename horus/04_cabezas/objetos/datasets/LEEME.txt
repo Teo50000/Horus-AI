@@ -1,0 +1,67 @@
+CARPETA DE DATASETS — cabeza de objetos
+=========================================
+
+Cada dataset va en su propia subcarpeta, en formato YOLO:
+
+    datasets/
+    └── mezcla_v1/                 <- el dataset combinado para entrenar
+        ├── images/
+        │   ├── train/             <- fotos de entrenamiento (.jpg/.png)
+        │   └── val/               <- fotos de validación (10-20% del total)
+        └── labels/
+            ├── train/             <- un .txt por foto, MISMO nombre
+            └── val/
+
+CLASES DE LA CABEZA (orden = DEFAULT_CLASSES de objects_head.py):
+    0 = humo
+    1 = llama
+    2 = persona
+    3 = pistola
+    4 = cuchillo
+    5 = celular
+    6 = paquete
+
+FORMATO DE CADA .txt (formato YOLO estándar):
+    una línea por objeto:  clase cx cy w h
+    - cx cy: centro de la caja, relativo al tamaño de la imagen (0 a 1)
+    - w h:  ancho y alto, también relativos (0 a 1)
+
+    Ejemplo foto1.txt:
+        0 0.512 0.310 0.220 0.180     <- un humo
+        1 0.500 0.520 0.100 0.090     <- una llama
+
+    Foto sin objetos = .txt vacío (o sin .txt). También entrena:
+    le enseña a la red que ahí NO hay nada (baja falsos positivos).
+
+FUENTES Y REMAPEO DE ÍNDICES (cada dataset numera desde 0, hay que
+corregir los índices al mezclar):
+
+    D-Fire (github.com/gaiasd/DFireDataset)
+        0=smoke -> 0 (humo)   1=fire -> 1 (llama)      [sin cambios]
+
+    CrowdHuman vía Roboflow (export YOLO)
+        0=person -> 2 (persona)
+
+    OD-WeaponDetection, Univ. de Granada
+    (github.com/ari-dasci/OD-WeaponDetection)
+        pistol -> 3 (pistola)    knife -> 4 (cuchillo)
+        smartphone (de Sohas) -> 5 (celular)
+        (monedero/billete/tarjeta de Sohas: descartar — muy chicos
+        para vigilancia; de lo raro se encarga el VLM)
+
+    Paquetes: Roboflow Universe "package detection" -> 6 (paquete)
+    (SKU-110K sirve si querés góndolas densas; remapear todo a 6)
+
+BALANCE: usar cantidades parecidas por clase (~3.000-5.000 fotos).
+15.000 fotos de personas contra 2.000 de cuchillos sesga la red.
+
+ENTRENAR:
+    python entrenar_objetos.py --dataset datasets/mezcla_v1
+
+Los pesos quedan en checkpoints/ (head_best.pt y head_last.pt).
+OJO: si cambiás las clases, los checkpoints viejos dejan de servir
+(la capa de salida cambia de tamaño). Hay que reentrenar.
+
+NOTA: no subir datasets a git — son pesados. Agregar a .gitignore:
+    horus/04_cabezas/objetos/datasets/
+    horus/04_cabezas/objetos/checkpoints/

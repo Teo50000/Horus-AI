@@ -9,6 +9,11 @@ from shared_backbone import SharedBackbone, BackboneConfig
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "02_preproceso_roi"))
 from preproceso_roi import PreprocesadorROI, cargar_config_zonas
+
+sys.path.append(str(Path(__file__).resolve().parents[1] / "06_fusion_decision"))
+from vlm_gate import VLMGate
+
+GATE = VLMGate()
 _RUTA_ZONAS = Path(__file__).resolve().parents[1] / "02_preproceso_roi" / "zonas.json"
 PREPROCESO = PreprocesadorROI(cargar_config_zonas(_RUTA_ZONAS))
 
@@ -30,7 +35,7 @@ def procesar_frame(frame_bgr, camera_id):
 
     incertidumbre = 0.0
 
-    correr_vlm = backbone.should_run_vlm(features, head_uncertainty=incertidumbre)
+    correr_vlm = GATE.should_run(features, head_uncertainty=incertidumbre)
     return features, correr_vlm
 
 

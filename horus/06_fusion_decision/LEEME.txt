@@ -1,3 +1,8 @@
-Etapa pendiente — Fusion y decision.
+Etapa en progreso — Fusion y decision.
 Combina las salidas del tracking con reglas + topologia de camaras
 (que camara ve que zona, transiciones fisicamente posibles) y decide si hay evento.
+
+Ya implementado:
+- vlm_gate.py: decide cuando despertar al VLM (por novedad de escena o duda
+  de las cabezas). Antes vivia en el backbone; se movio aca porque la decision
+  combina senales que el backbone no conoce.

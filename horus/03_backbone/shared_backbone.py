@@ -25,8 +25,8 @@ class BackboneConfig:
     temporal_window: int = 8
     freeze_encoder: bool = False
 
+    # Estadística de novedad (el gate que la consume vive en 06_fusion_decision/vlm_gate.py)
     novelty_threshold: float = 3.0
-    uncertainty_threshold: float = 0.45
     gate_warmup: int = 15
     ema_decay: float = 0.95
 
@@ -223,16 +223,6 @@ class SharedBackbone(nn.Module):
             timestamp=timestamp if timestamp is not None else time.time(),
             strides=self.strides,
         )
-
-
-    def should_run_vlm(self, features: SharedFeatures, head_uncertainty: float = 0.0) -> bool:
-
-        st = self._stats.get(features.camera_id)
-
-        warm = bool(st and st["seen"] >= self.cfg.gate_warmup)
-        by_novelty = warm and features.novelty >= self.cfg.novelty_threshold
-        by_doubt = head_uncertainty >= self.cfg.uncertainty_threshold
-        return bool(by_novelty or by_doubt)
 
 
     def set_encoder_frozen(self, frozen: bool = True) -> None:

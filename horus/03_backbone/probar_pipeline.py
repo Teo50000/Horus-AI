@@ -1,10 +1,16 @@
 import sys
 import time
+from pathlib import Path
 
 import cv2
 import torch
 
 from shared_backbone import BackboneConfig, SharedBackbone
+
+sys.path.append(str(Path(__file__).resolve().parents[1] / "06_fusion_decision"))
+from vlm_gate import VLMGate
+
+gate = VLMGate()
 
 
 arg = sys.argv[1] if len(sys.argv) > 1 else "0"
@@ -35,7 +41,7 @@ try:
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         features = backbone.encode(rgb, camera_id="prueba")
-        correr_vlm = backbone.should_run_vlm(features)
+        correr_vlm = gate.should_run(features)
 
         fps = 1.0 / max(time.time() - t0, 1e-6)
         suma_fps += fps

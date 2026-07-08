@@ -1,0 +1,27 @@
+Dataset de re-identificación de cuerpo = RECORTES de persona (no frames completos).
+Cada identidad debe tener VARIAS imágenes (idealmente de cámaras/ángulos distintos):
+el triplet loss necesita al menos K instancias por identidad (default K=4).
+
+Se aceptan dos formatos. El loader detecta cuál usás automáticamente.
+
+FORMATO A — carpeta por identidad (el más simple):
+  personas_v1/
+    train/
+      0001/  img000.jpg  img001.jpg  ...
+      0002/  ...
+    val/            (opcional)
+      ...
+
+FORMATO B — Market-1501 (los 4 primeros dígitos del nombre = ID):
+  personas_v1/
+    train/
+      0001_c1s1_000151_00.jpg
+      0001_c2s1_000301_00.jpg
+      0002_c1s1_...jpg
+      ...
+  (los archivos que empiezan con "-1" se ignoran: son distractores)
+
+RECOMENDACIONES
+  · Recortá lo más ajustado posible a la persona; el loader redimensiona a 256x128.
+  · Más identidades > más fotos por identidad para generalizar.
+  · Datasets públicos compatibles: Market-1501, DukeMTMC-reID, MSMT17.

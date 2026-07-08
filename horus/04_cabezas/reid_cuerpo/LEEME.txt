@@ -1,3 +1,36 @@
-Etapa pendiente — Cabeza ReID de cuerpo: produce un vector 512-d por persona detectada.
-Alimenta al tracking global (matching en RAM) y a la galeria global (asincrono).
-Comparte el backbone; no vuelve a procesar la imagen.
+Cabeza ReID de cuerpo — produce un vector 512-d L2-normalizado por persona.
+Alimenta al tracking global (matching por coseno en RAM) y a la galería global.
+Comparte el backbone ResNet-50+FPN; NO vuelve a procesar la imagen (usa RoIAlign
+sobre la pirámide ya calculada).
+
+ARCHIVOS
+  reid_head.py      Módulo de la cabeza (RoIAlign -> tower -> GeM -> BNNeck).
+                    Pérdidas: ID (cross-entropy label-smoothing) + triplet batch-hard.
+                    Es el baseline "Bag of Tricks" (Luo et al. 2019), el estándar fuerte.
+  entrenar_reid.py  Entrenamiento OPTIMIZADO PARA CUDA (ver abajo).
+  probar_reid.py    Saca embeddings y compara recortes por similitud coseno.
+  datasets/         Recortes de persona (ver datasets/LEEME.txt).
+  checkpoints/      reid_last.pt, reid_best.pt y reid_meta.json (se generan al entrenar).
+
+OPTIMIZACIONES CUDA (se activan solas si hay GPU)
+  · AMP mixed precision (fp16 por defecto, --bf16 para bfloat16) + GradScaler.
+  · TF32 en matmul y cuDNN (Ampere en adelante: RTX 30/40, A100, etc.).
+  · cudnn.benchmark = True (autotune de kernels de convolución).
+  · memory_format = channels_last (convoluciones más rápidas en Tensor Cores).
+  · torch.compile con --compile (fusiona kernels; el primer batch compila).
+  · AdamW fused=True (el paso del optimizador corre entero en GPU).
+  · DataLoader con pin_memory + persistent_workers + prefetch y copias non_blocking.
+
+USO
+  Entrenar:
+    python entrenar_reid.py --dataset datasets/personas_v1 --epocas 120 --P 16 --K 4 --compile
+  (batch = P*K. Si te quedás sin VRAM, bajá --P. --bf16 es más estable en Ampere+.)
+
+  Probar:
+    python probar_reid.py a.jpg b.jpg --pesos checkpoints/reid_best.pt
+    python probar_reid.py recortes/ --pesos checkpoints/reid_best.pt
+
+NOTA
+  El "mejor" checkpoint se guarda por menor loss de entrenamiento. Para métricas
+  reales de re-identificación (Rank-1 / mAP con protocolo query+galería) usá la
+  evaluación de 05_tracking/global_reid una vez integrada.

@@ -13,7 +13,7 @@ from fastapi import APIRouter
 video_router = APIRouter()
 
 
-@video_router.get('/video_feed/{camara_config_id}')
+@video_router.get('/video_feed/{camara_config_id}', tags=["Streaming video"])
 def video_feed(camara_config_id: int):
     with Session(engine) as session:
         config = session.get(CamaraConfig, camara_config_id)
@@ -24,7 +24,7 @@ def video_feed(camara_config_id: int):
         source = config.rtsp_url if config.rtsp_url else config.usb_index
         return StreamingResponse(gen(VideoCamera(source)), media_type="multipart/x-mixed-replace;boundary=frame")
     
-@video_router.get('/cameras/available')
+@video_router.get('/cameras/available', tags=["Streaming video"])
 def get_available_cameras():
     available = []
     for i in range(5):

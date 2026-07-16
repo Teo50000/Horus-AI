@@ -1,7 +1,9 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@font-face {
+  font-family: 'LTWaveMono';
+  src: url("./assets/Fonts/LTWaveMono-Medium.otf") format("opentype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
 }
 
 html,
@@ -9,6 +11,7 @@ body,
 #root {
   width: 100%;
   height: 100%;
+  font-family: 'LTWaveMono', monospace;
 }
 
 .app {

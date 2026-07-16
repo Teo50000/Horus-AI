@@ -32,7 +32,6 @@
 }
 
 .ajustes-section__title {
-  font-family: monospace;
   font-size: 15px;
   font-weight: 600;
   color: #ffffff;
@@ -143,7 +142,6 @@
 .ajustes-toggle-label {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.75);
-  font-family: monospace;
 }
 
 /* ─── Toggle switch ──────────────────────────────────────────── */

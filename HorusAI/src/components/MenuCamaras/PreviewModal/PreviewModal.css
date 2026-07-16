@@ -35,7 +35,6 @@
 .preview-modal__label {
   color: rgba(255, 255, 255, 0.35);
   font-size: 16px;
-  font-family: monospace;
   user-select: none;
 }
 

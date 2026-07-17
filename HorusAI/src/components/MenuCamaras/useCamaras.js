@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
 
+
+//TODO: Habria que cambiar este const de DATOS_INICIALES por un fetch al backend
 const DATOS_INICIALES = [
   {
     id: 1, tipo: "sector", nombre: "Sector1",

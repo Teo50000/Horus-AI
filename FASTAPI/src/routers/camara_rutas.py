@@ -43,16 +43,12 @@ def get_camaras() -> List[Camara]:
 def get_prediccion() -> List[Camara] | dict:
     with Session(engine) as session:
         db_item = session.exec(select(Camara)).all()
-        if not db_item:
-            return JSONResponse(status_code=404, content="Item no encontrado")
         return db_item
 
 @camara_router.get("/config", tags = ["Camaras"])
-def get_camara_config() -> List[CamaraConfig] | dict:
+def get_camaras_config() -> List[CamaraConfig] | dict:
     with Session(engine) as session:
         db_item = session.exec(select(CamaraConfig)).all()
-        if not db_item:
-            return JSONResponse(status_code=404, content="Item no encontrado")
         return db_item
 
 #parametros por ruta:
@@ -121,8 +117,6 @@ async def recibir_prediccion(camara: Camara):
         }
 
         if camara.camara_config_id is not None:
-            await manager.send_to_camera(json.dumps(mensaje), camara.camara_config_id)
-        else:
             await manager.broadcast(json.dumps(mensaje))
 
         return camara

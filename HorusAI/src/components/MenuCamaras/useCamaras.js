@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 
 //TODO: Habria que cambiar este const de DATOS_INICIALES por un fetch al backend
@@ -19,10 +19,40 @@ const DATOS_INICIALES = [
 ];
 
 export function useCamaras() {
-  const [items, setItems]           = useState(DATOS_INICIALES);
+  const [items, setItems]           = useState([]);
   const [query, setQuery]           = useState("");
   const [editandoId, setEditandoId] = useState(null);
 
+  // Fetch a las cámaras del backend
+  // utilizando await/async:
+  useEffect(() => {
+
+    async function fetchCamaras() {
+      try{
+          const respuesta = await fetch('http://localhost:8000/camaras/config');
+          const data = await respuesta.json();
+          const camaras = data.map(cam => ({ id:cam.id, tipo: "camara", nombre: cam.nombre}));
+          setItems(camaras);
+      } catch (error) {
+          console.error('Error fetching camaras:', error);
+        }
+      
+    }
+    fetchCamaras();
+  },[]);  
+  // useEffect(() => {
+  //   fetch('http://localhost:8000/camaras/config')
+  //     .then(response => response.json())
+  //     .then(data => const camaras = data.map(cam => ({
+  //              id: cam.id,
+  //              tipo: cam.usb_index,
+  //              tipo_2: cam.rstp_url,
+  //              nombre: cam.nombre
+  //          })))
+  //          setItems(camaras)
+  //     .catch(error => console.error('Error fetching cameras:', error));
+  // }, []);
+  
   // ── Cámaras sueltas (sin sector) ────────────────────────────
   // Usadas por el modal de creación de sector y agregar a sector
   const camarasSueltas = useMemo(

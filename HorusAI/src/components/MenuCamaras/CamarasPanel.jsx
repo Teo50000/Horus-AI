@@ -12,6 +12,7 @@ import "./CamarasPanel.css";
 export default function CamarasPanel({ onClose, onPinearCamara, onPinearSector }) {
   const {
     items,
+    cargando,
     camarasSueltas,
     query, setQuery,
     editandoId,
@@ -24,10 +25,10 @@ export default function CamarasPanel({ onClose, onPinearCamara, onPinearSector }
   const [camarasPreview, setCamarasPreview] = useState([]);
   const abrirPreviewSector = (sector) => setCamarasPreview(sector.camaras);
   const abrirPreviewCamara = (camara)  => setCamarasPreview([camara]);
-  const cerrarPreview = () => setCamarasPreview([]);
+  const cerrarPreview      = ()        => setCamarasPreview([]);
 
   // ── Modal de creación ────────────────────────────────────────
-  const [modalConfig, setModalConfig]       = useState(null);
+  const [modalConfig, setModalConfig]         = useState(null);
   const [previewHardware, setPreviewHardware] = useState(null);
 
   const abrirModalGeneral  = ()       => setModalConfig({ modo: "camara" });
@@ -42,6 +43,7 @@ export default function CamarasPanel({ onClose, onPinearCamara, onPinearSector }
   return (
     <>
       <div className="camaras-panel" role="region" aria-label="Cámaras">
+
         <CloseButton onClick={onClose} />
 
         <SearchBar
@@ -51,38 +53,45 @@ export default function CamarasPanel({ onClose, onPinearCamara, onPinearSector }
         />
 
         <div className="camaras-panel__lista">
-          {items.map((item) =>
-            item.tipo === "sector" ? (
-              <SectorItem
-                key={item.id}
-                sector={item}
-                editandoId={editandoId}
-                onToggleEdicion={toggleEdicion}
-                onGuardar={guardarNombre}
-                onActualizarNombreSector={actualizarNombreSector}
-                onActualizarNombreCamara={actualizarNombreCamara}
-                onCrearCamara={() => abrirModalAgregarA(item)}
-                onPreviewSector={abrirPreviewSector}
-                onPinear={() => onPinearSector(item)}   // ← sector completo
-              />
-            ) : (
-              <CamaraItem
-                key={item.id}
-                camara={item}
-                sectorId={null}
-                enSector={false}
-                editando={editandoId === `c-${item.id}`}
-                onToggleEdicion={toggleEdicion}
-                onGuardar={guardarNombre}
-                onActualizarNombre={actualizarNombreCamara}
-                onPreview={() => abrirPreviewCamara(item)}
-                onPinear={() => onPinearCamara(item)}   // ← cámara suelta
-              />
+          {cargando ? (
+            <p className="camaras-panel__cargando">Cargando cámaras...</p>
+          ) : items.length === 0 ? (
+            <p className="camaras-panel__vacio">No hay cámaras configuradas.</p>
+          ) : (
+            items.map((item) =>
+              item.tipo === "sector" ? (
+                <SectorItem
+                  key={item.id}
+                  sector={item}
+                  editandoId={editandoId}
+                  onToggleEdicion={toggleEdicion}
+                  onGuardar={guardarNombre}
+                  onActualizarNombreSector={actualizarNombreSector}
+                  onActualizarNombreCamara={actualizarNombreCamara}
+                  onCrearCamara={() => abrirModalAgregarA(item)}
+                  onPreviewSector={abrirPreviewSector}
+                  onPinear={() => onPinearSector(item)}
+                />
+              ) : (
+                <CamaraItem
+                  key={item.id}
+                  camara={item}
+                  sectorId={null}
+                  enSector={false}
+                  editando={editandoId === `c-${item.id}`}
+                  onToggleEdicion={toggleEdicion}
+                  onGuardar={guardarNombre}
+                  onActualizarNombre={actualizarNombreCamara}
+                  onPreview={() => abrirPreviewCamara(item)}
+                  onPinear={() => onPinearCamara(item)}
+                />
+              )
             )
           )}
         </div>
 
         <AddButton onClick={abrirModalGeneral} label="Crear cámara o sector" />
+
       </div>
 
       {camarasPreview.length > 0 && (

@@ -1,60 +1,36 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
+const API = "http://localhost:8000/camaras";
 
-//TODO: Habria que cambiar este const de DATOS_INICIALES por un fetch al backend
-const DATOS_INICIALES = [
-  {
-    id: 1, tipo: "sector", nombre: "Sector1",
-    camaras: [
-      { id: 4, nombre: "Camara 1" },
-      { id: 102, nombre: "Camara 6" },
-      { id: 103, nombre: "Camara 7" },
-      { id: 104, nombre: "Camara 8" },
-    ],
-  },
-  { id: 3, tipo: "camara", nombre: "Camara 1" },
-  { id: 4, tipo: "camara", nombre: "Camara 2" },
-  { id: 5, tipo: "camara", nombre: "Camara 3" },
-  { id: 6, tipo: "camara", nombre: "Camara 4" },
-];
+function dbAItem(config) {
+  return {
+    id: config.id,
+    tipo: "camara",
+    nombre: config.nombre ?? `Camara ${config.id}`,
+    usb_index: config.usb_index,
+  };
+}
 
 export function useCamaras() {
-  const [items, setItems]           = useState([]);
-  const [query, setQuery]           = useState("");
+  const [items, setItems]       = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [query, setQuery]       = useState("");
   const [editandoId, setEditandoId] = useState(null);
 
-  // Fetch a las cámaras del backend
-  // utilizando await/async:
+  // ── Carga inicial desde la DB ────────────────────────────────
   useEffect(() => {
+    fetch(`${API}/config`)
+      .then((res) => {
+        if (res.status === 404) return [];
+        if (!res.ok) throw new Error(`Error ${res.status}`);
+        return res.json();
+      })
+      .then((configs) => setItems(configs.map(dbAItem)))
+      .catch((err) => console.error("Error al cargar cámaras:", err))
+      .finally(() => setCargando(false));
+  }, []);
 
-    async function fetchCamaras() {
-      try{
-          const respuesta = await fetch('http://localhost:8000/camaras/config');
-          const data = await respuesta.json();
-          const camaras = data.map(cam => ({ id:cam.id, tipo: "camara", nombre: cam.nombre}));
-          setItems(camaras);
-      } catch (error) {
-          console.error('Error fetching camaras:', error);
-        }
-      
-    }
-    fetchCamaras();
-  },[]);  
-  // useEffect(() => {
-  //   fetch('http://localhost:8000/camaras/config')
-  //     .then(response => response.json())
-  //     .then(data => const camaras = data.map(cam => ({
-  //              id: cam.id,
-  //              tipo: cam.usb_index,
-  //              tipo_2: cam.rstp_url,
-  //              nombre: cam.nombre
-  //          })))
-  //          setItems(camaras)
-  //     .catch(error => console.error('Error fetching cameras:', error));
-  // }, []);
-  
-  // ── Cámaras sueltas (sin sector) ────────────────────────────
-  // Usadas por el modal de creación de sector y agregar a sector
+  // ── Cámaras sueltas ──────────────────────────────────────────
   const camarasSueltas = useMemo(
     () => items.filter((i) => i.tipo === "camara"),
     [items]
@@ -69,8 +45,9 @@ export function useCamaras() {
         const camarasFiltradas = item.camaras.filter((c) =>
           c.nombre.toLowerCase().includes(q)
         );
-        if (item.nombre.toLowerCase().includes(q) || camarasFiltradas.length > 0) {
-          acc.push({ ...item, camaras: item.nombre.toLowerCase().includes(q) ? item.camaras : camarasFiltradas });
+        const sectorCoincide = item.nombre.toLowerCase().includes(q);
+        if (sectorCoincide || camarasFiltradas.length > 0) {
+          acc.push({ ...item, camaras: sectorCoincide ? item.camaras : camarasFiltradas });
         }
       } else {
         if (item.nombre.toLowerCase().includes(q)) acc.push(item);
@@ -79,13 +56,32 @@ export function useCamaras() {
     }, []);
   }, [items, query]);
 
-  // ── Edición de nombres ───────────────────────────────────────
+  // ── Edición ──────────────────────────────────────────────────
   const toggleEdicion = (id) =>
     setEditandoId((prev) => (prev === id ? null : id));
 
-  const guardarNombre = (id) => {
+  const guardarNombre = async (idEdicion) => {
     setEditandoId(null);
-    console.log("Guardar:", id);
+    const esSector   = idEdicion.startsWith("s-");
+    const idNumerico = parseInt(idEdicion.split("-")[1]);
+
+    if (esSector) return; // sectores solo en frontend por ahora
+
+    const camara = items
+      .flatMap((i) => (i.tipo === "sector" ? i.camaras : [i]))
+      .find((c) => c.id === idNumerico);
+
+    if (!camara) return;
+
+    try {
+      await fetch(`${API}/config/${idNumerico}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: camara.nombre }),
+      });
+    } catch (err) {
+      console.error("Error al guardar nombre:", err);
+    }
   };
 
   const actualizarNombreSector = (id, valor) =>
@@ -98,30 +94,37 @@ export function useCamaras() {
   const actualizarNombreCamara = (sectorId, camaraId, valor) =>
     setItems((prev) =>
       prev.map((item) => {
-        if (item.tipo === "camara" && item.id === camaraId) return { ...item, nombre: valor };
+        if (item.tipo === "camara" && item.id === camaraId)
+          return { ...item, nombre: valor };
         if (item.tipo === "sector" && item.id === sectorId) {
-          return { ...item, camaras: item.camaras.map((c) => c.id === camaraId ? { ...c, nombre: valor } : c) };
+          return {
+            ...item,
+            camaras: item.camaras.map((c) =>
+              c.id === camaraId ? { ...c, nombre: valor } : c
+            ),
+          };
         }
         return item;
       })
     );
 
-  // ── Confirmar creación desde el modal ────────────────────────
+  // ── Crear ────────────────────────────────────────────────────
   const confirmarCreacion = async ({ tipo, nombre, hardwareId, camaraIds, sectorId }) => {
     if (tipo === "camara") {
-      // Cámara nueva suelta desde hardware
-      const response = await fetch('http://localhost:8000/camaras/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usb_index: hardwareId, nombre: nombre })
-      })
-      const data = await response.json()
-      // data.id es el id real de CamaraConfig en la DB
-      setItems((prev) => [...prev, { id: data.id, tipo: "camara", nombre }]);
+      try {
+        const res = await fetch(`${API}/config`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ usb_index: hardwareId, nombre }),
+        });
+        const data = await res.json();
+        setItems((prev) => [...prev, dbAItem(data)]);
+      } catch (err) {
+        console.error("Error al crear cámara:", err);
+      }
 
     } else if (tipo === "sector") {
-      // Sector nuevo: mueve las cámaras seleccionadas dentro del sector
-      const nuevoId = Date.now();
+      const nuevoId = `sector-${Date.now()}`;
       const camarasDelSector = items
         .filter((i) => i.tipo === "camara" && camaraIds.includes(i.id))
         .map(({ id, nombre }) => ({ id, nombre }));
@@ -132,10 +135,8 @@ export function useCamaras() {
         );
         return [...sinMovidas, { id: nuevoId, tipo: "sector", nombre, camaras: camarasDelSector }];
       });
-      console.log("Sector creado:", nombre, "con cámaras:", camaraIds);
 
     } else if (tipo === "agregarASector") {
-      // Mueve cámaras sueltas al sector destino
       const camarasAMover = items
         .filter((i) => i.tipo === "camara" && camaraIds.includes(i.id))
         .map(({ id, nombre }) => ({ id, nombre }));
@@ -150,24 +151,17 @@ export function useCamaras() {
             : item
         );
       });
-      console.log("Cámaras agregadas al sector:", sectorId, camaraIds);
     }
-  };
-
-  // ── Pinear ───────────────────────────────────────────────────
-  const pinearCamara = (id) => {
-    console.log("Pinear cámara:", id);
-    // TODO: conectar con el grid
   };
 
   return {
     items: itemsFiltrados,
+    cargando,
     camarasSueltas,
     query, setQuery,
     editandoId,
     toggleEdicion, guardarNombre,
     actualizarNombreSector, actualizarNombreCamara,
     confirmarCreacion,
-    pinearCamara,
   };
 }

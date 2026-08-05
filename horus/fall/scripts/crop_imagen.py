@@ -3,9 +3,8 @@ from ultralytics import YOLO
 # Modelo liviano de detección (se descarga automático la primera vez)
 yolo_model = YOLO("yolov8n.pt")  # nano, rápido, suficiente para detectar personas
 
-def detectar_y_recortar_persona(frame, margen=0.2):
-    """Detecta la persona más prominente y devuelve el crop con margen."""
-    resultados = yolo_model(frame, classes=[0], verbose=False)  # clase 0 = persona en COCO
+def detectar_y_recortar_persona(frame, margen=0.2): # la persona más prominente y devuelve el crop con margen
+    resultados = yolo_model(frame, classes=[0], verbose=False)  # clase 0 = persona
     
     if len(resultados[0].boxes) == 0:
         return None  # no se detectó ninguna persona

@@ -51,6 +51,9 @@ def gen(camera):
                     continue
                 yield (b'--frame\r\n'
                     b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
-        except GeneratorExit:
-            camera.video.release()  # cierra OpenCV cuando el cliente se desconecta
-            print("Stream cerrado - cámara liberada")
+        except Exception as e:
+            print(f"Error en el stream: {e}")
+        finally:
+            # Esto garantiza que la cámara se libere pase lo que pase
+            camera.video.release()
+            print("Stream finalizado con éxito - Cámara liberada físicamente.")

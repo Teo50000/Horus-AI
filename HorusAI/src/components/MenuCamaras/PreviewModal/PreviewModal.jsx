@@ -1,10 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import "./PreviewModal.css";
 
 // Recibe una lista de cámaras del sector y navega entre ellas
 export default function PreviewModal({ camaras = [], onClose }) {
   const [indice, setIndice] = useState(0);
-
+  const imgRef = useRef(null);
+  useEffect(() => {
+    return () => {
+        if (imgRef.current) {
+            imgRef.current.src = "";
+        }
+    };
+  }, []);
   if (!camaras.length) return null;
 
   const anterior = () =>
@@ -29,7 +36,8 @@ export default function PreviewModal({ camaras = [], onClose }) {
         <div className="preview-modal__screen">
           <span className="preview-modal__label">{camara.nombre}</span>
           {/* TODO: reemplazar con feed real de la cámara */}
-          <img 
+          <img
+            ref={imgRef}
             src={`http://localhost:8000/video/video_feed/${camara.id}`}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             alt={camara.nombre}

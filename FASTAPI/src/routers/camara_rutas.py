@@ -124,19 +124,7 @@ async def recibir_prediccion(camara: Camara):
 @camara_router.post("/config", tags=["Camaras"])
 def agregar_camara_config(config: CamaraConfig):
     # TODO: descomentar cuando haya camara real (usb o rtsp)
-    #if config.rtsp_url:
-        #source = config.rtsp_url
-    #elif config.usb_index is not None:
-    #    source = config.usb_index
-    #else:
-    #    return JSONResponse(content={"error": "Debe proveer rtsp_url o usb_index"}, status_code=400)
     
-    # validar conexión
-    #test_cap = cv2.VideoCapture(source)
-    #if not test_cap.isOpened():
-    #    test_cap.release()
-    #    return JSONResponse(content={"error": "No se pudo conectar a la cámara"}, status_code=400)
-    #test_cap.release()
     
     with Session(engine) as session:
         session.add(config)

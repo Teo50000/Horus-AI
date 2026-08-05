@@ -21,7 +21,19 @@ def video_feed(camara_config_id: int):
             return JSONResponse(status_code=404, content={"error": "Cámara no encontrada"})
         
         # determinar la fuente
-        source = config.rtsp_url if config.rtsp_url else config.usb_index
+        if config.rtsp_url:
+                source = config.rtsp_url
+        elif config.usb_index is not None:
+                source = config.usb_index
+        else:
+                return JSONResponse(content={"error": "Debe proveer rtsp_url o usb_index"}, status_code=400)
+            
+        # validar conexión
+        test_cap = cv2.VideoCapture(source)
+        if not test_cap.isOpened():
+            test_cap.release()
+            return JSONResponse(content={"error": "No se pudo conectar a la cámara"}, status_code=400)
+        test_cap.release()
         return StreamingResponse(gen(VideoCamera(source)), media_type="multipart/x-mixed-replace;boundary=frame")
     
 @video_router.get('/cameras/available', tags=["Streaming video"])

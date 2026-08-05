@@ -44,22 +44,13 @@ def check_cameras():
 #    return templates.TemplateResponse("index.html", context={"request": request})
 
 def gen(camera):
-    c = 1
-    start = time.time()
-    while True:
-        start_1 = time.time()
-        if c % 20 == 0:
-            end = time.time()
-            FPS = 20/(end-start)
-            print("FPS_avg : {:.6f} ".format(FPS))
-            start = time.time()
-        frame = camera.get_frame()
-        if frame is None:  # ← línea nueva
-            continue
-        yield (b'--frame\r\n'
-                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
-        end_1 = time.time()
-        FPS = 1/(end_1-start_1)
-        print("FPS : {:.6f} ".format(FPS))
-        c +=1
-
+        try:
+            while True:
+                frame = camera.get_frame()
+                if frame is None:
+                    continue
+                yield (b'--frame\r\n'
+                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
+        except GeneratorExit:
+            camera.video.release()  # cierra OpenCV cuando el cliente se desconecta
+            print("Stream cerrado - cámara liberada")

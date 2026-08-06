@@ -73,8 +73,7 @@ def get_modelos_por_cat(categoria: str = Query(min_length=5, max_length=20)) -> 
     return JSONResponse(content={})
 
 
-#metodo get para la configuracion de camaras
-
+#metodo get para la configuracion de camarass
 
 @camara_router.get("/config/{id}", tags = ["Camaras"])
 def get_camara_config(id: int) -> CamaraConfig | dict:
@@ -123,9 +122,6 @@ async def recibir_prediccion(camara: Camara):
     
 @camara_router.post("/config", tags=["Camaras"])
 def agregar_camara_config(config: CamaraConfig):
-    # TODO: descomentar cuando haya camara real (usb o rtsp)
-    
-    
     with Session(engine) as session:
         session.add(config)
         session.commit()

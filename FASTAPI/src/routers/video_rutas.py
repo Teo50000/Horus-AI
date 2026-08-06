@@ -1,10 +1,12 @@
 from fastapi.responses import JSONResponse, StreamingResponse
+import asyncio
 # import numpy as np
 import time
 import cv2
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 from src.database import engine
+import src.models.video_model as video_model  
 #from fastapi.templating import Jinja2Templates
 
 from src.models.camara_model import CamaraConfig
@@ -45,3 +47,8 @@ def get_available_cameras():
             available.append({"usb_index": i, "nombre": f"Cámara {i}"})
             cap.release()
     return JSONResponse(content=available)
+
+@video_router.post('/stop_feed', tags=["Streaming video"])
+def stop_stream():
+    video_model.stream_running = False  # ← modifica la variable del módulo original
+    return {"status": "Streaming detenido"}

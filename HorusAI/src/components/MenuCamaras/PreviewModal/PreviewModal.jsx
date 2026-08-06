@@ -5,14 +5,17 @@ import "./PreviewModal.css";
 export default function PreviewModal({ camaras = [], onClose }) {
   const [indice, setIndice] = useState(0);
   const imgRef = useRef(null);
+  const abortRef = useRef(null);
+
   useEffect(() => {
+  // El componente se monta e inicia el streaming apuntando al src de la etiqueta <img>
     return () => {
-        if (imgRef.current) {
-            imgRef.current.src = "";
-        }
+      // Código de limpieza: Se ejecuta cuando el usuario cambia de pantalla o cierra el componente
+      fetch('http://localhost:8000/video/stop_feed', { method: 'POST' })
+        .then(() => console.log('Petición de parada enviada al backend'))
+        .catch(err => console.error('Error al detener backend:', err));
     };
   }, []);
-  if (!camaras.length) return null;
 
   const anterior = () =>
     setIndice((prev) => (prev === 0 ? camaras.length - 1 : prev - 1));

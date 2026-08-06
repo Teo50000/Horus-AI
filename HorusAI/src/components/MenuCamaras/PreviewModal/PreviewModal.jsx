@@ -5,17 +5,13 @@ import "./PreviewModal.css";
 export default function PreviewModal({ camaras = [], onClose }) {
   const [indice, setIndice] = useState(0);
   const imgRef = useRef(null);
-  const abortRef = useRef(null);
 
-  useEffect(() => {
-  // El componente se monta e inicia el streaming apuntando al src de la etiqueta <img>
-    return () => {
-      // Código de limpieza: Se ejecuta cuando el usuario cambia de pantalla o cierra el componente
-      fetch('http://localhost:8000/video/stop_feed', { method: 'POST' })
-        .then(() => console.log('Petición de parada enviada al backend'))
-        .catch(err => console.error('Error al detener backend:', err));
-    };
-  }, []);
+  // Sin useEffect de cleanup — el stop lo maneja el handler de cierre
+  const handleClose = () => {
+    fetch('http://localhost:8000/video/stop_feed', { method: 'POST' })
+      .catch(err => console.error('Error al detener backend:', err));
+    onClose();
+  };
 
   const anterior = () =>
     setIndice((prev) => (prev === 0 ? camaras.length - 1 : prev - 1));
@@ -25,20 +21,15 @@ export default function PreviewModal({ camaras = [], onClose }) {
   const camara = camaras[indice];
 
   return (
-    <div className="preview-modal__overlay" onClick={onClose}>
+    <div className="preview-modal__overlay" onClick={handleClose}>
       <div className="preview-modal" onClick={(e) => e.stopPropagation()}>
 
-        {/* Flecha izquierda */}
         {camaras.length > 1 && (
-          <button className="preview-modal__arrow preview-modal__arrow--left" onClick={anterior}>
-            ❮
-          </button>
+          <button className="preview-modal__arrow preview-modal__arrow--left" onClick={anterior}>❮</button>
         )}
 
-        {/* Pantalla de la cámara */}
         <div className="preview-modal__screen">
           <span className="preview-modal__label">{camara.nombre}</span>
-          {/* TODO: reemplazar con feed real de la cámara */}
           <img
             ref={imgRef}
             src={`http://localhost:8000/video/video_feed/${camara.id}`}
@@ -47,14 +38,10 @@ export default function PreviewModal({ camaras = [], onClose }) {
           />
         </div>
 
-        {/* Flecha derecha */}
         {camaras.length > 1 && (
-          <button className="preview-modal__arrow preview-modal__arrow--right" onClick={siguiente}>
-            ❯
-          </button>
+          <button className="preview-modal__arrow preview-modal__arrow--right" onClick={siguiente}>❯</button>
         )}
 
-        {/* Indicadores de posición */}
         {camaras.length > 1 && (
           <div className="preview-modal__dots">
             {camaras.map((_, i) => (
@@ -67,7 +54,7 @@ export default function PreviewModal({ camaras = [], onClose }) {
           </div>
         )}
 
-        <button className="preview-modal__close" onClick={onClose}>✕</button>
+        <button className="preview-modal__close" onClick={handleClose}>✕</button>
       </div>
     </div>
   );

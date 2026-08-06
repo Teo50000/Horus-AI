@@ -8,7 +8,7 @@
     "pos3 pos4 pos5"
     "pos6 pos7 pos8";
   background: radial-gradient(circle 70vh, #000000 20%, #070930 47%, #000000 75%);
-  gap: 3%;
+  gap: 2%;
   padding: 4PX;
   min-height: 0; /* evita que el grid se expanda más allá del flex parent */
   height: 100%;

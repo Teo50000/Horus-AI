@@ -1,15 +1,20 @@
 import "./CeldaCamara.css";
 
+const API = "http://localhost:8000";
+
 export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
-  // Slot vacío
   if (!slot) {
     return <div className="celda-camara celda-camara--vacia" />;
   }
 
-  // Slot con cámara suelta
   if (slot.tipo === "camara") {
     return (
       <div className="celda-camara">
+        <img
+          src={`${API}/video/video_feed/${slot.id}`}
+          alt={slot.nombre}
+          className="celda-camara__stream"
+        />
         <span className="celda-camara__nombre">{slot.nombre}</span>
         <button
           className="celda-camara__unpin"
@@ -18,7 +23,6 @@ export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
         >
           ✕
         </button>
-        {/* TODO: reemplazar con feed de video */}
       </div>
     );
   }
@@ -29,6 +33,11 @@ export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
 
   return (
     <div className="celda-camara">
+      <img
+        src={`${API}/video/video_feed/${camaraActual.id}`}
+        alt={camaraActual.nombre}
+        className="celda-camara__stream"
+      />
       <span className="celda-camara__nombre">{camaraActual.nombre}</span>
       <span className="celda-camara__sector-tag">{slot.nombre}</span>
 
@@ -56,7 +65,6 @@ export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
           </button>
         </>
       )}
-      {/* TODO: reemplazar con feed de video */}
     </div>
   );
 }

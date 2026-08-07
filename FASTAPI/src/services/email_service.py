@@ -23,6 +23,5 @@ def enviar_alerta_email(event_type: str, camara_config_nombre: str, confidence: 
     msg['To'] = "laritamuina@gmail.com"           # el número que recibe la alerta
 
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-        server.startssl() 
         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
         server.send_message(msg)

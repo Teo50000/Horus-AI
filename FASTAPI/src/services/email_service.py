@@ -1,7 +1,8 @@
 import smtplib
 from email.mime.text import MIMEText
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
+
 
 load_dotenv()
 
@@ -10,9 +11,9 @@ EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 
 
-def enviar_alerta_email(event_type: str, camara_config_id: str, confidence: float, timestamp: str):
+def enviar_alerta_email(event_type: str, camara_config_nombre: str, confidence: float, timestamp: str):
     msg = MIMEText(
-        f"Se detectó un evento en {camara_config_id}.\n\n"
+        f"Se detectó un evento en {camara_config_nombre}.\n\n"
         f"Tipo: {event_type}\n"
         f"Confianza: {confidence * 100:.0f}%\n"
         f"Hora: {timestamp}"

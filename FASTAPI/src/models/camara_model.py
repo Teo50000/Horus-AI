@@ -9,6 +9,7 @@ class Camara(SQLModel, table=True):
     confidence: float
     timestamp: str
     camara_config_id: Optional[int] = Field(default=None, foreign_key="camaraconfig.id")
+    camara_config_nombre: Optional[str] = Field(default=None, foreign_key="camaraconfig.nombre")
     description: Optional[str] = None
     snapshot_url: Optional[str] = None # = "/snapshots/camera_3_2026-06-18_14-32.jpg" , para agregar dsp en otro sprint
     clip_url: Optional[str] = None # = "/clips/camera_3_2026-06-18_14-32.mp4" , para agregar dsp en otro sprint

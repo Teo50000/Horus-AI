@@ -3,7 +3,7 @@ import glob
 import os
 
 CARPETA_CAUCA = "../data/keypoints/caucafall"
-CARPETA_LE2I = "../data/keypoints/le2i"
+CARPETA_LE2I = "../data/keypoints/le2i_omnifall"
 CARPETA_SALIDA = "../data/processed"
 
 # División por sujeto (no por secuencia individual)
@@ -70,6 +70,12 @@ def normalizar_esqueleto(kp):
 
     return kp_norm  # (n_frames, 33, 2)
 
+def agregar_velocidades(kp_norm):
+#Suma la velocidad de cada punto: (n_frames, 33, 2) -> (n_frames, 33, 4) con (x, y, dx, dy)
+    vel = np.zeros_like(kp_norm)
+    vel[1:] = kp_norm[1:] - kp_norm[:-1] #cuánto se movió cada punto respecto al frame anterior
+    #el primer frame no tiene anterior, así que queda en cero
+    return np.concatenate([kp_norm, vel], axis=2)
 
 def detectar_escenario(nombre_archivo):
 #Saca el escenario del nombre del archivo: 'Home_01_video (1)_fall.npz' -> 'Home_01'
@@ -86,7 +92,7 @@ def cargar_caucafall(lista_sujetos):
         npz = np.load(archivo, allow_pickle=True)
         sujeto = str(npz["sujeto"])
 
-        if sujeto not in lista_sujetos: #si no pertenece a este split, lo salteo
+        if lista_sujetos is not None and sujeto not in lista_sujetos:
             continue
 
         kp = npz["keypoints"]  # (n_frames, 33, 4)
@@ -95,45 +101,41 @@ def cargar_caucafall(lista_sujetos):
             continue
 
         datos.append({
+            "subclase": "caucafall",
             "keypoints": normalizar_esqueleto(interpolar_frames_faltantes(kp)),
             "label": str(npz["label"]),
             "origen": "caucafall", #para poder medir después cómo rinde en cada dataset por separado
             "grupo": sujeto, #unifico "sujeto" (cauca) y "escenario" (le2i) bajo un mismo nombre, sirve para la validación cruzada
             "archivo_origen": os.path.basename(archivo),
+            "keypoints": agregar_velocidades(normalizar_esqueleto(interpolar_frames_faltantes(kp))),
         })
     return datos
 
 
-def cargar_le2i(lista_escenarios):
-#Le2i: el escenario lo saco del prefijo del nombre del archivo, no hay campo sujeto
+def cargar_le2i(lista_sujetos=None):
+#Le2i con anotaciones de Omnifall: el sujeto viene como campo dentro del .npz
     datos = []
     for archivo in glob.glob(os.path.join(CARPETA_LE2I, "*.npz")):
-        nombre = os.path.basename(archivo)
-        escenario = detectar_escenario(nombre)
-
-        if escenario is None:
-            print(f"  No pude detectar escenario en {nombre}, salteando")
-            continue
-        if escenario not in lista_escenarios: #si no pertenece a este split, lo salteo
-            continue
-
-        # los clips de después de la caída muestran a la persona en el piso,
-        # etiquetarlos como "adl" contradice lo que CAUCAFall llama "fall"
-        if nombre.endswith("_adl_despues.npz"):
-            continue
-
         npz = np.load(archivo, allow_pickle=True)
+        sujeto = str(npz["sujeto"])  # ej: "le2i_s3"
+
+        if lista_sujetos is not None and sujeto not in lista_sujetos:
+            continue
+
         kp = npz["keypoints"]
         if kp.shape[0] == 0:
-            print(f"  Saltando {nombre}: sin frames")
+            print(f"  Saltando {os.path.basename(archivo)}: sin frames")
             continue
 
         datos.append({
+            "subclase": int(npz["label_omnifall"]),
             "keypoints": normalizar_esqueleto(interpolar_frames_faltantes(kp)),
             "label": str(npz["label"]),
             "origen": "le2i",
-            "grupo": escenario, #mismo campo que en cauca, pero acá es la carpeta
-            "archivo_origen": nombre,
+            "grupo": sujeto, #ahora es el sujeto real, no el escenario
+            "escenario": str(npz["escenario"]), #lo guardo por si quiero analizar por escenario después
+            "archivo_origen": os.path.basename(archivo),
+            "keypoints": agregar_velocidades(normalizar_esqueleto(interpolar_frames_faltantes(kp))),
         })
     return datos
 
@@ -158,6 +160,15 @@ def procesar_split(sujetos, escenarios, nombre_split):
 if __name__ == "__main__":
     os.makedirs(CARPETA_SALIDA, exist_ok=True)
 
-    train = procesar_split(SUJETOS_TRAIN, ESCENARIOS_TRAIN, "train")
-    val = procesar_split(SUJETOS_VAL, ESCENARIOS_VAL, "val")
-    test = procesar_split(SUJETOS_TEST, ESCENARIOS_TEST, "test")
+    # Ya no armo splits fijos: la validación cruzada por sujeto usa todo el dataset
+    # y va rotando qué sujeto queda afuera en cada fold.
+    todos = cargar_caucafall(None) + cargar_le2i(None)
+
+    labels = [d["label"] for d in todos]
+    grupos = sorted({d["grupo"] for d in todos})
+
+    print(f"Total: {len(todos)} secuencias")
+    print(f"fall={labels.count('fall')}, adl={labels.count('adl')}")
+    print(f"{len(grupos)} grupos (sujetos): {grupos}")
+
+    np.save(os.path.join(CARPETA_SALIDA, "todos.npy"), todos, allow_pickle=True)

@@ -6,6 +6,7 @@ from sqlmodel import Session, select
 from src.database import engine
 from src.models.camara_model import Camara, CamaraConfig, NumeroEmergencia
 from src.services.websockets import manager
+from src.services.email_service import enviar_alerta_email
 from fastapi import WebSocket, WebSocketDisconnect
 camara_router = APIRouter()
 import cv2
@@ -117,6 +118,12 @@ async def recibir_prediccion(camara: Camara):
 
         if camara.camara_config_id is not None:
             await manager.broadcast(json.dumps(mensaje))
+            enviar_alerta_email(
+            event_type=camara.event_type,
+            camara_config_nombre=camara.camara_config_nombre,
+            confidence=camara.confidence,
+            timestamp=camara.timestamp
+        )
 
         return camara
     

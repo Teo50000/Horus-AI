@@ -11,9 +11,9 @@ export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
     return (
       <div className="celda-camara">
         <img
-          src={`${API}/video/video_feed/${slot.id}`}
-          alt={slot.nombre}
+          src={`${API}/video/video_feed/${slot.id}?t=${Date.now()}`}
           className="celda-camara__stream"
+          alt={slot.nombre}
         />
         <span className="celda-camara__nombre">{slot.nombre}</span>
         <button

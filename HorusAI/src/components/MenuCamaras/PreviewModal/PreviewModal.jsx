@@ -32,7 +32,7 @@ export default function PreviewModal({ camaras = [], onClose }) {
           <span className="preview-modal__label">{camara.nombre}</span>
           <img
             ref={imgRef}
-            src={`http://localhost:8000/video/video_feed/${camara.id}`}
+            src={`http://localhost:8000/video/video_feed/${camara.id}?t=${Date.now()}`}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             alt={camara.nombre}
           />

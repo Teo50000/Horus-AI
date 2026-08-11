@@ -1,13 +1,7 @@
 import { useState, useEffect } from "react";
 import "./CreacionModal.css";
 
-// ── Cámaras de hardware disponibles (simuladas) ───────────────
-const HARDWARE_CAMARAS = [
-  { id: "hw-1", nombre: "WebCamLogitechK20dhs" },
-  { id: "hw-2", nombre: "ADMk43" },
-  { id: "hw-3", nombre: "HITechcamweb" },
-  { id: "hw-4", nombre: "Blablabla" },
-];
+
 
 // ── Selector de pestaña ───────────────────────────────────────
 function TabSelector({ tab, onChange }) {
@@ -93,7 +87,6 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
           onChange={(e) => setNombre(e.target.value)}
           placeholder="Nombre de la cámara"
         />
-        <span className="creacion-modal__nombre-icon">✏</span>
       </div>
 
       {/* Lista de hardware */}
@@ -155,7 +148,6 @@ function ModoSector({ camarasSueltas, onConfirmar, onCancelar }) {
           onChange={(e) => setNombre(e.target.value)}
           placeholder="Nombre del sector"
         />
-        <span className="creacion-modal__nombre-icon">✏</span>
       </div>
 
       {/* Lista de cámaras sueltas con checkbox */}

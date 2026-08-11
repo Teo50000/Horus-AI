@@ -54,9 +54,9 @@ export default function CamarasPanel({ onClose, onPinearCamara, onPinearSector }
 
         <div className="camaras-panel__lista">
           {cargando ? (
-            <p className="camaras-panel__cargando">Cargando cámaras...</p>
+            <p className="camaras-panel__pending">Cargando cámaras...</p>
           ) : items.length === 0 ? (
-            <p className="camaras-panel__vacio">No hay cámaras configuradas.</p>
+            <p className="camaras-panel__pending">No hay cámaras configuradas.</p>
           ) : (
             items.map((item) =>
               item.tipo === "sector" ? (

@@ -37,7 +37,7 @@ export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
   return (
     <div className="celda-camara">
       <img
-        src={`${API}/video/video_feed/${camaraActual.id}`}
+        src={`${API}/video/video_feed/${camaraActual.id}?t=${Date.now()}`}
         alt={camaraActual.nombre}
         className="celda-camara__stream"
       />
@@ -46,7 +46,7 @@ export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
 
       <button
         className="celda-camara__unpin"
-        onClick={() => onVaciar(slotIdx),handleClose()}
+        onClick={() => onVaciar(slotIdx)}
         title="Quitar"
       >
         ✕

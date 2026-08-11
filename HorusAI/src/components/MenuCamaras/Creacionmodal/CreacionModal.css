@@ -77,11 +77,6 @@
   outline: none;
 }
 
-.creacion-modal__nombre-icon {
-  color: rgba(255, 255, 255, 0.35);
-  font-size: 13px;
-  flex-shrink: 0;
-}
 
 /* ── Subtítulo (modo agregar a sector) ── */
 .creacion-modal__subtitulo {

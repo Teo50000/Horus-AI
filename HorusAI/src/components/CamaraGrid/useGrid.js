@@ -47,6 +47,8 @@ export function useGrid() {
   const navegarSector = useCallback((slotIdx, direccion) => {
     setSlots((prev) => {
       const slot = prev[slotIdx];
+      fetch('http://localhost:8000/video/stop_feed', { method: 'POST' })
+      .catch(err => console.error('Error al detener backend:', err));
       if (!slot || slot.tipo !== "sector") return prev;
       const total = slot.camaras.length;
       const nuevoIndice =
@@ -55,6 +57,8 @@ export function useGrid() {
           : (slot.indice - 1 + total) % total;
       const next = [...prev];
       next[slotIdx] = { ...slot, indice: nuevoIndice };
+      fetch(`http://localhost:8000/video/video_feed/${nuevoIndice}?t=${Date.now()}`)
+      .catch(err => console.error('Error al empezar nuevo stream:', err));
       return next;
     });
   }, []);

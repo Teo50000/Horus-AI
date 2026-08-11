@@ -63,6 +63,8 @@ export function useGrid() {
     setSlots((prev) => {
       const next = [...prev];
       next[slotIdx] = null;
+      fetch('http://localhost:8000/video/stop_feed', { method: 'POST' })
+      .catch(err => console.error('Error al detener backend:', err));
       return next;
     });
   }, []);

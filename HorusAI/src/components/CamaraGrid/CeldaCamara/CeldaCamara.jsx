@@ -6,7 +6,10 @@ export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
   if (!slot) {
     return <div className="celda-camara celda-camara--vacia" />;
   }
-
+  const handleClose = () => {
+      fetch(`${API}/video/stop_feed`, { method: 'POST' })
+        .catch(err => console.error('Error al detener backend:', err));
+  };
   if (slot.tipo === "camara") {
     return (
       <div className="celda-camara">
@@ -43,7 +46,7 @@ export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
 
       <button
         className="celda-camara__unpin"
-        onClick={() => onVaciar(slotIdx)}
+        onClick={() => onVaciar(slotIdx),handleClose()}
         title="Quitar"
       >
         ✕

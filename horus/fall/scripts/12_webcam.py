@@ -112,7 +112,7 @@ if __name__ == "__main__":
 
     print("\nCámara abierta. Apretá 'q' sobre la ventana para salir.\n")
 
-    # ---------- estado del sistema en vivo ----------
+    #  estado del sistema en vivo
     buffer = deque(maxlen=VENTANA)   # últimos 32 frames procesados
     ultimo_norm = None               # último frame válido, para rellenar huecos sin mirar al futuro
     anterior_norm = None             # frame previo, para la velocidad
@@ -139,7 +139,7 @@ if __name__ == "__main__":
             frame = cv2.resize(frame, (ANCHO_PROC, int(h0 * escala)))
         h, w = frame.shape[:2]
 
-        # --- 1. detección de persona ---
+        #detección de persona
         t0 = time.perf_counter()
         res = yolo(frame, classes=[0], verbose=False)
         tiempos["yolo"].append(time.perf_counter() - t0)
@@ -154,7 +154,7 @@ if __name__ == "__main__":
             c = frame[y1:y2, x1:x2]
             crop = c if c.size else None
 
-        # --- 2. pose ---
+        #pose
         t0 = time.perf_counter()
         kp_norm = None
         if crop is not None:
@@ -199,7 +199,7 @@ if __name__ == "__main__":
                 alarma_activa = False
         tiempos["modelo"].append(time.perf_counter() - t0)
 
-        #dibujo el estado (con claude)
+        #dibujo el estado
         if len(buffer) < VENTANA:
             texto, color = f"cargando buffer {len(buffer)}/{VENTANA}", (180, 180, 180)
         elif alarma_activa:

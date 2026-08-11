@@ -1,7 +1,5 @@
-# import numpy as np
 import time
 import cv2
-import asyncio
 
 #from fastapi.templating import Jinja2Templates
 #templates = Jinja2Templates(directory="templates")
@@ -44,14 +42,21 @@ def check_cameras():
 #def index(request: Request):
 #    return templates.TemplateResponse("index.html", context={"request": request})
 
-# Variable de control global para manejar el estado del stream
-stream_running = True
+stream_running: dict[int, bool] = {}
 
-def gen(camera):
-    global stream_running
-    stream_running = True
+def start_stream(camara_config_id: int) -> None:
+    stream_running[camara_config_id] = True
+
+def stop_stream(camara_config_id: int) -> None:
+    stream_running[camara_config_id] = False
+
+def is_stream_running(camara_config_id: int) -> bool:
+    return stream_running.get(camara_config_id, False)
+
+def gen(camera: VideoCamera, camara_config_id: int):
+    start_stream(camara_config_id)
     try:
-        while stream_running:
+        while is_stream_running(camara_config_id):
             frame = camera.get_frame()
             if frame is None:
                 time.sleep(0.01) # Evita sobrecargar la CPU si no hay frame
@@ -61,6 +66,8 @@ def gen(camera):
     except Exception as e:
         print(f"Error en el stream: {e}")
     finally:
+        stop_stream(camara_config_id)
+        stream_running.pop(camara_config_id, None)
         # Esto garantiza que la cámara se libere pase lo que pase
         camera.video.release()
         print("Stream finalizado con éxito - Cámara liberada físicamente.")

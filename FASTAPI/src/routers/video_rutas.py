@@ -1,9 +1,6 @@
 from fastapi.responses import JSONResponse, StreamingResponse
-import asyncio
 # import numpy as np
-import time
 import cv2
-from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 from src.database import engine
 import src.models.video_model as video_model  
@@ -36,7 +33,10 @@ def video_feed(camara_config_id: int):
             test_cap.release()
             return JSONResponse(content={"error": "No se pudo conectar a la cámara"}, status_code=400)
         test_cap.release()
-        return StreamingResponse(gen(VideoCamera(source)), media_type="multipart/x-mixed-replace;boundary=frame")
+        return StreamingResponse(
+            gen(VideoCamera(source), camara_config_id),
+            media_type="multipart/x-mixed-replace;boundary=frame"
+        )
     
 @video_router.get('/cameras/available', tags=["Streaming video"])
 def get_available_cameras():
@@ -48,7 +48,12 @@ def get_available_cameras():
             cap.release()
     return JSONResponse(content=available)
 
-@video_router.post('/stop_feed', tags=["Streaming video"])
-def stop_stream():
-    video_model.stream_running = False  # ← modifica la variable del módulo original
-    return {"status": "Streaming detenido"}
+@video_router.post('/stop_feed/{camara_config_id}', tags=["Streaming video"])
+def stop_stream(camara_config_id: int):
+    was_running = video_model.is_stream_running(camara_config_id)
+    video_model.stop_stream(camara_config_id)
+    return {
+        "status": "Streaming detenido",
+        "camara_config_id": camara_config_id,
+        "was_running": was_running
+    }

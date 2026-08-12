@@ -32,7 +32,7 @@ class CamaraConfig(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     rtsp_url: Optional[str] = None
     usb_index: Optional[int] = None
-    nombre: Optional[str] = Field(default=None, primary_key=True)
+    nombre: Optional[str]
 
 class NumeroEmergencia(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

@@ -118,12 +118,7 @@ async def recibir_prediccion(camara: Camara):
 
         if camara.camara_config_id is not None:
             await manager.broadcast(json.dumps(mensaje))
-            enviar_alerta_email(
-            event_type=camara.event_type,
-            camara_config_nombre=camara.camara_config_nombre,
-            confidence=camara.confidence,
-            timestamp=camara.timestamp
-        )
+            
          # Email a TODOS los contactos registrados
         contactos = session.exec(select(NumeroEmergencia)).all()
         for contacto in contactos:
@@ -218,3 +213,20 @@ def eliminar_camara(id: int) -> List[Camara]:
             camaras.remove(cam)
     content = [c.model_dump() for c in camaras] # model_dump convierte cada objeto Camara en un diccionario para que pueda ser devuelto como respuesta
     return JSONResponse(content=content)
+
+
+@camara_router.delete("/prediccion/{camera_id}", tags=["Camaras"])
+def eliminar_prediccion(camera_id: int):
+    with Session(engine) as session:
+        db_item = session.get(Camara, camera_id)
+        if not db_item:
+            return JSONResponse(
+                content={"error": "Predicción no encontrada"},
+                status_code=404
+            )
+        session.delete(db_item)
+        session.commit()
+        return JSONResponse(
+            content={"mensaje": f"Predicción {camera_id} eliminada correctamente"},
+            status_code=200
+        )

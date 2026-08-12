@@ -8,10 +8,9 @@ load_dotenv()
 
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
-EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 
 
-def enviar_alerta_email(event_type: str, nombre_camara: str, confidence: float, timestamp: str, email_receiver=str):
+def enviar_alerta_email(event_type: str, nombre_camara: str, confidence: float, timestamp: str, email_receiver: str):
     msg = MIMEText(
         f"Se detectó un evento en {nombre_camara}.\n\n"
         f"Tipo: {event_type}\n"

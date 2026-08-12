@@ -2,14 +2,15 @@ import "./CeldaCamara.css";
 
 const API = "http://localhost:8000";
 
+const detenerStream = (camaraId) => {
+  fetch(`${API}/video/stop_feed/${camaraId}`, { method: 'POST' })
+    .catch(err => console.error('Error al detener stream:', err));
+};
+
 export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
   if (!slot) {
     return <div className="celda-camara celda-camara--vacia" />;
   }
-  const handleClose = () => {
-      fetch(`${API}/video/stop_feed`, { method: 'POST' })
-        .catch(err => console.error('Error al detener backend:', err));
-  };
   if (slot.tipo === "camara") {
     return (
       <div className="celda-camara">
@@ -21,7 +22,7 @@ export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
         <span className="celda-camara__nombre">{slot.nombre}</span>
         <button
           className="celda-camara__unpin"
-          onClick={() => onVaciar(slotIdx)}
+          onClick={() => { detenerStream(slot.id); onVaciar(slotIdx); }}
           title="Quitar"
         >
           ✕
@@ -37,6 +38,7 @@ export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
   return (
     <div className="celda-camara">
       <img
+        key={`${slot.id}-${slot.indice}`}
         src={`${API}/video/video_feed/${camaraActual.id}?t=${Date.now()}`}
         alt={camaraActual.nombre}
         className="celda-camara__stream"
@@ -46,7 +48,7 @@ export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
 
       <button
         className="celda-camara__unpin"
-        onClick={() => onVaciar(slotIdx)}
+        onClick={() => { detenerStream(slot.id); onVaciar(slotIdx); }}
         title="Quitar"
       >
         ✕
@@ -56,13 +58,19 @@ export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
         <>
           <button
             className="celda-camara__arrow celda-camara__arrow--left"
-            onClick={() => onNavegar(slotIdx, "anterior")}
+            onClick={() => {
+              detenerStream(camaraActual.id);
+              onNavegar(slotIdx, "anterior");
+            }}
           >
             ❮
           </button>
           <button
             className="celda-camara__arrow celda-camara__arrow--right"
-            onClick={() => onNavegar(slotIdx, "siguiente")}
+            onClick={() => {
+              detenerStream(camaraActual.id);
+              onNavegar(slotIdx, "siguiente");
+            }}
           >
             ❯
           </button>

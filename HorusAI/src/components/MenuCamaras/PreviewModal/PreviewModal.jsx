@@ -1,22 +1,32 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import "./PreviewModal.css";
 
 // Recibe una lista de cámaras del sector y navega entre ellas
 export default function PreviewModal({ camaras = [], onClose }) {
   const [indice, setIndice] = useState(0);
-  const imgRef = useRef(null);
 
   // Sin useEffect de cleanup — el stop lo maneja el handler de cierre
+  const detenerStream = (camaraId) => {
+  fetch(`http://localhost:8000/video/stop_feed/${camaraId}`, { method: 'POST' })
+    .catch(err => console.error('Error al detener stream:', err));
+  };
   const handleClose = () => {
-    fetch('http://localhost:8000/video/stop_feed', { method: 'POST' })
-      .catch(err => console.error('Error al detener backend:', err));
+    detenerStream(camara.id);
     onClose();
   };
 
-  const anterior = () =>
+  const [streamKey, setStreamKey] = useState(Date.now());
+
+  const anterior = () =>{
+    detenerStream(camaras[indice].id);
     setIndice((prev) => (prev === 0 ? camaras.length - 1 : prev - 1));
-  const siguiente = () =>
+    setStreamKey(Date.now());
+  }
+  const siguiente = () => {
+    detenerStream(camaras[indice].id);
     setIndice((prev) => (prev === camaras.length - 1 ? 0 : prev + 1));
+    setStreamKey(Date.now());
+  };
 
   const camara = camaras[indice];
 
@@ -31,8 +41,8 @@ export default function PreviewModal({ camaras = [], onClose }) {
         <div className="preview-modal__screen">
           <span className="preview-modal__label">{camara.nombre}</span>
           <img
-            ref={imgRef}
-            src={`http://localhost:8000/video/video_feed/${camara.id}?t=${Date.now()}`}
+            key={streamKey}
+            src={`http://localhost:8000/video/video_feed/${camara.id}?t=${streamKey}`}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             alt={camara.nombre}
           />

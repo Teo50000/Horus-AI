@@ -1,6 +1,7 @@
 from typing import Optional
 from pydantic import BaseModel, field_validator
 from sqlmodel import SQLModel, Field
+from dotenv import load_dotenv
 
 
 class Camara(SQLModel, table=True):
@@ -35,5 +36,5 @@ class CamaraConfig(SQLModel, table=True):
 
 class NumeroEmergencia(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    telefono: str
+    telefono: Optional[str] = None
     nombre: Optional[str] = None  # ej: "Policía", "Bomberos", "Jefe"

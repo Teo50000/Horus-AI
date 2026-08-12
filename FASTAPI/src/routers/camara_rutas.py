@@ -124,7 +124,17 @@ async def recibir_prediccion(camara: Camara):
             confidence=camara.confidence,
             timestamp=camara.timestamp
         )
-
+         # Email a TODOS los contactos registrados
+        contactos = session.exec(select(NumeroEmergencia)).all()
+        for contacto in contactos:
+            if contacto.telefono:  # por si hay alguno sin email
+                enviar_alerta_email(
+                    email_receiver=contacto.telefono,
+                    event_type=camara.event_type,
+                    nombre_camara=camara.camara_config_nombre,
+                    confidence=camara.confidence,
+                    timestamp=camara.timestamp
+                )
         return camara
     
 @camara_router.post("/config", tags=["Camaras"])

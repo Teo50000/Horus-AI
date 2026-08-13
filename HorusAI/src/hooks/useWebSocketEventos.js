@@ -1,73 +1,89 @@
 import { useEffect, useRef, useState } from "react";
 
-/**
- * useWebSocketEventos
- * Se conecta al WebSocket de FastAPI y mantiene un array de eventos
- * que crece en tiempo real a medida que el backend los emite.
- *
- * No reemplaza useHistorial: le da el array `eventos` que necesita.
- *
- * Uso:
- *   const { eventos, conectado } = useWebSocketEventos("ws://localhost:8000/ws/eventos");
- *   const historial = useHistorial(eventos);
- */
+function mapearTipo(eventType) {
+  const mapa = {
+    fire: "Incendio",
+    assault: "Agresión",
+    faint: "Desmayo",
+    desmayo: "Desmayo",
+    incendio: "Incendio",
+  };
+  return mapa[eventType?.toLowerCase()] ?? eventType;
+}
+
 export function useWebSocketEventos(url) {
-  const [eventos, setEventos] = useState([]);
+  const [eventos, setEventos]   = useState([]);
   const [conectado, setConectado] = useState(false);
-  const wsRef = useRef(null);
+  const wsRef        = useRef(null);
+  const retryTimeout = useRef(null);
+  const intentos     = useRef(0);
+  const MAX_INTENTOS = 10;   // deja de intentar después de 10 fallos seguidos
+  const DELAY_BASE   = 2000; // empieza con 2 segundos, va subiendo
 
   useEffect(() => {
-    const ws = new WebSocket(url);
+    let cancelado = false; // evita reconectar si el componente se desmontó
 
-    ws.onopen = () => {
-      setConectado(true);
-      console.log("WebSocket conectado:", url);
-    };
+    const conectar = () => {
+      if (cancelado) return;
 
-    function mapearTipo(eventType) {
-      const mapa = {
-        fire: "Incendio",
-        assault: "Agresión",
-        faint: "Desmayo",
-        desmayo: "Desmayo",
-        incendio: "Incendio",
+      console.log(`WebSocket: intentando conectar (intento ${intentos.current + 1})...`);
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (cancelado) { ws.close(); return; }
+        console.log("WebSocket conectado:", url);
+        setConectado(true);
+        intentos.current = 0; // resetear contador al conectar exitosamente
       };
-      return mapa[eventType?.toLowerCase()] ?? eventType;
-    }
 
-    ws.onmessage = (event) => {
-      try {
-        console.log("RAW mensaje recibido:", event.data);
-        const nuevoEvento = JSON.parse(event.data);
-        // Agrega el evento nuevo al principio de la lista
-        const eventoMapeado = {
-          tipo: mapearTipo(nuevoEvento.event_type),
-          camara: nuevoEvento.camera_id,
-          fecha: nuevoEvento.timestamp,
-          confidence: nuevoEvento.confidence,
-          detalle: nuevoEvento.description,
+      ws.onmessage = (event) => {
+        try {
+          const raw = JSON.parse(event.data);
+          const eventoMapeado = {
+            id:         `${raw.camera_id}-${raw.timestamp}`,
+            tipo:       mapearTipo(raw.event_type),
+            camara:     raw.nombre_camara ?? `Camara ${raw.camera_id}`,
+            fecha:      raw.timestamp,
+            confidence: raw.confidence,
+          };
+          setEventos((prev) => [eventoMapeado, ...prev]);
+        } catch (err) {
+          console.error("Error al parsear evento:", err);
         }
-        setEventos((prev) => [nuevoEvento, ...prev]);
-      } catch (err) {
-        console.error("Error al parsear evento:", err);
-      }
+      };
+
+      ws.onclose = () => {
+        if (cancelado) return;
+        setConectado(false);
+        console.log("WebSocket desconectado");
+
+        // Reintentar con backoff exponencial
+        if (intentos.current < MAX_INTENTOS) {
+          const delay = Math.min(DELAY_BASE * 2 ** intentos.current, 30000); // máximo 30s
+          console.log(`WebSocket: reintentando en ${delay / 1000}s...`);
+          intentos.current += 1;
+          retryTimeout.current = setTimeout(conectar, delay);
+        } else {
+          console.warn("WebSocket: máximo de intentos alcanzado, dejando de reintentar.");
+        }
+      };
+
+      ws.onerror = () => {
+        // onerror siempre va seguido de onclose, así que la reconexión
+        // se maneja ahí — solo logueamos
+        console.warn("WebSocket: error de conexión");
+      };
     };
 
-    ws.onclose = () => {
-      setConectado(false);
-      console.log("WebSocket desconectado");
-    };
+    conectar();
 
-    ws.onerror = (err) => {
-      console.error("Error en WebSocket:", err);
-    };
-
-    // Limpieza: cerrar conexión al desmontar el componente
     return () => {
-      ws.close();
+      cancelado = true;
+      clearTimeout(retryTimeout.current);
+      wsRef.current?.close();
     };
   }, [url]);
 
   return { eventos, conectado };
 }
-

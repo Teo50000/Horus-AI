@@ -25,7 +25,9 @@ app.add_middleware(
     allow_origins=[
         #"http://127.0.0.1:5500",
         #"http://localhost:5500",
-        "http://localhost:1420"
+        "http://localhost:1420",
+        "http://tauri.localhost",      # Tauri producción
+        "tauri://localhost"
     ],
     allow_credentials=True,
     allow_methods=["*"],

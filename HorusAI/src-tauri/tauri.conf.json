@@ -14,7 +14,8 @@
       {
         "title": "horusai",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "devtools": true
       }
     ],
     "security": {
@@ -24,6 +25,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": [
+      "binaries/backend"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

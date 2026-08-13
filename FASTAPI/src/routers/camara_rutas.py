@@ -230,3 +230,19 @@ def eliminar_prediccion(camera_id: int):
             content={"mensaje": f"Predicción {camera_id} eliminada correctamente"},
             status_code=200
         )
+
+@camara_router.delete("/emergencia/{id}", tags=["Telefonos"])
+def eliminar_mail(id: int) -> List[NumeroEmergencia]:
+    with Session(engine) as session:
+        db_item = session.get(NumeroEmergencia, id)
+        if not db_item:
+            return JSONResponse(
+                content={"error": "Mail no encontrada"},
+                status_code=404
+            )
+        session.delete(db_item)
+        session.commit()
+        return JSONResponse(
+            content={"mensaje": f"Mail {id} eliminado correctamente"},
+            status_code=200
+        )

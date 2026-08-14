@@ -6,9 +6,10 @@ from src.services.email_service import enviar_alerta_email
 try:
     enviar_alerta_email(
         event_type="Incendio",
-        camara_config_nombre="Camara entrada",
+        nombre_camara="Camara entrada",
         confidence=0.97,
-        timestamp="2026-07-04T16:10:00"
+        timestamp="2026-07-04T16:10:00",
+        email_receiver="laritamuina@gmail.com"
     )
     print("✅ Email enviado correctamente")
 except Exception as e:

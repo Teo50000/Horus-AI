@@ -4,6 +4,7 @@ import os
 
 CARPETA_CAUCA = "../data/keypoints/caucafall"
 CARPETA_LE2I = "../data/keypoints/le2i_omnifall"
+CARPETA_UPFALL = "../data/keypoints/upfall"
 CARPETA_SALIDA = "../data/processed"
 
 # División por sujeto (no por secuencia individual)
@@ -139,6 +140,33 @@ def cargar_le2i(lista_sujetos=None):
         })
     return datos
 
+def cargar_upfall(lista_sujetos=None):
+    #UPFall: mismo formato de .npz que le2i, con sujeto y label_omnifall adentro
+    datos = []
+    for archivo in glob.glob(os.path.join(CARPETA_UPFALL, "*.npz")):
+        npz = np.load(archivo, allow_pickle=True)
+        sujeto = str(npz["sujeto"])  # ej: "upfall_s3"
+
+        if lista_sujetos is not None and sujeto not in lista_sujetos:
+            continue
+
+        kp = npz["keypoints"]
+        if kp.shape[0] == 0:
+            continue
+
+        sub = int(npz["label_omnifall"])
+        label3 = {1: "fall", 2: "fallen"}.get(sub, "adl")
+
+        datos.append({
+            "keypoints": agregar_velocidades(normalizar_esqueleto(interpolar_frames_faltantes(kp))),
+            "label": str(npz["label"]),
+            "label3": label3,
+            "origen": "upfall",
+            "grupo": sujeto,
+            "subclase": sub,
+            "archivo_origen": os.path.basename(archivo),
+        })
+    return datos
 
 def procesar_split(sujetos, escenarios, nombre_split):
     datos = cargar_caucafall(sujetos) + cargar_le2i(escenarios) #junto los dos datasets en una sola lista
@@ -160,10 +188,9 @@ def procesar_split(sujetos, escenarios, nombre_split):
 if __name__ == "__main__":
     os.makedirs(CARPETA_SALIDA, exist_ok=True)
 
-    # Ya no armo splits fijos: la validación cruzada por sujeto usa todo el dataset
+    # Ya no armo splits fijos, la validación cruzada por sujeto usa todo el dataset
     # y va rotando qué sujeto queda afuera en cada fold.
-    todos = cargar_caucafall(None) + cargar_le2i(None)
-
+    todos = cargar_caucafall(None) + cargar_le2i(None) + cargar_upfall(None)
     labels = [d["label"] for d in todos]
     grupos = sorted({d["grupo"] for d in todos})
 

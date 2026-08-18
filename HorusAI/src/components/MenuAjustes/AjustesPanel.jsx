@@ -7,6 +7,7 @@ import "./AjustesPanel.css";
 export default function AjustesPanel({
   onClose,
   numeros,
+  cargando,
   editandoId,
   agregarNumero,
   toggleEdicion,
@@ -24,30 +25,40 @@ export default function AjustesPanel({
 
       <div className="ajustes-panel__content">
 
+        {/* ── Notificación de eventos ── */}
         <section className="ajustes-section">
           <h2 className="ajustes-section__title">Notificación de eventos</h2>
 
-          <div className="ajustes-numeros-lista">
-            {numeros.map((n) => (
-              <NumeroItem
-                key={n.id}
-                numero={n}
-                editando={editandoId === n.id}
-                onToggleEdicion={toggleEdicion}
-                onActualizar={actualizarNumero}
-                onGuardar={guardarNumero}
-              />
-            ))}
-          </div>
+          {cargando ? (
+            <p className="ajustes-panel__cargando">Cargando teléfonos...</p>
+          ) : (
+            <div className="ajustes-numeros-lista">
+              {numeros.map((n) => (
+                <NumeroItem
+                  key={n.id}
+                  numero={n}
+                  editando={editandoId === n.id}
+                  onToggleEdicion={toggleEdicion}
+                  onActualizar={actualizarNumero}
+                  onGuardar={guardarNumero}
+                />
+              ))}
+            </div>
+          )}
 
           <AddButton onClick={agregarNumero} label="Agregar número" />
 
           <div className="ajustes-toggle-row">
             <span className="ajustes-toggle-label">Alerta de eventos en pantalla</span>
-            <Toggle checked={alertaEnPantalla} onChange={toggleAlerta} label="Alerta en pantalla" />
+            <Toggle
+              checked={alertaEnPantalla}
+              onChange={toggleAlerta}
+              label="Alerta en pantalla"
+            />
           </div>
         </section>
 
+        {/* ── Optimización de la IA ── */}
         <section className="ajustes-section">
           <h2 className="ajustes-section__title">Optimización de la IA</h2>
 

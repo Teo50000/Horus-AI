@@ -1,17 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
-/**
- * useAjustes
- * Lógica del panel de ajustes:
- *  - Lista de números de emergencia (agregar, editar, guardar)
- *  - Toggle de alerta en pantalla
- *  - Toggles de optimización de IA
- */
-
-const NUMEROS_INICIALES = [
-  { id: 1, nombre: "Numero1", telefono: "+5491125654003" },
-  { id: 2, nombre: "Numero2", telefono: "+5491125654003" },
-];
+const API = "http://localhost:8000/camaras";
 
 const CONFIG_IA_INICIAL = {
   incendios: true,
@@ -21,34 +10,61 @@ const CONFIG_IA_INICIAL = {
 
 export function useAjustes() {
   // ── Números de emergencia ─────────────────────────────────────
-  const [numeros, setNumeros] = useState(NUMEROS_INICIALES);
-  // Cuál fila está en modo edición: null o el id del número
+  const [numeros, setNumeros]       = useState([]);
+  const [cargando, setCargando]     = useState(true);
   const [editandoId, setEditandoId] = useState(null);
 
-  const agregarNumero = () => {
-    const nuevoId = Date.now();
-    setNumeros((prev) => [
-      ...prev,
-      { id: nuevoId, nombre: `Numero${prev.length + 1}`, telefono: "" },
-    ]);
-    // Arranca en modo edición automáticamente
-    setEditandoId(nuevoId);
-  };
+  // Carga inicial desde la DB
+  useEffect(() => {
+    fetch(`${API}/emergencia`)
+      .then((res) => {
+        if (res.status === 404) return [];
+        if (!res.ok) throw new Error(`Error ${res.status}`);
+        return res.json();
+      })
+      .then((data) => setNumeros(data))
+      .catch((err) => console.error("Error al cargar teléfonos:", err))
+      .finally(() => setCargando(false));
+  }, []);
 
-  const toggleEdicion = (id) => {
+  const toggleEdicion = (id) =>
     setEditandoId((prev) => (prev === id ? null : id));
-  };
 
-  const actualizarNumero = (id, campo, valor) => {
+  const actualizarNumero = (id, campo, valor) =>
     setNumeros((prev) =>
       prev.map((n) => (n.id === id ? { ...n, [campo]: valor } : n))
     );
+
+  const guardarNumero = async (id) => {
+    setEditandoId(null);
+    const numero = numeros.find((n) => n.id === id);
+    if (!numero) return;
+    try {
+      await fetch(`${API}/emergencia/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ telefono: numero.telefono, nombre: numero.nombre }),
+      });
+      console.log("Teléfono guardado:", numero);
+    } catch (err) {
+      console.error("Error al guardar teléfono:", err);
+    }
   };
 
-  const guardarNumero = (id) => {
-    setEditandoId(null);
-    // TODO: conectar con backend
-    console.log("Guardar número:", numeros.find((n) => n.id === id));
+  const agregarNumero = async () => {
+    const nuevo = { nombre: `Numero${numeros.length + 1}`, telefono: "" };
+    try {
+      const res = await fetch(`${API}/emergencia`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(nuevo),
+      });
+      const data = await res.json();
+      setNumeros((prev) => [...prev, data]);
+      setEditandoId(data.id); // arranca en modo edición
+    } catch (err) {
+      console.error("Error al agregar teléfono:", err);
+    }
   };
 
   // ── Toggle alerta en pantalla ─────────────────────────────────
@@ -57,8 +73,8 @@ export function useAjustes() {
   const toggleAlerta = () => {
     setAlertaEnPantalla((prev) => {
       const nuevo = !prev;
-      // TODO: conectar con backend
       console.log("Alerta en pantalla:", nuevo);
+      // TODO: conectar con backend cuando haya endpoint
       return nuevo;
     });
   };
@@ -69,24 +85,22 @@ export function useAjustes() {
   const toggleIA = (clave) => {
     setConfigIA((prev) => {
       const nuevo = { ...prev, [clave]: !prev[clave] };
-      // TODO: conectar con backend
       console.log("Config IA:", nuevo);
+      // TODO: conectar con backend cuando haya endpoint
       return nuevo;
     });
   };
 
   return {
-    // Números
     numeros,
+    cargando,
     editandoId,
     agregarNumero,
     toggleEdicion,
     actualizarNumero,
     guardarNumero,
-    // Alerta
     alertaEnPantalla,
     toggleAlerta,
-    // IA
     configIA,
     toggleIA,
   };

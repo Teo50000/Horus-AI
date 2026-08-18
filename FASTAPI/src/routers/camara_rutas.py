@@ -52,6 +52,12 @@ def get_camaras_config() -> List[CamaraConfig] | dict:
         db_item = session.exec(select(CamaraConfig)).all()
         return db_item
 
+@camara_router.get("/emergencia", tags = ["Telefonos"])
+def get_mails() -> List[NumeroEmergencia] | dict:
+    with Session(engine) as session:
+        db_item = session.exec(select(NumeroEmergencia)).all()
+        return db_item
+
 #parametros por ruta:
 @camara_router.get("/{id}", tags = ["Camaras de prueba"])
 #funcion encargada de devolver un mensaje al acceder a la ruta raíz del servidor

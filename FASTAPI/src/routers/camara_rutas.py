@@ -24,12 +24,13 @@ async def websocket_endpoint(
     camara_config_id: int = Query(default=0)
 ):
     await manager.connect(websocket, camara_config_id)
+
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket, camara_config_id)
-
+        
 @camara_router.get("", tags = ["Camaras de prueba"], status_code=200, response_description="Nos debe devolver una respuesta exitosa")
 #funcion encargada de devolver un mensaje al acceder a la ruta raíz del servidor
 def get_camaras() -> List[Camara]:

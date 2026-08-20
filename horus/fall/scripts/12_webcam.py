@@ -24,6 +24,17 @@ VENTANA, PASO, EPOCAS = 32, 4, 40
 
 UMBRAL = 0.5          # punto de operación elegido en el barrido
 PERSISTENCIA = 1.0    # segundos que la probabilidad debe sostenerse para disparar
+TOLERANCIA_SIN_DETECCION_SEG = 0.6  # cuánto tiempo real tolero sin detección antes de resetear
+UMBRAL_VISIBILIDAD = 0.5  # visibility mínima (mediapipe) de cadera/hombro para confiar en el frame
+
+# --- regla de persistencia: exigir un pico de movimiento real antes de la alarma ---
+# Una pose estática en el piso es ambigua (fallen vs. lying calmo). Lo que sí
+# distingue una caída real es que HUBO un movimiento brusco justo antes. Sin esto,
+# alguien que se acuesta y se queda quieto mucho tiempo le da al clasificador
+# muchas oportunidades de fallar una sola vez y sostenerlo el segundo necesario.
+FACTOR_PICO_VELOCIDAD = 3.0   # cuánto por encima del "ruido normal" cuenta como pico
+VENTANA_POST_PICO_SEG = 4.0   # cuánto tiempo después de un pico dejo disparar la alarma
+ALPHA_BASELINE = 0.05         # suavizado del nivel de "ruido normal" de velocidad
 
 IDX_CI, IDX_CD, IDX_HI, IDX_HD = 23, 24, 11, 12
 MODELO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pose_landmarker.task")
@@ -36,6 +47,14 @@ def normalizar_frame(kp):
     esc = np.linalg.norm(hom - cad)
     esc = esc if esc > 1e-6 else 1e-6
     return (kp[:, :2] - cad) / esc
+
+
+def visibilidad_confiable(kp):
+    """Promedio de 'visibility' de cadera/hombro. Un recorte cortado en el borde
+    de cuadro (persona saliendo, o acostada y semi-ocluida) suele devolver
+    landmarks igual, pero con visibility baja en estos puntos clave."""
+    vis = kp[[IDX_CI, IDX_CD, IDX_HI, IDX_HD], 3]
+    return vis.mean() >= UMBRAL_VISIBILIDAD
 
 
 class DatasetLista(Dataset):
@@ -116,10 +135,14 @@ if __name__ == "__main__":
     buffer = deque(maxlen=VENTANA)   # últimos 32 frames procesados
     ultimo_norm = None               # último frame válido, para rellenar huecos sin mirar al futuro
     anterior_norm = None             # frame previo, para la velocidad
+    ultima_deteccion_ts = None       # reloj de la última detección confiable (None = todavía ninguna)
     prob_actual = 0.0
     inicio_racha = None
     alarma_activa = False
     alarmas = []
+
+    baseline_vel = None               # nivel "normal" de velocidad, se adapta solo en calma
+    ultimo_pico_ts = None             # reloj del último movimiento brusco real detectado
 
     tiempos = {"yolo": [], "pose": [], "modelo": [], "total": []}
     n_frame = 0
@@ -163,18 +186,53 @@ if __name__ == "__main__":
             r = landmarker.detect(img)
             if r.pose_landmarks:
                 kp = np.array([[p.x, p.y, p.z, p.visibility] for p in r.pose_landmarks[0]])
-                kp_norm = normalizar_frame(kp)
+                # descarto detecciones con baja confianza en cadera/hombro: suelen
+                # ser recortes cortados (persona saliendo de cuadro, o semi-oculta
+                # acostada) que dan una pose geométricamente distorsionada aunque
+                # mediapipe igual devuelva landmarks.
+                if visibilidad_confiable(kp):
+                    kp_norm = normalizar_frame(kp)
         tiempos["pose"].append(time.perf_counter() - t0)
 
-        # sin detección: repito el último válido (nunca miro hacia adelante)
-        if kp_norm is None:
-            kp_norm = ultimo_norm
-
         if kp_norm is not None:
-            ultimo_norm = kp_norm
-            vel = kp_norm - anterior_norm if anterior_norm is not None else np.zeros_like(kp_norm)
-            anterior_norm = kp_norm
-            buffer.append(np.concatenate([kp_norm, vel], axis=1))
+            ultima_deteccion_ts = t_frame
+
+        sin_deteccion_seg = (t_frame - ultima_deteccion_ts) if ultima_deteccion_ts is not None else None
+
+        if sin_deteccion_seg is None or sin_deteccion_seg > TOLERANCIA_SIN_DETECCION_SEG:
+            # nunca hubo detección, o hace rato que no hay ninguna confiable:
+            # dejo de arrastrar la última pose y reseteo todo el estado en vez
+            # de seguir clasificando con datos viejos/congelados.
+            buffer.clear()
+            ultimo_norm = None
+            anterior_norm = None
+            inicio_racha = None
+            alarma_activa = False
+            prob_actual = 0.0
+        else:
+            deteccion_real_este_frame = kp_norm is not None
+
+            # hueco corto (parpadeo de detección): repito el último válido,
+            # nunca miro hacia adelante
+            if kp_norm is None:
+                kp_norm = ultimo_norm
+
+            if kp_norm is not None:
+                ultimo_norm = kp_norm
+                vel = kp_norm - anterior_norm if anterior_norm is not None else np.zeros_like(kp_norm)
+                anterior_norm = kp_norm
+                buffer.append(np.concatenate([kp_norm, vel], axis=1))
+
+                # detecto picos de movimiento solo con detecciones reales: un
+                # frame repetido (fallback) tiene vel=0 y ensuciaría el baseline.
+                if deteccion_real_este_frame:
+                    v_escalar = np.linalg.norm(vel[[IDX_CI, IDX_CD, IDX_HI, IDX_HD]], axis=1).mean()
+                    if baseline_vel is None:
+                        baseline_vel = v_escalar
+                    elif baseline_vel > 1e-6 and v_escalar > baseline_vel * FACTOR_PICO_VELOCIDAD:
+                        ultimo_pico_ts = t_frame
+                    else:
+                        baseline_vel = baseline_vel * (1 - ALPHA_BASELINE) + v_escalar * ALPHA_BASELINE
 
         #clasificación: solo con el buffer lleno y cada PASO frames
         t0 = time.perf_counter()
@@ -191,9 +249,17 @@ if __name__ == "__main__":
                 if inicio_racha is None:
                     inicio_racha = t_seg
                 elif not alarma_activa and (t_seg - inicio_racha) >= PERSISTENCIA:
-                    alarma_activa = True
-                    alarmas.append(t_seg)
-                    print(f"  ALARMA a los {t_seg:.1f}s")
+                    hubo_movimiento_brusco = (
+                        ultimo_pico_ts is not None
+                        and (t_frame - ultimo_pico_ts) <= VENTANA_POST_PICO_SEG
+                    )
+                    if hubo_movimiento_brusco:
+                        alarma_activa = True
+                        alarmas.append(t_seg)
+                        print(f"  ALARMA a los {t_seg:.1f}s")
+                    # si no hubo un movimiento brusco reciente, no disparo:
+                    # es alguien quieto en el piso desde hace rato, no alguien
+                    # que se acaba de caer.
             else:
                 inicio_racha = None
                 alarma_activa = False

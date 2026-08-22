@@ -2,6 +2,9 @@ import { useState, useEffect, useMemo } from "react";
 
 const API = "http://localhost:8000/camaras";
 
+// ⚠️ Reemplazar cuando el backend tenga el endpoint
+const DELETE_CAMARA = (id) => `${API}/${id}`;
+
 function dbAItem(config) {
   return {
     id: config.id,
@@ -17,7 +20,10 @@ export function useCamaras() {
   const [query, setQuery]       = useState("");
   const [editandoId, setEditandoId] = useState(null);
 
-  // ── Carga inicial desde la DB ────────────────────────────────
+  // ── Modo borrado ──────────────────────────────────────────────
+  const [modoBorrado, setModoBorrado]           = useState(false);
+  const [seleccionadosIds, setSeleccionadosIds] = useState(new Set());
+
   useEffect(() => {
     fetch(`${API}/config`)
       .then((res) => {
@@ -30,13 +36,11 @@ export function useCamaras() {
       .finally(() => setCargando(false));
   }, []);
 
-  // ── Cámaras sueltas ──────────────────────────────────────────
   const camarasSueltas = useMemo(
     () => items.filter((i) => i.tipo === "camara"),
     [items]
   );
 
-  // ── Búsqueda ─────────────────────────────────────────────────
   const itemsFiltrados = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return items;
@@ -56,7 +60,6 @@ export function useCamaras() {
     }, []);
   }, [items, query]);
 
-  // ── Edición ──────────────────────────────────────────────────
   const toggleEdicion = (id) =>
     setEditandoId((prev) => (prev === id ? null : id));
 
@@ -64,15 +67,11 @@ export function useCamaras() {
     setEditandoId(null);
     const esSector   = idEdicion.startsWith("s-");
     const idNumerico = parseInt(idEdicion.split("-")[1]);
-
-    if (esSector) return; // sectores solo en frontend por ahora
-
+    if (esSector) return;
     const camara = items
       .flatMap((i) => (i.tipo === "sector" ? i.camaras : [i]))
       .find((c) => c.id === idNumerico);
-
     if (!camara) return;
-
     try {
       await fetch(`${API}/config/${idNumerico}`, {
         method: "PUT",
@@ -108,7 +107,48 @@ export function useCamaras() {
       })
     );
 
-  // ── Crear ────────────────────────────────────────────────────
+  // ── Modo borrado ──────────────────────────────────────────────
+  const toggleModoBorrado = () => {
+    setModoBorrado((prev) => !prev);
+    setSeleccionadosIds(new Set());
+  };
+
+  const toggleSeleccion = (id) => {
+    setSeleccionadosIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const confirmarBorrado = async () => {
+    const ids = [...seleccionadosIds];
+    try {
+      await Promise.all(
+        ids.map((id) => fetch(DELETE_CAMARA(id), { method: "DELETE" }))
+      );
+      // Borra cámaras sueltas y también las de dentro de sectores
+      setItems((prev) =>
+        prev
+          .filter((item) => !(item.tipo === "camara" && ids.includes(item.id)))
+          .map((item) =>
+            item.tipo === "sector"
+              ? { ...item, camaras: item.camaras.filter((c) => !ids.includes(c.id)) }
+              : item
+          )
+      );
+    } catch (err) {
+      console.error("Error al borrar cámaras:", err);
+    }
+    setModoBorrado(false);
+    setSeleccionadosIds(new Set());
+  };
+
+  const cancelarBorrado = () => {
+    setModoBorrado(false);
+    setSeleccionadosIds(new Set());
+  };
+
   const confirmarCreacion = async ({ tipo, nombre, hardwareId, camaraIds, sectorId }) => {
     if (tipo === "camara") {
       try {
@@ -122,25 +162,21 @@ export function useCamaras() {
       } catch (err) {
         console.error("Error al crear cámara:", err);
       }
-
     } else if (tipo === "sector") {
       const nuevoId = `sector-${Date.now()}`;
       const camarasDelSector = items
         .filter((i) => i.tipo === "camara" && camaraIds.includes(i.id))
         .map(({ id, nombre }) => ({ id, nombre }));
-
       setItems((prev) => {
         const sinMovidas = prev.filter(
           (i) => !(i.tipo === "camara" && camaraIds.includes(i.id))
         );
         return [...sinMovidas, { id: nuevoId, tipo: "sector", nombre, camaras: camarasDelSector }];
       });
-
     } else if (tipo === "agregarASector") {
       const camarasAMover = items
         .filter((i) => i.tipo === "camara" && camaraIds.includes(i.id))
         .map(({ id, nombre }) => ({ id, nombre }));
-
       setItems((prev) => {
         const sinMovidas = prev.filter(
           (i) => !(i.tipo === "camara" && camaraIds.includes(i.id))
@@ -163,5 +199,12 @@ export function useCamaras() {
     toggleEdicion, guardarNombre,
     actualizarNombreSector, actualizarNombreCamara,
     confirmarCreacion,
+    // borrado
+    modoBorrado,
+    seleccionadosIds,
+    toggleModoBorrado,
+    toggleSeleccion,
+    confirmarBorrado,
+    cancelarBorrado,
   };
 }

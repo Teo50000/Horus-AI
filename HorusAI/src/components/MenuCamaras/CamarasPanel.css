@@ -56,3 +56,53 @@
   color: rgba(255, 255, 255, 0.5);
   font-size: 18px;
 }
+
+.camaras-panel__camara-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.camaras-panel__checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #ff4444;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── Botones de acción (+ y − / Cancelar y Aceptar) ── */
+.camaras-panel__acciones {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.camaras-panel__cancelar {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.camaras-panel__cancelar:hover { border-color: rgba(255,255,255,0.5); }
+
+.camaras-panel__confirmar {
+  background: #ff4444;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.camaras-panel__confirmar:disabled { opacity: 0.4; cursor: not-allowed; }
+.camaras-panel__confirmar:not(:disabled):hover { opacity: 0.85; }

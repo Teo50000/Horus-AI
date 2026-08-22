@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 
 const API = "http://localhost:8000/camaras";
 
+const DELETE_TELEFONO = (id) => `${API}/emergencia/${id}`;
+
 const CONFIG_IA_INICIAL = {
   incendios: true,
   desmayos: true,
@@ -14,7 +16,10 @@ export function useAjustes() {
   const [cargando, setCargando]     = useState(true);
   const [editandoId, setEditandoId] = useState(null);
 
-  // Carga inicial desde la DB
+  // ── Estado de modo borrado ────────────────────────────────────
+  const [modoBorrado, setModoBorrado]           = useState(false);
+  const [seleccionadosIds, setSeleccionadosIds] = useState(new Set());
+
   useEffect(() => {
     fetch(`${API}/emergencia`)
       .then((res) => {
@@ -45,7 +50,6 @@ export function useAjustes() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ telefono: numero.telefono, nombre: numero.nombre }),
       });
-      console.log("Teléfono guardado:", numero);
     } catch (err) {
       console.error("Error al guardar teléfono:", err);
     }
@@ -61,10 +65,45 @@ export function useAjustes() {
       });
       const data = await res.json();
       setNumeros((prev) => [...prev, data]);
-      setEditandoId(data.id); // arranca en modo edición
+      setEditandoId(data.id);
     } catch (err) {
       console.error("Error al agregar teléfono:", err);
     }
+  };
+
+  // ── Modo borrado ──────────────────────────────────────────────
+  const toggleModoBorrado = () => {
+    setModoBorrado((prev) => !prev);
+    setSeleccionadosIds(new Set()); // limpia selección al entrar/salir
+  };
+
+  const toggleSeleccion = (id) => {
+    setSeleccionadosIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const confirmarBorrado = async () => {
+    const ids = [...seleccionadosIds];
+    try {
+      await Promise.all(
+        ids.map((id) =>
+          fetch(DELETE_TELEFONO(id), { method: "DELETE" })
+        )
+      );
+      setNumeros((prev) => prev.filter((n) => !ids.includes(n.id)));
+    } catch (err) {
+      console.error("Error al borrar teléfonos:", err);
+    }
+    setModoBorrado(false);
+    setSeleccionadosIds(new Set());
+  };
+
+  const cancelarBorrado = () => {
+    setModoBorrado(false);
+    setSeleccionadosIds(new Set());
   };
 
   // ── Toggle alerta en pantalla ─────────────────────────────────
@@ -74,7 +113,6 @@ export function useAjustes() {
     setAlertaEnPantalla((prev) => {
       const nuevo = !prev;
       console.log("Alerta en pantalla:", nuevo);
-      // TODO: conectar con backend cuando haya endpoint
       return nuevo;
     });
   };
@@ -86,7 +124,6 @@ export function useAjustes() {
     setConfigIA((prev) => {
       const nuevo = { ...prev, [clave]: !prev[clave] };
       console.log("Config IA:", nuevo);
-      // TODO: conectar con backend cuando haya endpoint
       return nuevo;
     });
   };
@@ -99,6 +136,14 @@ export function useAjustes() {
     toggleEdicion,
     actualizarNumero,
     guardarNumero,
+    // borrado
+    modoBorrado,
+    seleccionadosIds,
+    toggleModoBorrado,
+    toggleSeleccion,
+    confirmarBorrado,
+    cancelarBorrado,
+    // resto
     alertaEnPantalla,
     toggleAlerta,
     configIA,

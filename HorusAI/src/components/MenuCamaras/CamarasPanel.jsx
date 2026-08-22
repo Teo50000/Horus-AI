@@ -3,6 +3,7 @@ import SearchBar from "../MenuHist/SearchBar/SearchBar";
 import SectorItem from "./SectorItem/SectorItem";
 import CamaraItem from "./CamaraItem/CamaraItem";
 import AddButton from "../MenuAjustes/AddButton/AddButton";
+import RemoveButton from "../RemoveButton/RemoveButton";
 import PreviewModal from "./PreviewModal/PreviewModal";
 import CreacionModal from "./CreacionModal/CreacionModal";
 import CloseButton from "../CloseButton/CloseButton";
@@ -11,25 +12,23 @@ import "./CamarasPanel.css";
 
 export default function CamarasPanel({ onClose, onPinearCamara, onPinearSector }) {
   const {
-    items,
-    cargando,
-    camarasSueltas,
+    items, cargando, camarasSueltas,
     query, setQuery,
-    editandoId,
-    toggleEdicion, guardarNombre,
+    editandoId, toggleEdicion, guardarNombre,
     actualizarNombreSector, actualizarNombreCamara,
     confirmarCreacion,
+    modoBorrado, seleccionadosIds,
+    toggleModoBorrado, toggleSeleccion,
+    confirmarBorrado, cancelarBorrado,
   } = useCamaras();
 
-  // ── Preview carrusel ─────────────────────────────────────────
-  const [camarasPreview, setCamarasPreview] = useState([]);
+  const [camarasPreview, setCamarasPreview]     = useState([]);
+  const [modalConfig, setModalConfig]           = useState(null);
+  const [previewHardware, setPreviewHardware]   = useState(null);
+
   const abrirPreviewSector = (sector) => setCamarasPreview(sector.camaras);
   const abrirPreviewCamara = (camara)  => setCamarasPreview([camara]);
   const cerrarPreview      = ()        => setCamarasPreview([]);
-
-  // ── Modal de creación ────────────────────────────────────────
-  const [modalConfig, setModalConfig]         = useState(null);
-  const [previewHardware, setPreviewHardware] = useState(null);
 
   const abrirModalGeneral  = ()       => setModalConfig({ modo: "camara" });
   const abrirModalAgregarA = (sector) => setModalConfig({ modo: "agregarASector", sector });
@@ -43,7 +42,6 @@ export default function CamarasPanel({ onClose, onPinearCamara, onPinearSector }
   return (
     <>
       <div className="camaras-panel" role="region" aria-label="Cámaras">
-
         <CloseButton onClick={onClose} />
 
         <SearchBar
@@ -54,9 +52,9 @@ export default function CamarasPanel({ onClose, onPinearCamara, onPinearSector }
 
         <div className="camaras-panel__lista">
           {cargando ? (
-            <p className="camaras-panel__pending">Cargando cámaras...</p>
+            <p className="camaras-panel__cargando">Cargando cámaras...</p>
           ) : items.length === 0 ? (
-            <p className="camaras-panel__pending">No hay cámaras configuradas.</p>
+            <p className="camaras-panel__vacio">No hay cámaras configuradas.</p>
           ) : (
             items.map((item) =>
               item.tipo === "sector" ? (
@@ -71,33 +69,65 @@ export default function CamarasPanel({ onClose, onPinearCamara, onPinearSector }
                   onCrearCamara={() => abrirModalAgregarA(item)}
                   onPreviewSector={abrirPreviewSector}
                   onPinear={() => onPinearSector(item)}
+                  // borrado
+                  modoBorrado={modoBorrado}
+                  seleccionadosIds={seleccionadosIds}
+                  onToggleSeleccion={toggleSeleccion}
                 />
               ) : (
-                <CamaraItem
-                  key={item.id}
-                  camara={item}
-                  sectorId={null}
-                  enSector={false}
-                  editando={editandoId === `c-${item.id}`}
-                  onToggleEdicion={toggleEdicion}
-                  onGuardar={guardarNombre}
-                  onActualizarNombre={actualizarNombreCamara}
-                  onPreview={() => abrirPreviewCamara(item)}
-                  onPinear={() => onPinearCamara(item)}
-                />
+                <div key={item.id} className="camaras-panel__camara-row">
+                  {modoBorrado && (
+                    <input
+                      type="checkbox"
+                      className="camaras-panel__checkbox"
+                      checked={seleccionadosIds.has(item.id)}
+                      onChange={() => toggleSeleccion(item.id)}
+                    />
+                  )}
+                  <CamaraItem
+                    camara={item}
+                    sectorId={null}
+                    enSector={false}
+                    editando={!modoBorrado && editandoId === `c-${item.id}`}
+                    onToggleEdicion={toggleEdicion}
+                    onGuardar={guardarNombre}
+                    onActualizarNombre={actualizarNombreCamara}
+                    onPreview={() => abrirPreviewCamara(item)}
+                    onPinear={() => onPinearCamara(item)}
+                  />
+                </div>
               )
             )
           )}
         </div>
 
-        <AddButton onClick={abrirModalGeneral} label="Crear cámara o sector" />
-
+        {/* Botones + y − / Confirmar y Cancelar */}
+        <div className="camaras-panel__acciones">
+          {modoBorrado ? (
+            <>
+              <button className="camaras-panel__cancelar" onClick={cancelarBorrado}>
+                Cancelar
+              </button>
+              <button
+                className="camaras-panel__confirmar"
+                onClick={confirmarBorrado}
+                disabled={seleccionadosIds.size === 0}
+              >
+                Aceptar
+              </button>
+            </>
+          ) : (
+            <>
+              <AddButton onClick={abrirModalGeneral} label="Crear cámara o sector" />
+              <RemoveButton onClick={toggleModoBorrado} label="Eliminar cámaras" />
+            </>
+          )}
+        </div>
       </div>
 
       {camarasPreview.length > 0 && (
         <PreviewModal camaras={camarasPreview} onClose={cerrarPreview} />
       )}
-
       {modalConfig && (
         <CreacionModal
           modoInicial={modalConfig.modo}
@@ -108,7 +138,6 @@ export default function CamarasPanel({ onClose, onPinearCamara, onPinearSector }
           onPreviewHardware={(cam) => setPreviewHardware(cam)}
         />
       )}
-
       {previewHardware && (
         <PreviewModal
           camaras={[{ id: previewHardware.id, nombre: previewHardware.nombre }]}

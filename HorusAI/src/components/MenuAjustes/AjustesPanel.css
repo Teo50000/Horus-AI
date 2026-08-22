@@ -188,3 +188,69 @@
 .toggle__input:checked + .toggle__track::after {
   transform: translateX(18px);
 }
+
+.ajustes-panel__cargando {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.3);
+  text-align: center;
+  padding: 12px 0;
+  margin: 0;
+}
+
+/* ── Fila con checkbox en modo borrado ── */
+.ajustes-numero-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ajustes-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #ff4444;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── Botones de acción (+ y − / Cancelar y Aceptar) ── */
+.ajustes-acciones {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ajustes-acciones__cancelar {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.ajustes-acciones__cancelar:hover { border-color: rgba(255,255,255,0.5); }
+
+.ajustes-acciones__confirmar {
+  background: #ff4444;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.ajustes-acciones__confirmar:disabled { opacity: 0.4; cursor: not-allowed; }
+.ajustes-acciones__confirmar:not(:disabled):hover { opacity: 0.85; }
+
+.ajustes-panel__cargando {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.3);
+  text-align: center;
+  padding: 12px 0;
+  margin: 0;
+}

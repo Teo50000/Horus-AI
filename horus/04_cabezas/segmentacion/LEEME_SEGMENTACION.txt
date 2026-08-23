@@ -1,0 +1,311 @@
+========================================================================
+ HORUS · cabeza de segmentacion · 04_cabezas/segmentacion/
+========================================================================
+
+Clases:  0 fondo   1 agua   2 humo   3 fuego   (255 = ignorar)
+
+Es la cabeza de "superficies/regiones" del diagrama (ej: agua). Comparte el
+backbone ResNet-50+FPN con las otras tres: la imagen se procesa UNA vez.
+
+Archivos
+--------
+  preparar_datos.bat                   TODO EN UNO: doble clic y listo
+  segmentation_head.py                 la cabeza (modelo + perdida + predict)
+  descargar_datasets_segmentacion.py   arma datasets/mezcla_seg_v1
+  entrenar_segmentacion_cuda.py        entrenamiento optimizado
+  prueba_segmentacion.py               prueba de humo, sin bajar nada
+  LEEME_SEGMENTACION.txt               esto
+
+Camino corto: doble clic en preparar_datos.bat. Instala lo que falte, te
+muestra que fuentes estan listas, te deja elegir cuanto bajar (5 / 23 / 53 GB)
+y deja el dataset verificado. Lo de abajo es el detalle por si algo falla.
+
+Antes de nada, y despues de tocar cualquiera de los tres scripts:
+
+  python prueba_segmentacion.py
+
+Fabrica datasets falsos con la forma de los reales, los convierte, valida, y
+entrena de punta a punta contra el SharedBackbone de verdad. Termina en un par
+de minutos en CPU y no toca internet.
+
+
+------------------------------------------------------------------------
+ 0. INSTALAR
+------------------------------------------------------------------------
+
+Verificado el 2026-08-22 en esta maquina:
+
+  Python 3.13 (C:\Program Files\Python313) -- es el unico instalado
+  torch 2.13.0+cu126, CUDA 12.6
+  NVIDIA RTX 3500 Ada Generation Laptop GPU, 12 GB, sm_89
+  Instalados: numpy, pillow, pycocotools, huggingface_hub, gdown, kaggle
+
+Con eso `python` a secas ya sirve para todo. Si en otra maquina falta torch:
+
+  python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
+  python descargar_datasets_segmentacion.py --instalar-deps
+
+(cu128 si es una RTX 50xx.) Verificar la placa:
+
+  python -c "import torch;print(torch.cuda.get_device_name(0), torch.version.cuda)"
+
+Kaggle: credenciales en %USERPROFILE%\.kaggle\kaggle.json
+Roboflow: FALTA la key. Sale de https://app.roboflow.com/settings/api y se pasa
+con --roboflow-key o en la variable ROBOFLOW_API_KEY. Vale la pena: son las dos
+unicas fuentes que anotan humo Y fuego en la misma escena.
+
+
+------------------------------------------------------------------------
+ 1. BAJAR Y ARMAR EL DATASET
+------------------------------------------------------------------------
+
+  python descargar_datasets_segmentacion.py --instalar-deps   # deps opcionales
+  python descargar_datasets_segmentacion.py --listar          # las 17 fuentes
+  python descargar_datasets_segmentacion.py --estado          # cual esta lista
+
+`--estado` es el que conviene mirar ANTES de largar la descarga: dice que
+fuente esta lista, cual ya se bajo, cual ya se convirtio, cuanto falta y si
+alguna clase se quedo sin ninguna fuente (eso aborta el entrenamiento despues).
+
+
+  # una fuente de cada clase, ~5 GB: sirve para probar todo el camino
+  python descargar_datasets_segmentacion.py --solo ade20k,bowfire,multinatsmoke,rf_fuego_humo --hf --roboflow-key XXXX
+
+  # todo lo que no pide credenciales (~23 GB)
+  python descargar_datasets_segmentacion.py
+
+  # todo (~53 GB de crudos)
+  python descargar_datasets_segmentacion.py --todo --roboflow-key XXXX
+
+  # revisar lo armado
+  python descargar_datasets_segmentacion.py --verificar
+
+Se puede cortar con Ctrl-C y volver a correr: cada descarga y cada extraccion
+dejan un `.ok` al lado y no se repiten. Las descargas HTTP reanudan por Range,
+asi que un corte a mitad del zip de 18 GB de COCO no te hace volver a empezar.
+
+--purgar-crudos  borra el zip y el arbol extraido de cada fuente apenas
+                 termina de convertirla. Baja el pico de disco de ~85 GB a
+                 ~35 GB. Si despues queres rehacer una fuente, la baja de nuevo.
+--tope-fuente N  limita cuantas muestras aporta cada fuente.
+--lado-max 1024  lado largo maximo al que se reescala todo (default).
+
+Resultado:
+
+  datasets/mezcla_seg_v1/
+    imagenes/train/*.jpg      imagenes/val/*.jpg
+    mascaras/train/*.png      mascaras/val/*.png     (PNG con paleta)
+    manifiesto.jsonl          una linea por muestra
+    clases.json
+    reporte.md                pixeles por clase, muestras por fuente, avisos
+
+Las mascaras se abren con cualquier visor: fondo negro, agua azul, humo gris,
+fuego naranja, ignorar magenta.
+
+
+------------------------------------------------------------------------
+ 2. LO IMPORTANTE: POR QUE HAY UN 255
+------------------------------------------------------------------------
+
+Ninguna fuente publica anota las cuatro clases. Un dataset de fuego marca la
+llama y deja TODO lo demas en fondo -- incluida la columna de humo que sale de
+esa misma llama. Entrenando con eso tal cual, la clase humo recibe supervision
+negativa masiva y nunca despega.
+
+Dos capas resuelven eso:
+
+1) `anotadas` -- cada muestra declara que clases sabe etiquetar su fuente, y
+   queda escrito en el manifiesto. `SegmentationHead.compute_loss()` calcula la
+   perdida con un SOFTMAX RESTRINGIDO a ese subconjunto: los logits de las
+   clases que la fuente no miro se enmascaran antes del softmax, asi que
+   predecir "humo" sobre el fondo de una foto de agua no se penaliza.
+
+   La clase fondo, que todas las fuentes comparten, es la que ata las escalas
+   de logits entre datasets. Por eso `anotadas` siempre incluye el 0.
+
+   Esto no es teoria: `prueba_segmentacion.py` entrena con tres fuentes que
+   anotan UNA clase cada una y verifica que las tres lleguen a IoU > 0,2. Sin
+   el softmax restringido, cada fuente le ensenaria a las otras dos que su
+   clase no existe.
+
+2) `halo` -- alrededor de cada region positiva se marca un anillo de N pixeles
+   como 255. Ahi vive lo que la fuente no anoto: humo pegado a la llama, espuma
+   en el borde del agua, error de trazado del anotador. El ancho por fuente
+   esta en el registro (`halo=`), en pixeles.
+
+Si agregas una fuente nueva, lo unico que hay que hacer bien es declarar
+`clases=` correcto. El entrenamiento aborta si una mascara usa una clase que su
+fuente no declara.
+
+
+------------------------------------------------------------------------
+ 3. ENTRENAR
+------------------------------------------------------------------------
+
+  python entrenar_segmentacion_cuda.py --revisar     # valida datos y sale
+  python entrenar_segmentacion_cuda.py --autotest    # prueba el codigo
+  python entrenar_segmentacion_cuda.py --epocas 60 --batch 16
+  python entrenar_segmentacion_cuda.py --reanudar checkpoints/head_last.pt
+
+Flags que importan:
+  --batch N        16 entra en 12 GB a 384. Con 24 GB proba 32.
+  --acumular N     batch efectivo = batch*N sin gastar mas VRAM.
+  --tam 384        = BackboneConfig.input_size. NO lo cambies sin cambiar
+                   tambien el del camino caliente: la cabeza aprende la
+                   geometria que ve.
+  --precision bf16 default. fp16 solo en placas sin bf16 (pre-Ampere).
+  --compile        torch.compile: ~15-25% mas rapido, primera epoca lenta.
+  --ema 0.999      promedio movil de pesos. Casi siempre suma; 0 lo apaga.
+  --peso-dice 0.5  peso del termino Dice sobre la CE.
+
+Salida (checkpoints/):
+  backbone.pt      backbone congelado con pesos de ImageNet
+  head_best.pt     mejor por mIoU de riesgo (clases 1..3, sin fondo)
+  head_last.pt     para reanudar
+  historial.json   metricas por epoca
+
+REGLA: head_best.pt y backbone.pt VIAJAN JUNTOS. La cabeza esta entrenada
+contra esos features exactos; con otro backbone predice cualquier cosa. Es la
+misma regla que en la cabeza de objetos.
+
+Que mirar en la salida de cada epoca:
+  mIoU-riesgo     promedio de agua/humo/fuego. Es el que elige el checkpoint.
+                  El mIoU con fondo incluido miente: con 90% de fondo, un
+                  modelo que predice fondo siempre parece decente.
+  restringido     cada muestra compite solo entre las clases que su fuente
+                  anota. Comparable entre fuentes distintas.
+  sin restringir  las 4 clases compitiendo. Es la metrica honesta y siempre
+                  va a ser mas baja. Si la brecha entre las dos no se achica
+                  con las epocas, faltan fuentes que anoten varias clases
+                  juntas (las de Roboflow son las unicas que lo hacen).
+
+
+------------------------------------------------------------------------
+ 4. QUE SE OPTIMIZO Y POR QUE
+------------------------------------------------------------------------
+
+* Solo `extractor` + `fpn`, nunca `SharedBackbone.forward()`. El forward
+  completo tambien calcula el embedding, el GRU temporal y la novedad, y esa
+  ultima hace `float(...norm())`: un sync GPU->CPU por batch, ademas de estado
+  por camara que en entrenamiento no sirve. Es el mismo atajo que toma el
+  camino de objetos.
+* Backbone congelado en `no_grad` + `eval` permanente. Sin activaciones
+  intermedias guardadas, la VRAM del batch la dicta la cabeza sola.
+* pretrained=True y se guarda. `BackboneConfig.pretrained` es False por
+  defecto -- el mismo bug que tenia `entrenar_objetos.py`. Sin features de
+  ImageNet la cabeza no separa humo de cielo ni agua de asfalto mojado.
+* bf16 (no fp16), channels_last, TF32, cuDNN benchmark, AdamW fusionado.
+* El DataLoader sube uint8 y la normalizacion se hace en GPU: 4x menos bytes
+  por PCIe que subir float32.
+* El mejor checkpoint se elige por mIoU, no por perdida de validacion.
+* El dataset se revisa ANTES de la epoca 1 y se aborta si algo no cierra.
+* Cero `.item()` por batch: la matriz de confusion se acumula en GPU con
+  bincount.
+* GroupNorm en la cabeza, no BatchNorm: con batch chico las estadisticas de BN
+  meten ruido justo en las clases raras.
+* El sesgo de salida arranca en el prior (fondo ~90% de los pixeles).
+* Muestreo ponderado por fuente: sin eso COCO-Stuff domina la mezcla y el
+  fuego aparece una vez cada varias epocas efectivas.
+* Jitter de color sobre 0..1, antes de normalizar. Sobre el tensor ya
+  normalizado, "multiplicar por 1,2" no es subir el brillo.
+* Geometria igual a produccion. `FramePreprocessor` reescala el frame entero a
+  384x384 DEFORMANDO el aspecto. Entrenar con recortes cuadrados le ensenaria
+  una geometria que en produccion no ve nunca: train usa recortes de area y
+  aspecto variables reescalados a 384x384, y val el frame entero a 384x384.
+
+Lo que NO se hizo, a proposito:
+
+* No se cachean features. En objetos convenia (~3 MB por foto). Aca son tres
+  niveles y ~1 MB por foto en fp16, pero por CADA recorte aleatorio: cachear
+  mataria el aumento de datos, que es lo que sostiene las clases con pocas
+  imagenes.
+* No se agrego un nivel a stride 4. Habria que tocar `_RETURN_NODES` en
+  `shared_backbone.py` y eso le mueve el piso a la cabeza de objetos, que ya
+  esta validada. Agua, humo y fuego son regiones grandes: stride 8 alcanza.
+
+
+------------------------------------------------------------------------
+ 5. ORDEN SUGERIDO DE OPTIMIZACION (despues de que entrene bien)
+------------------------------------------------------------------------
+
+  1. bf16 + channels_last                (ya viene por default)
+  2. torch.compile                       (--compile)
+  3. batch multi-camara en inferencia
+  4. ONNX y despues TensorRT FP16
+  5. TensorRT INT8 -- ultimo, calibrando con frames de las camaras reales
+  6. bajar --tam a 320 -- se pierde humo lejano, que es justo la deteccion
+     temprana que interesa
+
+El argmax y el upsample final conviene dejarlos fuera del engine TensorRT, por
+la misma razon por la que el NMS se quedo en PyTorch en objetos: el umbral de
+area y la resolucion de salida se tocan seguido y no queres reconstruir el
+.plan cada vez.
+
+
+------------------------------------------------------------------------
+ 6. FUENTES DEL DATASET
+------------------------------------------------------------------------
+
+AGUA
+  cocostuff        COCO-Stuff 164k       https://github.com/nightrome/cocostuff
+  ade20k           SceneParse150         https://groups.csail.mit.edu/vision/datasets/ADE20K/
+  atlantis         5.195 waterbodies     https://github.com/smhassanerfani/atlantis
+  riwa             rios, camara de mano  kaggle: franzwagner/river-water-segmentation-dataset
+  flood_area       inundacion urbana     kaggle: faizalkarim/flood-area-segmentation
+  flood_semantic                         kaggle: lihuayang111265/flood-semantic-segmentation-dataset
+  flood_masks                            kaggle: saiharshitjami/flood-images-mask-segmentation
+  floodnet         dron, opt-in          kaggle: aletbm/aerial-imagery-dataset-floodnet-challenge
+
+HUMO
+  multinatsmoke    WACV 2026, real       https://huggingface.co/datasets/hongjinzhao0615/MultiNatSmoke
+  smoke100k        sintetico, topeado    https://bigmms.github.io/cheng_gcce19_smoke100k/
+  smoke5k          manual                https://github.com/redlessme/Transmission-BVM
+
+FUEGO
+  bowfire          fuego real, limpio    https://bitbucket.org/gbdi/bowfire-dataset/
+  fire_seg_*                             kaggle: diversisai/... y killa92/...
+  corsican         manual, el mejor      https://cfdb.univ-corse.fr/
+
+HUMO + FUEGO (los unicos que anotan las dos en la misma escena)
+  rf_fuego_humo    Roboflow              roboflow-universe-projects/fire-and-smoke-segmentation
+  rf_fuego_humo_2  Roboflow              project-sdorc/fire-smoke-az0ku
+
+Las marcadas "manual" piden registro o tienen el link en un Drive que cambia
+seguido. Bajalas a mano, descomprimilas en `descargas_crudas/<nombre>/` y volve
+a correr el script: el conversor generico empareja imagen y mascara por nombre
+de archivo, sin importar como esten organizadas las carpetas.
+
+Revisa las licencias antes de produccion: varias son CC BY-NC-SA (no comercial).
+
+
+------------------------------------------------------------------------
+ 7. SI ALGO SALE MAL
+------------------------------------------------------------------------
+
+"No module named 'torch'"
+    Estas corriendo con otro Python. `py -0` y usa el que tiene torch.
+
+"la clase X no aparece en NINGUNA muestra"
+    Falta una fuente de esa clase. Corre --listar y fijate cual quedo afuera
+    por credenciales.
+
+"mascaras/... usa clases [n] que su fuente no declara"
+    El conversor de esa fuente escribe una clase que `clases=` no lista.
+    Arreglar el registro o el conversor.
+
+"N pixeles descartados por declarar una clase fuera de 'anotadas'"
+    Lo mismo, detectado durante el entrenamiento. No rompe la corrida (esos
+    pixeles se ignoran) pero significa que una fuente esta mal declarada.
+
+"no se emparejo ninguna imagen con su mascara"
+    El dataset cambio de estructura. Mira que hay en descargas_crudas/<f>/ y
+    si hace falta agregale una pista en PISTAS_MASCARA o un `excluir`.
+
+CUDA out of memory
+    Bajar --batch y subir --acumular para mantener el batch efectivo. Recien
+    despues tocar el modelo.
+
+El mIoU de humo se queda en cero
+    Casi siempre es que quedo poca fuente de humo. Mira reporte.md: si "humo"
+    tiene menos de ~2.000 imagenes, sumale multinatsmoke y las de Roboflow
+    antes de tocar hiperparametros.

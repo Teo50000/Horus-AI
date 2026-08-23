@@ -1,0 +1,10 @@
+{
+  "clases": [
+    "fondo",
+    "agua",
+    "humo",
+    "fuego"
+  ],
+  "ignorar": 255,
+  "nota": "`anotadas` lista las clases que la fuente de cada muestra sabe etiquetar. El entrenamiento aplica softmax restringido a ese subconjunto: asi el fondo de una foto de incendio no ensena 'aca no hay agua' cuando la fuente nunca miro el agua."
+}

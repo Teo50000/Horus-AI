@@ -1,6 +1,9 @@
 CARPETA DE DATASETS — cabeza de objetos
 =========================================
 
+>> Para elegir de dónde bajar el dato, leé DATASETS.md (al lado de este
+>> archivo): tiene la lista verificada con licencias y links directos.
+
 Cada dataset va en su propia subcarpeta, en formato YOLO:
 
     datasets/
@@ -33,35 +36,102 @@ FORMATO DE CADA .txt (formato YOLO estándar):
     Foto sin objetos = .txt vacío (o sin .txt). También entrena:
     le enseña a la red que ahí NO hay nada (baja falsos positivos).
 
-FUENTES Y REMAPEO DE ÍNDICES (cada dataset numera desde 0, hay que
-corregir los índices al mezclar):
 
-    D-Fire (github.com/gaiasd/DFireDataset)
-        0=smoke -> 0 (humo)   1=fire -> 1 (llama)      [sin cambios]
+FUENTES Y REMAPEO DE ÍNDICES
+----------------------------
+Cada dataset numera desde 0, hay que corregir los índices al mezclar. Es EL
+paso donde se rompe todo. entrenar_objetos_cuda.py revisa esto antes de la
+primera época y aborta si encuentra índices fuera de 0..6.
 
-    CrowdHuman vía Roboflow (export YOLO)
-        0=person -> 2 (persona)
+    D-Fire — github.com/gaiasd/DFireDataset — CC0, comercial OK
+        0=smoke -> 0 (humo)   1=fire -> 1 (llama)      [SIN CAMBIOS]
+        21.527 fotos, de las cuales 9.838 vacías (negativos gratis).
+        OJO: deduplicar con pHash ANTES de partir train/val — tiene ~15% de
+        duplicados y si no, hay fuga y el mAP miente.
 
-    OD-WeaponDetection, Univ. de Granada
-    (github.com/ari-dasci/OD-WeaponDetection)
-        pistol -> 3 (pistola)    knife -> 4 (cuchillo)
-        smartphone (de Sohas) -> 5 (celular)
-        (monedero/billete/tarjeta de Sohas: descartar — muy chicos
-        para vigilancia; de lo raro se encarga el VLM)
+    Pyro-SDIS — huggingface.co/datasets/pyronear/pyro-sdis — Apache-2.0
+        0=smoke -> 0 (humo)
+        33.636 fotos de cámaras FIJAS de torres de bomberos. Es lo que a
+        D-Fire le falta: humo tenue y lejano, cámara estática.
 
-    Paquetes: Roboflow Universe "package detection" -> 6 (paquete)
-    (SKU-110K sirve si querés góndolas densas; remapear todo a 6)
+    Monash Guns Dataset — github.com/MarcusLimJunYi/Monash-Guns-Dataset — MIT
+        pistol -> 3 (pistola)
+        5.500 fotos escenificadas sobre cámaras CCTV reales.
 
-BALANCE: usar cantidades parecidas por clase (~3.000-5.000 fotos).
-15.000 fotos de personas contra 2.000 de cuchillos sesga la red.
+    Open Images V7 — CC BY, comercial OK. Bajar por MID:
+        /m/01g317 Person       -> 2 (persona)   [filtrar IsGroupOf=0, IsDepiction=0]
+        /m/0gxl3  Handgun      -> 3 (pistola)
+        /m/04ctx  Knife        -> 4 (cuchillo)
+        /m/058qzx Kitchen knife-> 4 (cuchillo)
+        /m/050k8  Mobile phone -> 5 (celular)
+        /m/025dyy Box          -> 6 (paquete)
 
-ENTRENAR:
-    python entrenar_objetos.py --dataset datasets/mezcla_v1
+    MEVA — mevadata.org — CC BY 4.0
+        Corpus de CCTV fijo real con IR nocturno, para auto-etiquetar.
+        NO usar su .geom.yml como ground truth: solo anota a los actores de
+        actividades, no a toda la gente del frame. Usarlo tal cual le enseña
+        al modelo a NO detectar personas.
 
-Los pesos quedan en checkpoints/ (head_best.pt y head_last.pt).
-OJO: si cambiás las clases, los checkpoints viejos dejan de servir
-(la capa de salida cambia de tamaño). Hay que reentrenar.
+    package-at-front-door (Roboflow) — MIT
+        package -> 6 (paquete). 1.293 fotos, perspectiva de cámara de puerta.
 
-NOTA: no subir datasets a git — son pesados. Agregar a .gitignore:
+    boxes-iqjbg (Roboflow) — CC BY 4.0
+        parcel -> 6 (paquete). 3.064 fotos.
+
+    OD-WeaponDetection / Sohas — github.com/ari-dasci/OD-WeaponDetection
+        pistol -> 3   knife -> 4   smartphone -> 5
+        (monedero/billete/tarjeta: descartar — muy chicos para vigilancia;
+        de lo raro se encarga el VLM)
+        OJO CC BY-SA (share-alike) y son fotos WEB + frames de películas.
+        Entrenado solo da 0% mAP en objetos chicos (medido, APSIPA 2019).
+        Su único valor real: es el único público que anota CELULAR junto a
+        pistola y cuchillo en las mismas fotos.
+
+
+NO USAR (licencia no comercial — sirven para prototipo, NO para producto)
+------------------------------------------------------------------------
+    CrowdHuman        <- estaba en la lista vieja de este archivo. Los términos
+                         de Megvii dicen "non-commercial research and educational
+                         purposes". Que alguien lo resuba a Roboflow con etiqueta
+                         "CC BY 4.0" no relicencia nada. Además son fotos de
+                         Google Images de multitudes, no CCTV.
+    MOT17 / MOT20, VisDrone, CityPersons, LLVIP, SOMPT22   (CC BY-NC-SA)
+    USRT / Mock Attack de Sevilla                          (CC BY-NC)
+    SKU-110K, Parcel3D                                     (academic only)
+    AI For Mankind wildfire-smoke, DetectiumFire            (CC BY-NC-SA)
+    Smoke100k                                              (prohíbe comercial)
+    Objects365                                             (imágenes "academic only")
+    UCF-Crime                                              (sin licencia declarada)
+
+Las licencias de Roboflow Universe las declara el que sube, que casi nunca es
+dueño de las imágenes. Un "CC BY 4.0" ahí no protege de nada: verificá la
+procedencia antes de meterlo en un producto.
+
+
+BALANCE
+-------
+Usar cantidades parecidas por clase (~3.000-5.000 fotos). 15.000 fotos de
+personas contra 2.000 de cuchillos sesga la red. El chequeo previo avisa si
+hay desbalance de más de 8x.
+
+Bajá los exports de Roboflow SIN augmentation. Por defecto aplican 3x: no es
+más dato, es la misma foto triplicada, y le miente al chequeo de balance.
+
+
+ENTRENAR
+--------
+    python entrenar_objetos_cuda.py --dataset datasets/mezcla_v1 --batch 16
+
+Los pesos quedan en checkpoints/ (head_best.pt, head_last.pt y backbone.pt).
+Los tres van juntos: sin backbone.pt la inferencia arma un ResNet-50 distinto
+al del entrenamiento y las detecciones no valen nada.
+
+OJO: si cambiás las clases, los checkpoints viejos dejan de servir (la capa de
+salida cambia de tamaño). Hay que reentrenar.
+
+
+NO SUBIR DATASETS A GIT — son pesados. Agregar a .gitignore:
     horus/04_cabezas/objetos/datasets/
     horus/04_cabezas/objetos/checkpoints/
+    horus/04_cabezas/objetos/engines/
+    horus/04_cabezas/objetos/cache/

@@ -1,0 +1,72 @@
+# ===================================================================
+#  HORUS - que NO va al repositorio
+#
+#  Regla: al repo va lo que se ESCRIBE a mano. Lo que se DESCARGA o se
+#  GENERA queda afuera, porque se puede volver a producir con los
+#  scripts que si estan versionados.
+# ===================================================================
+
+# --- datasets --------------------------------------------------------
+# Son ~10 GB y 160.000 archivos solo en segmentacion. Se reconstruyen con
+# `descargar_datasets_segmentacion.py` / `bajar_datasets.py`, que si estan
+# en el repo. El manifiesto tambien se regenera: el split es por hash del
+# nombre, asi que dos maquinas arman exactamente el mismo dataset.
+# Ojo con la sintaxis: `datasets/**` NO sirve. Un patron con una barra
+# interna queda anclado a la raiz del repo, asi que solo agarraria un
+# /datasets/ de primer nivel y no horus/04_cabezas/*/datasets/. Con
+# `**/datasets/**` si. Y hay que re-incluir los DIRECTORIOS (`!**/datasets/**/`)
+# antes de re-incluir archivos: si git no puede descender al directorio,
+# nunca llega a evaluar la excepcion del archivo. Probado, no deducido.
+**/datasets/**
+!**/datasets/**/
+**/descargas_crudas/
+
+# Estos SI valen la pena: son chicos y documentan que se uso.
+!**/datasets/**/reporte.md
+!**/datasets/**/clases.json
+!**/datasets/**/LEEME.txt
+!**/datasets/**/DATASETS.md
+!**/datasets/**/data.yaml
+
+# --- pesos entrenados ------------------------------------------------
+# backbone.pt son 108 MB: GitHub RECHAZA cualquier archivo de mas de
+# 100 MB. Los modelos van por Releases o Git LFS, no por git normal.
+**/checkpoints/
+*.pt
+*.pth
+*.onnx
+*.plan
+*.engine
+*.trt
+
+# --- salidas y temporales -------------------------------------------
+diag*.txt
+captura_*.png
+*_horus.png
+historial.json
+*.mp4
+*.avi
+
+# --- python ----------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# --- credenciales: NUNCA ---------------------------------------------
+# Si alguna vez commiteas una key, cambiarla es lo unico que sirve:
+# borrarla del ultimo commit no la saca del historial.
+kaggle.json
+.kaggle/
+*.env
+.env
+secrets.json
+roboflow_config.json
+
+# --- sistema ---------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini

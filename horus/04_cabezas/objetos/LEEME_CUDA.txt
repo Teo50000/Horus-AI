@@ -1,0 +1,290 @@
+CABEZA DE OBJETOS · CAMINO CUDA
+================================
+
+Cuatro archivos nuevos. Ninguno pisa lo que ya había: objects_head.py,
+entrenar_objetos.py y probar_objetos.py siguen igual y siguen funcionando.
+
+    objects_engine.py          <- inferencia en producción (el camino caliente)
+    entrenar_objetos_cuda.py   <- entrenamiento optimizado
+    exportar_objetos.py        <- ONNX + engine TensorRT FP16/INT8
+    benchmark_objetos.py       <- cuánto gana cada cosa, medido en tu GPU
+
+Requisitos extra (los básicos ya están en horus/requirements.txt):
+    pip install onnx onnxsim            # solo para exportar
+    pip install tensorrt                # solo para el engine .plan
+El motor PyTorch anda sin ninguno de los dos.
+
+
+-------------------------------------------------------------------------
+1. EL ORDEN EN QUE SE USAN
+-------------------------------------------------------------------------
+
+    # a) ver qué da tu placa antes de tocar nada
+    python benchmark_objetos.py --camaras 4 --target-fps 5
+
+    # b) entrenar
+    python entrenar_objetos_cuda.py --dataset datasets/mezcla_v1 --batch 16
+
+    # c) mirar que detecte bien
+    python objects_engine.py 0 --ver --pesos checkpoints/head_best.pt
+
+    # d) si (a) no alcanzaba: exportar a TensorRT
+    python exportar_objetos.py --pesos checkpoints/head_best.pt --trt --int8 \
+        --calib-dir datasets/mezcla_v1/images/train --calib-num 500
+    python exportar_objetos.py --verificar engines/objetos_int8.plan \
+        --pesos checkpoints/head_best.pt
+
+    # e) volver a medir, ahora con el engine
+    python benchmark_objetos.py --pesos checkpoints/head_best.pt \
+        --trt engines/objetos_int8.plan
+
+
+-------------------------------------------------------------------------
+2. objects_engine.py — inferencia
+-------------------------------------------------------------------------
+
+Reemplaza al camino de probar_objetos.py en producción. Mismos resultados
+(hay un autotest que lo comprueba contra el predict() original), pero:
+
+  - preproceso en GPU: el frame viaja en uint8, el resize y la normalización
+    son kernels CUDA. Antes cv2+numpy hacían eso en el CPU;
+  - un solo módulo fusionado (backbone -> FPN -> torres), sin lógica Python
+    adentro: eso es lo que permite CUDA Graphs y torch.compile;
+  - anchors calculados UNA vez, no por frame;
+  - decode + NMS vectorizados sobre todo el batch: UN sync GPU->CPU por
+    frame en vez de uno por detección;
+  - fp16 / bf16 / channels_last / TF32 / CUDA Graphs;
+  - batch multi-cámara: N cámaras en un forward.
+
+Como librería:
+
+    from objects_engine import ObjectsEngine, EngineConfig
+
+    eng = ObjectsEngine(EngineConfig(
+        pesos="checkpoints/head_best.pt",
+        precision="fp16",       # fp16 | bf16 | fp32 | fp16-full
+        cuda_graphs=True,
+        max_batch=4,            # cuántas cámaras juntas
+    ))
+
+    r = eng.infer(frame_bgr, camera_id="cam-3")
+    for d in r.detections:
+        # d.bbox_xyxy ya viene en píxeles del frame ORIGINAL, no de 384x384
+        print(d.label, d.score, d.bbox_xyxy, d.needs_vlm)
+
+    # 4 cámaras de una (mismo alto/ancho en el lote):
+    lote = eng.infer_batch([f0, f1, f2, f3], camera_ids=["c0","c1","c2","c3"])
+
+El FrameResult expone .novelty y .incertidumbre, así que el gate del VLM
+sigue andando sin tocarlo:
+
+    from vlm_gate import VLMGate
+    if VLMGate().decide(r, head_uncertainty=r.incertidumbre):
+        ...mandar el crop al VLM...
+
+CLI (reemplazo directo de probar_objetos.py):
+
+    python objects_engine.py 0 --ver --pesos checkpoints/head_best.pt
+    python objects_engine.py rtsp://... --precision fp16
+    python objects_engine.py --autotest        # valida contra el original
+
+Qué precisión elegir:
+    fp16          arranca acá. Autocast, seguro, ~2x sobre fp32.
+    fp16-full     el modelo entero en half. Un poco más rápido que fp16 y
+                  mejor con CUDA Graphs. Si ves NaN, volvé a fp16.
+    bf16          mismo rendimiento que fp16 en Ada/Ampere, más estable.
+    fp32          para comparar o si algo se rompe.
+
+CUDA Graphs: graban la secuencia de kernels y la reproducen sin que el CPU
+tenga que reenviar cada llamada. Se nota cuando la red es rápida y el
+overhead de Python empieza a pesar (que es justo este caso). Si el batch
+cambia, se captura un grafo nuevo por tamaño. Si la captura falla, el motor
+avisa y sigue sin graphs.
+
+torch.compile: --compile. La primera pasada tarda ~1 minuto compilando;
+después suele empatar o ganarle a los graphs. Para un proceso que corre
+24/7 vale la pena; para probar cosas, molesta.
+
+
+-------------------------------------------------------------------------
+3. entrenar_objetos_cuda.py — entrenamiento
+-------------------------------------------------------------------------
+
+Mismo dataset y mismo formato YOLO que entrenar_objetos.py. Cambios:
+
+  - el DataLoader devuelve uint8 y la normalización se hace en GPU
+    (4x menos bytes por PCIe, mucho menos trabajo de CPU);
+  - bf16 por defecto: mismo throughput que fp16 en Ada/Ampere y sin
+    GradScaler ni riesgo de NaN;
+  - channels_last, TF32, cuDNN benchmark, AdamW fusionado;
+  - warmup + cosine, clipping, acumulación de gradiente, EMA de pesos;
+  - early stopping y checkpoint reanudable de verdad (optimizador,
+    scheduler, scaler y época incluidos);
+  - mAP@0.5 y mAP@0.75 por época. El "mejor" checkpoint se elige por mAP,
+    no por pérdida de validación: en detección la pérdida dice poco.
+
+    python entrenar_objetos_cuda.py --dataset datasets/mezcla_v1 \
+        --batch 16 --epocas 80 --precision bf16
+
+    python entrenar_objetos_cuda.py --reanudar checkpoints/head_last.pt
+    python entrenar_objetos_cuda.py --autotest     # 2 épocas sintéticas
+
+Si te quedás sin VRAM: bajá --batch y subí --acumular (batch efectivo =
+batch x acumular, misma matemática, menos memoria).
+
+--cachear-features
+    El backbone está CONGELADO, así que sus salidas nunca cambian. Con este
+    flag se calculan una vez, se guardan en disco en fp16, y las épocas
+    siguientes saltean ResNet-50 entero. La diferencia es grande (la cabeza
+    sola es una fracción del cómputo).
+    Cuesta disco: ~3 MB por foto (guarda la variante normal y la espejada,
+    para no perder el flip de aumentación). 5.000 fotos = ~15 GB. El script
+    te dice cuánto va a ocupar antes de arrancar y te da tiempo a cancelar.
+    Si cambiás el dataset o el input size, usá --rehacer-cache.
+
+Los checkpoints guardan {"head": pesos EMA, "head_raw": pesos crudos, ...}.
+El motor y el exportador leen las dos formas, y también los .pt viejos de
+entrenar_objetos.py.
+
+
+-------------------------------------------------------------------------
+3.bis  EL BACKBONE VIAJA CON EL CHECKPOINT (importante)
+-------------------------------------------------------------------------
+
+La cabeza se entrena sobre un backbone CONGELADO. Si en inferencia armás un
+backbone distinto al del entrenamiento, la cabeza ve features que nunca vio
+y las detecciones son ruido. Es el error más caro y más silencioso del
+pipeline: no tira excepción, simplemente detecta mal.
+
+Ojo con esto, que estaba mal en el camino original:
+
+    entrenar_objetos.py   ->  SharedBackbone()  ->  pretrained=False
+                              o sea, ResNet-50 congelado con pesos RANDOM
+
+Entrenar una cabeza de deteccion sobre features random casi no funciona. Si
+veniste viendo mAP que no arranca, era eso.
+
+entrenar_objetos_cuda.py usa pretrained=True (ImageNet, se baja una sola vez)
+y ademas guarda el backbone en checkpoints/backbone.pt, anotando el nombre
+adentro del checkpoint. objects_engine.py lo busca solo, al lado del .pt:
+
+    checkpoints/
+      head_best.pt     <- la cabeza (dice "backbone_file": "backbone.pt")
+      head_last.pt
+      backbone.pt      <- el backbone congelado, 108 MB
+
+Los dos archivos van juntos. Si movés el checkpoint a otra máquina, llevate
+backbone.pt también. Si falta, el motor avisa fuerte en vez de detectar mal.
+
+Los .pt viejos de entrenar_objetos.py siguen cargando (el motor los detecta),
+pero van a dar el aviso de "backbone SIN pesos": esos hay que reentrenarlos.
+
+
+-------------------------------------------------------------------------
+3.ter  CHEQUEO PREVIO DEL DATASET
+-------------------------------------------------------------------------
+
+Antes de la primera época, entrenar_objetos_cuda.py revisa el dataset y te
+muestra la distribución por clase:
+
+    [dataset:train] 4820 fotos · 11302 cajas
+    [dataset:train]   0 humo        3100   27.4% #############
+    [dataset:train]   1 llama       2890   25.6% ############
+    [dataset:train]   2 persona     4200   37.2% ##################
+    [dataset:train]   3 pistola        0    0.0%   <- SIN EJEMPLOS
+    ...
+
+Aborta si encuentra:
+  - índices de clase fuera de 0..6 (te faltó remapear alguno de los datasets
+    fuente — es EL error clásico al mezclar, ver datasets/LEEME.txt),
+  - coordenadas fuera de 0..1 (el formato YOLO es relativo, no en píxeles).
+
+Y avisa (sin abortar) si hay clases sin ejemplos o desbalance de más de 8x.
+
+Cinco segundos de chequeo contra horas de GPU tirada. Se saltea con
+--sin-revisar si sabés lo que estás haciendo.
+
+
+-------------------------------------------------------------------------
+4. exportar_objetos.py — ONNX y TensorRT
+-------------------------------------------------------------------------
+
+Se exporta solo la parte estática (preproceso -> backbone -> FPN -> torres).
+El decode y el NMS se quedan en PyTorch: ya están vectorizados en GPU y
+cuestan microsegundos, y meterlos adentro del engine ataría el umbral de
+score al build (cambiar el umbral obligaría a reconstruir el .plan, y en
+vigilancia eso se toca seguido).
+
+    # ONNX solo
+    python exportar_objetos.py --pesos checkpoints/head_best.pt --onnx
+
+    # FP16: rápido de construir, es el 80% de la ganancia
+    python exportar_objetos.py --pesos checkpoints/head_best.pt --trt --fp16
+
+    # INT8: lo que pide la arquitectura. Necesita fotos REALES de tus
+    # cámaras para calibrar (300-1000 alcanzan). Si calibrás con imágenes
+    # que no se parecen a la escena real, el modelo pierde precisión.
+    python exportar_objetos.py --pesos checkpoints/head_best.pt --trt --int8 \
+        --calib-dir datasets/mezcla_v1/images/train --calib-num 500
+
+    # SIEMPRE verificar antes de poner INT8 en producción:
+    python exportar_objetos.py --verificar engines/objetos_int8.plan \
+        --pesos checkpoints/head_best.pt --verif-imgs datasets/mezcla_v1/images/val
+
+La verificación compara el engine contra PyTorch fp32: diferencia máxima de
+logits y cuántas detecciones reaparecen con IoU>=0.9. Si INT8 baja mucho,
+quedate en FP16: perder una pistola por 3 ms no es negocio.
+
+El .onnx queda autocontenido (los pesos van adentro del archivo, no en un
+.onnx.data aparte) porque TensorRT no siempre resuelve el archivo externo.
+
+
+-------------------------------------------------------------------------
+5. benchmark_objetos.py — medir
+-------------------------------------------------------------------------
+
+Mide el camino COMPLETO (preproceso + red + decode + NMS), que es lo que
+tarda un frame de verdad. Hermano de 03_backbone/medir_fps.py, que mide
+solo el backbone.
+
+    python benchmark_objetos.py --todas --camaras 8 --target-fps 5
+    python benchmark_objetos.py --pesos checkpoints/head_best.pt \
+        --trt engines/objetos_fp16.plan --trt engines/objetos_int8.plan \
+        --csv resultados.csv
+    python benchmark_objetos.py --video muestra.mp4    # frames reales
+
+Todas las variantes corren con LOS MISMOS PESOS. Por eso la columna "dets"
+importa: si una variante detecta distinto que el baseline, el benchmark lo
+marca. Una variante rápida que detecta menos no es más rápida, está rota.
+
+Da latencia media, p50, p95, p99, FPS, VRAM y cuántas cámaras aguanta. El
+p95 es el número que importa para vigilancia: un pico de 300 ms cada tanto
+es un evento que llega tarde.
+
+
+-------------------------------------------------------------------------
+6. ORDEN EN QUE CONVIENE OPTIMIZAR
+-------------------------------------------------------------------------
+
+De mayor a menor retorno por esfuerzo:
+
+  1. fp16 + channels_last          gratis, ya viene por default
+  2. CUDA Graphs                   gratis, un flag
+  3. batch multi-cámara            si tenés más de una cámara por equipo
+  4. TensorRT FP16                 media hora de setup
+  5. torch.compile                 alternativa a 4 sin instalar nada
+  6. TensorRT INT8                 lo último: hay que calibrar y verificar
+  7. bajar input_size a 320/256    perdés objetos chicos (humo lejano)
+
+Antes de tocar el modelo, medí. El benchmark está para eso.
+
+
+-------------------------------------------------------------------------
+7. .gitignore
+-------------------------------------------------------------------------
+
+Agregar (además de lo que ya dice datasets/LEEME.txt):
+
+    horus/04_cabezas/objetos/engines/
+    horus/04_cabezas/objetos/cache/
+    horus/04_cabezas/objetos/.bench_tmp/

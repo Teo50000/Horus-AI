@@ -1,0 +1,26 @@
+# --- cabeza de objetos: qué NO va a git ---
+# Rutas relativas a esta carpeta (04_cabezas/objetos/).
+
+# Datasets: decenas de GB, reproducibles con bajar_datasets.py
+datasets/_crudo/
+datasets/_normalizado/
+datasets/mezcla_v1/
+cache/
+
+# Engines TensorRT: se compilan contra una GPU y una versión de TRT
+# concretas, así que no sirven en otra máquina.
+engines/
+
+# Checkpoints de entrenamiento: pesados y con estado del optimizador
+checkpoints/
+checkpoints_v*/
+.bench_tmp/
+revision/
+
+# EXCEPCIÓN: el checkpoint adelgazado sí se versiona (19 MB, solo inferencia).
+#   python exportar_objetos.py --adelgazar checkpoints/head_best.pt
+modelos/*
+!modelos/*.pt
+
+__pycache__/
+*.pyc

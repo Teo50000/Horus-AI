@@ -242,6 +242,18 @@ def revisar_dataset(ds: DatasetYoloRapido, split: str, clases: Sequence[str],
             sys.exit(f"\nCorregí el dataset '{split}' antes de entrenar. "
                      "Entrenar así es tiempo de GPU tirado.")
 
+    vacias = [f"{i} {n}" for i, n in enumerate(clases) if por_clase[i] == 0]
+    if vacias and fatal and split == "train":
+        print(f"\n[dataset:{split}] ❌ Estas clases NO tienen un solo ejemplo de "
+              f"entrenamiento:\n     {', '.join(vacias)}")
+        print("     Entrenar así produce un modelo CIEGO a esas clases: no va a")
+        print("     fallar, simplemente nunca las va a detectar. Para un sistema")
+        print("     de prevención, esa es la peor forma de fallar.")
+        print("\n     Conseguí el dato faltante (ver datasets/DATASETS.md), o si")
+        print("     es a propósito — por ejemplo para probar el pipeline —")
+        print("     agregá:  --permitir-clases-vacias")
+        sys.exit(1)
+
     vivas = [n for n in por_clase if n > 0]
     if len(vivas) > 1 and max(vivas) > 8 * min(vivas):
         print(f"[dataset:{split}] ⚠ desbalance fuerte "
@@ -446,6 +458,7 @@ def calcular_map(preds: List[Dict], gts: List[Dict], num_clases: int,
 
     for thr in iou_thrs:
         aps: List[float] = []
+        por_clase: Dict[int, float] = {}
         for c in range(num_clases):
             scores, tp, n_gt = [], [], 0
             for p, g in zip(preds, gts):
@@ -475,6 +488,7 @@ def calcular_map(preds: List[Dict], gts: List[Dict], num_clases: int,
                 continue
             if not scores:
                 aps.append(0.0)
+                por_clase[c] = 0.0
                 continue
             orden = np.argsort(-np.array(scores))
             tp_arr = np.array(tp)[orden]
@@ -486,10 +500,14 @@ def calcular_map(preds: List[Dict], gts: List[Dict], num_clases: int,
             prec = np.maximum.accumulate(prec[::-1])[::-1]
             rec = np.concatenate([[0.0], rec])
             prec = np.concatenate([[prec[0] if len(prec) else 0.0], prec])
-            aps.append(float(np.sum(np.diff(rec) * prec[1:])))
+            ap_c = float(np.sum(np.diff(rec) * prec[1:]))
+            aps.append(ap_c)
+            por_clase[c] = ap_c
         ap_thr = float(np.mean(aps)) if aps else 0.0
         aps_por_thr.append(ap_thr)
         salida[f"mAP@{thr:.2f}"] = ap_thr
+        if thr == iou_thrs[0]:
+            salida["_por_clase"] = dict(por_clase)
 
     salida["mAP"] = float(np.mean(aps_por_thr)) if aps_por_thr else 0.0
     return salida
@@ -522,6 +540,7 @@ class Ajustes:
     umbral_eval: float = 0.05
     reanudar: Optional[str] = None
     revisar: bool = True
+    permitir_vacias: bool = False
 
 
 def _sembrar(seed: int) -> None:
@@ -574,8 +593,8 @@ def entrenar(a: Ajustes, dir_base: Path, autotest: bool = False) -> float:
     if not autotest and a.revisar:
         clases = ObjectsHeadConfig(fpn_levels=_FPN_LEVELS,
                                    anchor_sizes=_ANCHOR_SIZES).classes
-        revisar_dataset(ds_tr, "train", clases)
-        revisar_dataset(ds_va, "val", clases)
+        revisar_dataset(ds_tr, "train", clases, fatal=not a.permitir_vacias)
+        revisar_dataset(ds_va, "val", clases, fatal=False)
 
     # --- modelo -----------------------------------------------------------
     backbone = SharedBackbone(
@@ -759,7 +778,13 @@ def entrenar(a: Ajustes, dir_base: Path, autotest: bool = False) -> float:
                         b = next(iter(pyr.values())).shape[0]
                         losses = head.compute_loss(pyr, [(a.tam, a.tam)] * b, tg)
                     val_loss += float(losses["loss_cls"] + losses["loss_box"])
-                    dets = head.predict(pyr, [(a.tam, a.tam)] * b)
+
+                    # predict() va en fp32 y FUERA del autocast a propósito:
+                    # sus pesos son fp32, y el NMS y el decode de torchvision
+                    # no toleran bien bf16/fp16 mezclado. Corre una vez por
+                    # época, así que el costo extra es irrelevante.
+                    pyr32 = {k: v.float() for k, v in pyr.items()}
+                    dets = head.predict(pyr32, [(a.tam, a.tam)] * b)
                     for i in range(b):
                         preds.append({
                             "boxes": np.array([d.bbox_xyxy for d in dets[i]],
@@ -789,7 +814,15 @@ def entrenar(a: Ajustes, dir_base: Path, autotest: bool = False) -> float:
               f"mAP75={metricas.get('mAP@0.75', 0.0):.4f}  "
               f"lr={sched.get_last_lr()[0]:.2e}  "
               f"{dt:.0f}s ({ips:.1f} img/s)  vram={vram:.1f}GB")
-        hist.append({"epoca": epoca, "val": val_loss, **metricas})
+        por_clase = metricas.get("_por_clase") or {}
+        if por_clase:
+            partes = [f"{cfg.classes[i][:4]}={por_clase.get(i, 0.0):.2f}"
+                      for i in range(cfg.num_classes)]
+            print("         AP50 por clase: " + "  ".join(partes))
+        hist.append({"epoca": epoca, "val": val_loss,
+                     **{k: v for k, v in metricas.items() if k != "_por_clase"},
+                     "ap50_por_clase": {cfg.classes[i]: por_clase.get(i, 0.0)
+                                        for i in range(cfg.num_classes)}})
 
         ck = {
             "head": (ema.state_dict() if ema else head.state_dict()),
@@ -809,6 +842,9 @@ def entrenar(a: Ajustes, dir_base: Path, autotest: bool = False) -> float:
             "backbone_pretrained": not autotest,
         }
         torch.save(ck, dir_ckpt / "head_last.pt")
+        # Se reescribe en CADA época, no al final: si la corrida se corta con
+        # Ctrl-C o se cae, el historial de lo ya hecho tiene que sobrevivir.
+        (dir_ckpt / "historial.json").write_text(json.dumps(hist, indent=2))
         if m50 > mejor:
             mejor, sin_mejora = m50, 0
             torch.save(ck, dir_ckpt / "head_best.pt")
@@ -819,7 +855,6 @@ def entrenar(a: Ajustes, dir_base: Path, autotest: bool = False) -> float:
                 print(f"\n[early stop] {a.paciencia} épocas sin mejorar el mAP50")
                 break
 
-    (dir_ckpt / "historial.json").write_text(json.dumps(hist, indent=2))
     print(f"\n[fin] mejor mAP@0.5 = {mejor:.4f}")
     print("Probalo con:")
     print("  python objects_engine.py 0 --ver --pesos checkpoints/head_best.pt")
@@ -854,6 +889,9 @@ def main() -> int:
     ap.add_argument("--sin-revisar", dest="revisar", action="store_false",
                     default=True,
                     help="saltear el chequeo previo del dataset")
+    ap.add_argument("--permitir-clases-vacias", action="store_true",
+                    help="entrenar aunque haya clases sin un solo ejemplo "
+                         "(útil para probar el pipeline; NO para el modelo real)")
     ap.add_argument("--autotest", action="store_true",
                     help="corre 2 épocas con datos sintéticos y sale")
     args = ap.parse_args()
@@ -864,11 +902,13 @@ def main() -> int:
                 compile=args.compile, cachear_features=args.cachear_features,
                 rehacer_cache=args.rehacer_cache, ema=args.ema,
                 paciencia=args.paciencia, seed=args.seed, tam=args.tam,
-                reanudar=args.reanudar, revisar=args.revisar)
+                reanudar=args.reanudar, revisar=args.revisar,
+                permitir_vacias=args.permitir_clases_vacias)
 
     if args.autotest:
         a.epocas, a.batch, a.workers, a.tam = 2, 4, 0, 128
         a.paciencia, a.ema, a.compile, a.reanudar = 0, 0.99, False, None
+        a.permitir_vacias = True
         print("=" * 70)
         print("AUTOTEST · 2 épocas con dataset sintético")
         print("=" * 70)

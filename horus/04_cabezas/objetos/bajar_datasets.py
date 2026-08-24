@@ -24,7 +24,6 @@ Dependencias (se instalan solo las de las fuentes que uses):
     pip install datasets huggingface_hub    # pyro-sdis
     pip install roboflow                    # fuentes de Roboflow
     pip install fiftyone                    # Open Images
-    pip install gdown                       # Monash Guns
     pip install kaggle                      # mirror de D-Fire
 
 Todo lo que baja va a datasets/_crudo/ y datasets/_normalizado/, que están en
@@ -39,7 +38,6 @@ import random
 import shutil
 import subprocess
 import sys
-import zipfile
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -68,10 +66,6 @@ def log(msg: str) -> None:
     print(msg, flush=True)
 
 
-def _hay(cmd: str) -> bool:
-    return shutil.which(cmd) is not None
-
-
 def _importable(mod: str) -> bool:
     """¿Está instalado el módulo? SIN importarlo.
 
@@ -84,6 +78,26 @@ def _importable(mod: str) -> bool:
         return importlib.util.find_spec(mod) is not None
     except (ImportError, ValueError, ModuleNotFoundError):
         return False
+
+
+def _clave_roboflow() -> str:
+    """Lee la key limpiando comillas y espacios: copiar/pegar suele arrastrarlos
+    y Roboflow devuelve un 401 críptico en vez de decir 'te sobra una comilla'."""
+    return os.environ.get("ROBOFLOW_API_KEY", "").strip().strip("\'\"").strip()
+
+
+def _pista_clave(k: str) -> str:
+    """Muestra la key sin exponerla entera."""
+    if not k:
+        return "(vacía)"
+    if len(k) <= 8:
+        return f"{k!r} — solo {len(k)} caracteres, es muy corta"
+    return f"{k[:4]}...{k[-3:]} ({len(k)} caracteres)"
+
+
+def _clave_sospechosa(k: str) -> bool:
+    obvias = {"tu_clave_aca", "tu_clave", "your_api_key", "xxx", "clave"}
+    return k.lower() in obvias or len(k) < 12 or " " in k
 
 
 def _imagenes(d: Path) -> List[Path]:
@@ -168,21 +182,40 @@ def _dl_dfire(dest: Path) -> bool:
     if any(dest.rglob("*.txt")):
         log("  ya está descargado")
         return True
-    if not _hay("kaggle"):
+    if not _importable("kaggle"):
         log("  ⚠ falta el CLI de kaggle: pip install kaggle")
         log("    o bajalo a mano de https://github.com/gaiasd/DFireDataset")
         log(f"    y descomprimilo en {dest}")
         return False
     dest.mkdir(parents=True, exist_ok=True)
-    r = subprocess.run(
-        ["kaggle", "datasets", "download", "-d",
-         "sayedgamal99/smoke-fire-detection-yolo", "-p", str(dest), "--unzip"],
-        capture_output=True, text=True)
-    if r.returncode != 0:
-        log(f"  ⚠ kaggle falló: {r.stderr.strip()[:200]}")
-        log("    Autenticate primero con:  kaggle auth login")
-        log("    (abre el navegador; no hay que copiar ningún archivo)")
+
+    slug = "sayedgamal99/smoke-fire-detection-yolo"
+    cmd = [sys.executable, "-m", "kaggle", "datasets", "download",
+           "-d", slug, "-p", str(dest), "--unzip"]
+    log(f"  bajando {slug} (~4 GB, puede tardar)")
+    log(f"  $ {' '.join(cmd[1:])}")
+    # SIN capture_output: así ves la barra de progreso del CLI en vivo. Si se
+    # captura, una descarga de 4 GB parece un cuelgue y un error queda mudo.
+    r = subprocess.run(cmd)
+
+    n_img = len(_imagenes(dest))
+    n_lbl = len(list(dest.rglob("*.txt")))
+    if r.returncode != 0 or n_img == 0:
+        log("")
+        log(f"  ⚠ NO se descargó nada (código {r.returncode}, "
+            f"{n_img} imágenes en disco)")
+        log("    Cosas para chequear, en orden:")
+        log("      1. ¿Aceptaste las reglas del dataset? Entrá una vez a")
+        log(f"         https://www.kaggle.com/datasets/{slug}")
+        log("         y hacé clic en Download; algunos datasets lo exigen.")
+        log("      2. Probá el comando a mano para ver el error completo:")
+        log(f"         {' '.join(cmd[1:])}")
+        log("      3. Si Kaggle no coopera, bajalo del origen:")
+        log("         https://github.com/gaiasd/DFireDataset")
+        log(f"         y descomprimilo en {dest}")
         return False
+
+    log(f"  OK · {n_img} imágenes y {n_lbl} etiquetas en {dest.name}")
     return True
 
 
@@ -220,39 +253,12 @@ def _dl_pyro(dest: Path) -> bool:
     return True
 
 
-def _dl_mgd(dest: Path) -> bool:
-    """Monash Guns Dataset: repo GitHub + un zip en Google Drive."""
-    if any(dest.rglob("*.xml")) or any(dest.rglob("*.txt")):
-        log("  ya está descargado")
-        return True
-    dest.mkdir(parents=True, exist_ok=True)
-    if not _importable("gdown"):
-        log("  ⚠ falta: pip install gdown")
-        log("    o bajalo a mano de https://github.com/MarcusLimJunYi/Monash-Guns-Dataset")
-        return False
-    import gdown
-    fid = "12ly_8zSpuPTMoYU3Bw1zGkObPU_RmbK-"
-    z = dest / "mgd.zip"
-    try:
-        gdown.download(id=fid, output=str(z), quiet=False)
-        with zipfile.ZipFile(z) as f:
-            f.extractall(dest)
-        z.unlink()
-        return True
-    except Exception as e:
-        log(f"  ⚠ falló la descarga de Drive ({str(e)[:120]})")
-        log("    Google Drive limita descargas automáticas. Bajalo a mano de:")
-        log(f"    https://drive.google.com/file/d/{fid}/view")
-        log(f"    y descomprimilo en {dest}")
-        return False
-
-
 def _dl_roboflow(ws: str, proy: str, ver: int):
     def f(dest: Path) -> bool:
         if any(dest.rglob("*.txt")):
             log("  ya está descargado")
             return True
-        key = os.environ.get("ROBOFLOW_API_KEY")
+        key = _clave_roboflow()
         if not key:
             log("  ⚠ falta ROBOFLOW_API_KEY (https://app.roboflow.com/settings/api)")
             return False
@@ -266,28 +272,41 @@ def _dl_roboflow(ws: str, proy: str, ver: int):
             p.version(ver).download("yolov8", location=str(dest))
             return True
         except Exception as e:
-            log(f"  ⚠ falló: {str(e)[:160]}")
-            log(f"    probá a mano en https://universe.roboflow.com/{ws}/{proy}")
+            msg = str(e)
+            log(f"  ⚠ falló: {msg[:160]}")
+            if "does not exist" in msg or "401" in msg or "revoked" in msg:
+                log("")
+                log("    La key llegó a Roboflow pero la rechazó. Chequeá, en orden:")
+                log(f"      1. ¿Qué guardaste?  ->  {_pista_clave(key)}")
+                log("      2. Tiene que ser la 'Private API Key' del workspace,")
+                log("         NO la 'Publishable Key'. Está en")
+                log("         https://app.roboflow.com/settings/api")
+                log("      3. Si usaste setx, cerrá y reabrí PowerShell.")
+            log(f"    O bajalo a mano de https://universe.roboflow.com/{ws}/{proy}")
             return False
     return f
 
 
 def _dl_openimages(mapa: Dict[str, int], cupo: int):
-    """Baja Open Images UNA CLASE POR VEZ, a dest/<clase_nuestra>/.
+    """Baja Open Images UNA CLASE POR VEZ (para controlar el cupo), pero en
+    cada imagen CONSERVA las cajas de TODAS nuestras clases.
 
-    Dos motivos para no pedirlas todas juntas:
-      - con un solo max_samples, 'Person' (que es la clase más común de todo
-        Open Images) se come el cupo y de 'Box' llegan cuatro fotos;
-      - exportando por clase, el índice del .txt sale del nombre de la carpeta
-        y no hay que adivinar el orden del data.yaml.
+    Esto último es la parte que importa. Si al bajar 'Knife' se tiran las cajas
+    de 'Person' que hay en esas mismas fotos, el dataset termina con miles de
+    imágenes llenas de gente que el .txt declara vacías. Cada vez que el modelo
+    detecta bien a esa persona, la pérdida lo castiga como falso positivo: se
+    le está enseñando a NO ver personas. Es la razón por la que 'persona' puede
+    rendir peor que una clase con diez veces menos datos.
 
-    Y filtra dos banderas que arruinan el entrenamiento si se cuelan:
+    Además filtra dos banderas que arruinan el entrenamiento:
       IsGroupOf=1   -> la caja rodea un GRUPO, no un objeto. Convertirla en
-                       'persona' le enseña al modelo a dibujar una caja gigante
-                       sobre cualquier multitud.
-      IsDepiction=1 -> estatua, dibujo, póster. Falsos positivos garantizados
-                       sobre la publicidad de una marquesina.
+                       'persona' enseña a dibujar una caja gigante sobre
+                       cualquier multitud.
+      IsDepiction=1 -> estatua, dibujo, póster. Falsos positivos sobre la
+                       publicidad de una marquesina.
     """
+    nombres = list(mapa.keys())          # el ORDEN define el índice exportado
+
     def f(dest: Path) -> bool:
         if not _importable("fiftyone"):
             log("  ⚠ falta: pip install fiftyone")
@@ -299,13 +318,11 @@ def _dl_openimages(mapa: Dict[str, int], cupo: int):
         dest.mkdir(parents=True, exist_ok=True)
 
         # Restos del formato viejo (una sola bajada mezclada en dest/images).
-        # No los usa nadie y ocupan varios GB: se avisan y se borran.
         if (dest / "images").is_dir():
-            log("  encontré un export viejo (todas las clases mezcladas y sin "
-                "filtrar IsGroupOf/IsDepiction). Lo borro y rehago por clase.")
-            for viejo in ("images", "labels", "listo.flag", "dataset.yaml",
-                          "data.yaml"):
-                q = dest / viejo
+            log("  encontré un export viejo. Lo borro y rehago por clase.")
+            for viejo_n in ("images", "labels", "listo.flag", "dataset.yaml",
+                            "data.yaml"):
+                q = dest / viejo_n
                 if q.is_dir():
                     shutil.rmtree(q, ignore_errors=True)
                 elif q.exists():
@@ -318,7 +335,8 @@ def _dl_openimages(mapa: Dict[str, int], cupo: int):
                 log(f"    {nombre_oi}: ya está")
                 ok_alguna = True
                 continue
-            log(f"    {nombre_oi} -> clase {clase} (hasta {cupo} imgs)...")
+            log(f"    {nombre_oi} (hasta {cupo} imgs, conservando todas "
+                f"nuestras clases)...")
             try:
                 ds = foz.load_zoo_dataset(
                     "open-images-v7", split="train", label_types=["detections"],
@@ -327,19 +345,21 @@ def _dl_openimages(mapa: Dict[str, int], cupo: int):
                 )
                 campo = ("ground_truth" if "ground_truth" in ds.get_field_schema()
                          else "detections")
-                # fiftyone baja las imágenes que CONTIENEN la clase, pero carga
-                # TODAS las etiquetas de esas imágenes. El filtro no es opcional.
+                # fiftyone baja las imágenes que CONTIENEN la clase pedida, pero
+                # carga TODAS sus etiquetas. Antes filtrábamos a una sola clase;
+                # ahora nos quedamos con las 6 nuestras que estén presentes.
                 vista = ds.filter_labels(
                     campo,
-                    (F("label") == nombre_oi)
+                    F("label").is_in(nombres)
                     & (F("IsGroupOf") != True)      # noqa: E712
                     & (F("IsDepiction") != True),   # noqa: E712
                 )
                 sub.mkdir(parents=True, exist_ok=True)
+                # classes=nombres (la lista COMPLETA) -> el índice del .txt es
+                # el mismo en todas las subcarpetas.
                 vista.export(export_dir=str(sub),
                              dataset_type=fo.types.YOLOv5Dataset,
-                             label_field=campo, split="train",
-                             classes=[nombre_oi])
+                             label_field=campo, split="train", classes=nombres)
                 (sub / "listo.flag").write_text(str(clase))
                 ok_alguna = True
             except Exception as e:
@@ -348,32 +368,30 @@ def _dl_openimages(mapa: Dict[str, int], cupo: int):
     return f
 
 
-def _norm_openimages(crudo: Path, salida: Path) -> int:
-    """Cada subcarpeta se llama clase<N>_<Nombre>: el índice sale de ahí, no de
-    un data.yaml que hay que adivinar."""
-    total = 0
-    for sub in sorted(crudo.iterdir()):
-        if not sub.is_dir() or not sub.name.startswith("clase"):
-            continue
-        try:
-            clase = int(sub.name[5:sub.name.index("_")])
-        except (ValueError, IndexError):
-            continue
-        # todo lo que haya en la subcarpeta es de esa clase
-        total += _norm_yolo({i: clase for i in range(100)})(sub, salida / sub.name)
-    # juntar las subcarpetas en un solo images/labels
-    (salida / "images").mkdir(parents=True, exist_ok=True)
-    (salida / "labels").mkdir(parents=True, exist_ok=True)
-    for sub in sorted(salida.iterdir()):
-        if not sub.is_dir() or sub.name in ("images", "labels"):
-            continue
-        for img in _imagenes(sub / "images"):
-            shutil.move(str(img), salida / "images" / img.name)
-            t = sub / "labels" / (img.stem + ".txt")
-            if t.exists():
-                shutil.move(str(t), salida / "labels" / t.name)
-        shutil.rmtree(sub, ignore_errors=True)
-    return total
+def _hacer_norm_openimages(mapa: Dict[str, int]):
+    """El índice del .txt sigue el orden de `mapa`, igual en toda subcarpeta."""
+    remapeo = {i: clase for i, clase in enumerate(mapa.values())}
+
+    def f(crudo: Path, salida: Path) -> int:
+        total = 0
+        for sub in sorted(crudo.iterdir()):
+            if not sub.is_dir() or not sub.name.startswith("clase"):
+                continue
+            total += _norm_yolo(remapeo)(sub, salida / sub.name)
+        # juntar las subcarpetas en un solo images/labels
+        (salida / "images").mkdir(parents=True, exist_ok=True)
+        (salida / "labels").mkdir(parents=True, exist_ok=True)
+        for sub in sorted(salida.iterdir()):
+            if not sub.is_dir() or sub.name in ("images", "labels"):
+                continue
+            for img in _imagenes(sub / "images"):
+                shutil.move(str(img), salida / "images" / img.name)
+                t = sub / "labels" / (img.stem + ".txt")
+                if t.exists():
+                    shutil.move(str(t), salida / "labels" / t.name)
+            shutil.rmtree(sub, ignore_errors=True)
+        return total
+    return f
 
 
 def _dl_manual(instrucciones: str):
@@ -507,17 +525,20 @@ def _norm_voc(remapeo_nombre: Dict[str, int]):
         salida_i.mkdir(parents=True, exist_ok=True)
         salida_l.mkdir(parents=True, exist_ok=True)
 
+        # Índice {stem: ruta} construido UNA vez. Monash Guns separa
+        # Annotations/ de JPEGImages/, y buscar cada imagen con rglob por
+        # separado sería O(n^2): 5.500 recorridos del árbol completo.
+        indice = {}
+        for img in _imagenes(crudo):
+            indice.setdefault(img.stem, img)
+
         n = 0
         for xml in sorted(crudo.rglob("*.xml")):
             try:
                 raiz = ET.parse(xml).getroot()
             except ET.ParseError:
                 continue
-            img = next((p for p in (xml.with_suffix(e) for e in EXT_IMG)
-                        if p.exists()), None)
-            if img is None:
-                cands = list(crudo.rglob(xml.stem + ".*"))
-                img = next((c for c in cands if c.suffix.lower() in EXT_IMG), None)
+            img = indice.get(xml.stem)
             if img is None:
                 continue
 
@@ -562,6 +583,15 @@ def _norm_voc(remapeo_nombre: Dict[str, int]):
 
 
 # ---------- catálogo ------------------------------------------------------- #
+# Clases de Open Images -> clases nuestras. El ORDEN importa: define el índice
+# con el que se exportan los .txt, y por eso descarga y normalización comparten
+# este mismo diccionario.
+_MAPA_OI: Dict[str, int] = {
+    "Person": 2, "Handgun": 3, "Knife": 4,
+    "Kitchen knife": 4, "Mobile phone": 5, "Box": 6,
+}
+
+
 def catalogo() -> Dict[str, Fuente]:
     f: Dict[str, Fuente] = {}
 
@@ -575,16 +605,22 @@ def catalogo() -> Dict[str, Fuente]:
     f["pyro-sdis"] = Fuente(
         "pyro-sdis", "Pyro-SDIS (humo, cámara fija)", "Apache-2.0", True,
         "https://huggingface.co/datasets/pyronear/pyro-sdis", "",
-        _dl_pyro, _norm_yolo({0: 0}),
-        "Humo tenue y lejano desde torres fijas. Lo que a D-Fire le falta.",
+        _dl_pyro, _norm_yolo({0: 0, 1: 0}),
+        "Humo tenue y lejano desde torres fijas. Lo que a D-Fire le falta. "
+        "OJO: sus etiquetas usan el índice 1 para smoke aunque la doc diga 0; "
+        "mapeamos los dos al 0 nuestro porque es un dataset de una sola clase.",
         clases=(0,), gb=3.3, deps=("datasets",))
 
     f["monash-guns"] = Fuente(
-        "monash-guns", "Monash Guns (pistola en CCTV)", "MIT", True,
-        "https://github.com/MarcusLimJunYi/Monash-Guns-Dataset", "",
-        _dl_mgd, _norm_voc({"pistol": 3, "gun": 3, "handgun": 3, "weapon": 3}),
-        "Escenificado sobre cámaras CCTV reales. La mejor fuente de pistola.",
-        clases=(3,), gb=1.5, deps=("gdown",))
+        "monash-guns", "Monash Guns (pistola en CCTV)", "MIT (orig.) / CC BY 4.0 (mirror)",
+        True, "https://universe.roboflow.com/arms/the-monash-guns-dataset/dataset/2",
+        "roboflow", _dl_roboflow("arms", "the-monash-guns-dataset", 2),
+        _norm_yolo_nombres({"pistol": 3, "pistols": 3, "gun": 3, "guns": 3,
+                            "handgun": 3, "weapon": 3, "firearm": 3}),
+        "Escenificado sobre cámaras CCTV reales: es la mejor fuente de pistola "
+        "que existe con licencia usable. El Drive del repo original está caído "
+        "(404 a agosto 2026), así que vamos por el mirror de Roboflow.",
+        clases=(3,), gb=1.2, deps=("roboflow",))
 
     f["paquetes-puerta"] = Fuente(
         "paquetes-puerta", "package-at-front-door", "MIT", True,
@@ -617,14 +653,16 @@ def catalogo() -> Dict[str, Fuente]:
         "openimages", "Open Images V7 (persona/cuchillo/celular/paquete)",
         "CC BY 4.0 (anot.) + CC BY 2.0 (imgs)", True,
         "https://storage.googleapis.com/openimages/web/index.html", "",
-        _dl_openimages({"Person": 2, "Knife": 4, "Kitchen knife": 4,
-                        "Mobile phone": 5, "Box": 6}, 2500),
-        _norm_openimages,
+        _dl_openimages(_MAPA_OI, 2500),
+        _hacer_norm_openimages(_MAPA_OI),
         "Baja cada clase por separado con su propio cupo, si no 'Person' se "
         "come todo. Filtra IsGroupOf (cajas sobre multitudes enteras) e "
         "IsDepiction (estatuas, pósters), que si se cuelan generan falsos "
-        "positivos sobre publicidad.",
-        clases=(2, 4, 5, 6), gb=3.0, deps=("fiftyone",))
+        "positivos sobre publicidad. OJO con Handgun: son fotos de Flickr, "
+        "objetos grandes y centrados. Sirve para que la clase exista y para "
+        "pre-entrenar features, pero para detectar un arma de 25 px en una "
+        "cámara real hace falta Monash Guns o metraje propio.",
+        clases=(2, 3, 4, 5, 6), gb=3.6, deps=("fiftyone",))
 
     f["sohas"] = Fuente(
         "sohas", "OD-WeaponDetection / Sohas", "CC BY-SA 4.0 (ver aviso)", False,
@@ -779,19 +817,29 @@ def _gb_libres(d: Path) -> float:
 
 
 def _estado_fuente(f: "Fuente") -> Tuple[bool, str]:
+    # Lo primero: ¿ya está en disco? Una fuente descargada no necesita
+    # credenciales ni dependencias, y contarla como "faltante" hace que el
+    # chequeo mienta sobre el estado real del proyecto.
+    n = len(_imagenes(DIR_CRUDO / f.clave))
+    if n:
+        return True, f"ya descargado · {n} imgs"
+
     faltan = [m for m in f.deps if not _importable(m)]
     if f.requiere == "kaggle":
-        if not _hay("kaggle") and "kaggle" in faltan:
+        if "kaggle" in faltan:
             return False, "pip install kaggle"
         # El CLI nuevo de Kaggle acepta varias formas de credencial.
         d = Path.home() / ".kaggle"
         if not (any((d / n).exists() for n in ("kaggle.json", "access_token"))
                 or os.environ.get("KAGGLE_API_TOKEN")
                 or os.environ.get("KAGGLE_KEY")):
-            return False, "sin credencial -> corré:  kaggle auth login"
+            return False, "sin credencial -> corré:  python -m kaggle auth login"
     if f.requiere == "roboflow":
-        if not os.environ.get("ROBOFLOW_API_KEY"):
+        k = _clave_roboflow()
+        if not k:
             return False, "falta ROBOFLOW_API_KEY (app.roboflow.com/settings/api)"
+        if _clave_sospechosa(k):
+            return False, f"ROBOFLOW_API_KEY sospechosa: {_pista_clave(k)}"
     if f.requiere == "manual":
         return False, "descarga manual (ver --listar)"
     if faltan:
@@ -814,21 +862,28 @@ def verificar_entorno(cat: Dict[str, "Fuente"], solo_comerciales: bool) -> None:
     log("")
     log(f"  {'fuente':<18} {'clases':<10} {'GB':>5}  estado")
     log("  " + "-" * 68)
-    total_gb, listas = 0.0, []
+    total_gb, por_bajar, ya = 0.0, [], []
     for k, f in cat.items():
         if solo_comerciales and not f.comercial:
             continue
         ok, msg = _estado_fuente(f)
         cls = ",".join(str(c) for c in f.clases) or "-"
-        marca = "OK " if ok else "-- "
-        log(f"  {marca}{k:<15} {cls:<10} {f.gb:>5.1f}  {msg}")
-        if ok:
+        ya_esta = msg.startswith("ya descargado")
+        marca = "==" if ya_esta else ("OK" if ok else "--")
+        gb = "  -  " if ya_esta else f"{f.gb:>5.1f}"
+        log(f"  {marca} {k:<15} {cls:<10} {gb}  {msg}")
+        if ya_esta:
+            ya.append(f)
+        elif ok:
             total_gb += f.gb
-            listas.append(f)
+            por_bajar.append(f)
 
     log("  " + "-" * 68)
-    log(f"  van a descargarse {len(listas)} fuentes · ~{total_gb:.0f} GB "
+    if ya:
+        log(f"  ==  {len(ya)} fuentes ya en disco, no se vuelven a bajar")
+    log(f"  OK  {len(por_bajar)} fuentes por descargar · ~{total_gb:.0f} GB "
         f"(más ~{total_gb:.0f} GB de la copia normalizada)")
+    listas = ya + por_bajar
 
     if libres >= 0 and libres < total_gb * 2.2:
         log(f"  ⚠ con {libres:.0f} GB libres NO alcanza. Hacen falta ~{total_gb*2.2:.0f} GB.")
@@ -838,13 +893,32 @@ def verificar_entorno(cat: Dict[str, "Fuente"], solo_comerciales: bool) -> None:
     cubiertas = set()
     for f in listas:
         cubiertas.update(f.clases)
+    # Lo ya normalizado cuenta aunque su fuente cruda se haya borrado.
+    for sub in (DIR_NORM.iterdir() if DIR_NORM.is_dir() else []):
+        f = cat.get(sub.name)
+        if f and _imagenes(sub / "images"):
+            cubiertas.update(f.clases)
+
     huerfanas = [f"{i} {n}" for i, n in enumerate(CLASES) if i not in cubiertas]
     if huerfanas:
         log(f"\n  ⚠ clases SIN ninguna fuente disponible: {', '.join(huerfanas)}")
         log("    No se van a aprender. Resolvé las credenciales de arriba, o")
         log("    grabá dato propio (ver datasets/DATASETS.md).")
     else:
-        log("\n  Todas las clases tienen al menos una fuente.")
+        log("\n  Las 7 clases tienen fuente (descargada o descargable).")
+
+    salida = DIR_SALIDA / "labels" / "train"
+    if salida.is_dir():
+        c = Counter()
+        for t in salida.glob("*.txt"):
+            for fila in _leer_yolo(t):
+                c[fila[0]] += 1
+        if c:
+            log("")
+            log("  Lo que YA tenés armado en mezcla_v1 (cajas de train):")
+            for i, nom in enumerate(CLASES):
+                estado = "" if c[i] else "   <- VACÍA"
+                log(f"    {i} {nom:<9} {c[i]:>7}{estado}")
     log("")
 
 
@@ -861,6 +935,98 @@ def instalar_deps(cat: Dict[str, "Fuente"]) -> None:
     log("  listo" if r.returncode == 0 else "  ⚠ pip falló, instalalos a mano")
 
 
+
+# --------------------------------------------------------------------------- #
+# Diagnóstico: por qué una fuente pierde imágenes al normalizar
+# --------------------------------------------------------------------------- #
+def diagnosticar(cat: Dict[str, "Fuente"], clave: str, n: int = 8) -> None:
+    f = cat.get(clave)
+    if f is None:
+        sys.exit(f"fuente desconocida: {clave}. Ver --listar")
+    crudo = DIR_CRUDO / clave
+    imgs = _imagenes(crudo)
+    if not imgs:
+        sys.exit(f"No hay imágenes en {crudo}")
+
+    norm = DIR_NORM / clave
+    n_norm = len(_imagenes(norm / "images"))
+    log("=" * 74)
+    log(f"DIAGNÓSTICO · {clave}")
+    log("=" * 74)
+    log(f"  imágenes en _crudo      : {len(imgs)}")
+    log(f"  imágenes en _normalizado: {n_norm}")
+    if n_norm and n_norm < len(imgs):
+        log(f"  -> se están perdiendo {len(imgs) - n_norm} "
+            f"({100*(1-n_norm/len(imgs)):.0f}%)")
+    log("")
+
+    # Muestreo determinista a lo largo de toda la lista, no solo el principio.
+    paso = max(1, len(imgs) // n)
+    muestra = imgs[::paso][:n]
+
+    veredictos = Counter()
+    for img in muestra:
+        cand = [img.with_suffix(".txt")]
+        partes = list(img.parts)
+        if "images" in partes:
+            i = len(partes) - 1 - partes[::-1].index("images")
+            partes[i] = "labels"
+            cand.append(Path(*partes).with_suffix(".txt"))
+        txt = next((c for c in cand if c.exists()), None)
+
+        log(f"  {img.name}")
+        if txt is None:
+            log("    label   : NO EXISTE  -> se conserva como negativo")
+            veredictos["negativo (sin label)"] += 1
+            continue
+
+        crudo_txt = txt.read_text(encoding="utf-8", errors="ignore")
+        muestra_txt = crudo_txt[:120].replace("\n", "\\n")
+        log(f"    label   : {txt.name}  ({len(crudo_txt)} bytes)")
+        log(f"    crudo   : {muestra_txt!r}")
+
+        filas = _leer_yolo(txt)
+        log(f"    parseadas: {len(filas)} filas"
+            + (f"  primera={filas[0]}" if filas else ""))
+
+        if not crudo_txt.strip():
+            log("    veredicto: label VACÍO -> se conserva como negativo")
+            veredictos["negativo (label vacío)"] += 1
+            continue
+        if not filas:
+            log("    veredicto: el label tiene texto pero NO parsea como YOLO")
+            log("               -> se conserva como negativo (sospechoso)")
+            veredictos["no parsea"] += 1
+            continue
+
+        clases_vistas = sorted({fl[0] for fl in filas})
+        log(f"    clases   : {clases_vistas}")
+        malas = [fl for fl in filas if not _sano(_clip(fl))]
+        if malas:
+            log(f"    ⚠ {len(malas)} cajas degeneradas o fuera de 0..1, "
+                f"ej: {malas[0]}")
+            if len(malas) == len(filas):
+                log("    veredicto: TODAS las cajas son inválidas -> IMAGEN "
+                    "DESCARTADA (acá se están perdiendo)")
+                veredictos["DESCARTADA (cajas inválidas)"] += 1
+                log("")
+                continue
+        log(f"    veredicto: {len(filas) - len(malas)} cajas utilizables")
+        veredictos["con cajas"] += 1
+        log("")
+
+    log("  " + "-" * 68)
+    log("  RESUMEN DE LA MUESTRA")
+    for k, v in veredictos.most_common():
+        log(f"    {k:<28} {v}/{len(muestra)}")
+    if veredictos.get("no parsea"):
+        log("")
+        log("  El label tiene contenido pero no es formato YOLO. Casi seguro el")
+        log("  descargador guardó el campo crudo del dataset (una lista, un dict)")
+        log("  en vez del texto de las cajas. Pegame el 'crudo' de arriba.")
+    log("")
+
+
 # --------------------------------------------------------------------------- #
 def main() -> int:
     cat = catalogo()
@@ -870,6 +1036,11 @@ def main() -> int:
                     help="chequear deps, credenciales, disco y clases cubiertas")
     ap.add_argument("--instalar-deps", action="store_true",
                     help="pip install de todo lo que falte")
+    ap.add_argument("--diagnosticar", metavar="FUENTE", default=None,
+                    help="mostrar por qué una fuente pierde imágenes al normalizar")
+    ap.add_argument("--login-kaggle", action="store_true",
+                    help="abrir el login de Kaggle (evita tener que acordarse "
+                         "de 'python -m kaggle auth login')")
     ap.add_argument("--descargar", nargs="*", metavar="FUENTE",
                     help="descargar estas fuentes (sin argumentos = todas)")
     ap.add_argument("--normalizar", nargs="*", metavar="FUENTE",
@@ -891,6 +1062,18 @@ def main() -> int:
                     args.armar, args.todo, args.verificar]):
             return 0
 
+    if args.login_kaggle:
+        if not _importable("kaggle"):
+            log("Falta el paquete: pip install kaggle")
+            return 1
+        log("Abriendo el login de Kaggle en el navegador...")
+        return subprocess.run(
+            [sys.executable, "-m", "kaggle", "auth", "login"]).returncode
+
+    if args.diagnosticar:
+        diagnosticar(cat, args.diagnosticar)
+        return 0
+
     if args.verificar:
         verificar_entorno(cat, args.solo_comerciales)
         return 0
@@ -910,6 +1093,7 @@ def main() -> int:
             print()
         print("Ejemplos:")
         print("  python bajar_datasets.py --verificar          <- empezá por acá")
+        print("  python bajar_datasets.py --login-kaggle       <- para D-Fire")
         print("  python bajar_datasets.py --instalar-deps")
         print("  python bajar_datasets.py --todo --solo-comerciales")
         print("  python bajar_datasets.py --descargar d-fire pyro-sdis")
@@ -937,15 +1121,28 @@ def main() -> int:
         log("\n" + "=" * 70)
         log("DESCARGA")
         log("=" * 70)
+        resultados = {}
         for k in claves:
             f = cat[k]
             log(f"\n[{k}] {f.nombre}  ({f.licencia})")
+            d = DIR_CRUDO / k
             try:
-                f.descargar(DIR_CRUDO / k)
+                f.descargar(d)
             except KeyboardInterrupt:
                 raise
             except Exception as e:
                 log(f"  ⚠ error: {str(e)[:200]}")
+            # No confiamos en el valor de retorno: miramos el disco.
+            resultados[k] = len(_imagenes(d))
+
+        log("\n" + "-" * 62)
+        log("  RESUMEN DE LA DESCARGA")
+        for k, n in resultados.items():
+            log(f"    {'OK ' if n else 'NADA'}  {k:<18} {n:>7} imágenes")
+        log("-" * 62)
+        vacias = [k for k, n in resultados.items() if not n]
+        if vacias:
+            log(f"  Sin datos: {', '.join(vacias)} — mirá los mensajes de arriba.")
 
     if args.todo or args.normalizar is not None:
         claves = seleccion(args.normalizar if args.normalizar else None)
@@ -961,9 +1158,20 @@ def main() -> int:
             salida = DIR_NORM / k
             if salida.exists():
                 shutil.rmtree(salida)
+            entrada = len(_imagenes(crudo))
             try:
                 n = f.normalizar(crudo, salida)
-                log(f"[{k}] {n} imágenes normalizadas")
+                log(f"[{k}] {n} imágenes normalizadas"
+                    + (f" (de {entrada})" if entrada and n != entrada else ""))
+                # Si se cae más de la mitad, casi siempre es un remapeo mal
+                # puesto: las cajas quedan fuera del mapa y la imagen entera se
+                # descarta. Es exactamente el error que costó descubrir con
+                # pyro-sdis (usaba clase 1, no 0).
+                if entrada and n < entrada * 0.5:
+                    log(f"[{k}] ⚠ se perdió el {100*(1-n/entrada):.0f}% de las "
+                        "imágenes. Suele ser el remapeo de clases mal puesto.")
+                    log(f"[{k}]   revisalo con:  python bajar_datasets.py "
+                        f"--diagnosticar {k}")
             except Exception as e:
                 log(f"[{k}] ⚠ error: {str(e)[:200]}")
 

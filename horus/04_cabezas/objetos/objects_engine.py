@@ -56,7 +56,9 @@ import math
 import os
 import sys
 import time
+from collections import Counter
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -329,6 +331,26 @@ class ObjectsEngine:
         self._aplicar_flags_backend()
 
         # --- modelo ---------------------------------------------------------
+        # El checkpoint se lee ANTES de construir el backbone: adentro dice con
+        # qué backbone se entrenó la cabeza. Si el backbone de inferencia no es
+        # el mismo que el de entrenamiento, la cabeza ve features que nunca vio
+        # y las detecciones son ruido — el error más caro y más silencioso de
+        # todo el pipeline.
+        ck: Dict[str, Any] = {}
+        if c.pesos:
+            ck = torch.load(c.pesos, map_location="cpu")
+            if not isinstance(ck, dict) or "head" not in ck:
+                ck = {"head": ck}          # .pt viejo de entrenar_objetos.py
+
+        # La geometría (anclas, niveles, clases, tamaño) sale del CHECKPOINT,
+        # no de constantes de este archivo. Si se hardcodea acá, cualquier
+        # cambio en el entrenamiento rompe la carga con un "size mismatch"
+        # después de horas de GPU — o peor, carga algo incoherente.
+        if ck:
+            self._adoptar_geometria(ck)
+
+        # head_cfg se arma DESPUÉS de adoptar: si se arma antes, se congela con
+        # las anclas por defecto y el checkpoint no entra.
         self.head_cfg = ObjectsHeadConfig(
             classes=c.clases,
             fpn_levels=c.fpn_levels,
@@ -340,16 +362,6 @@ class ObjectsEngine:
             topk_candidates=c.topk_candidates,
             vlm_gate_band=c.vlm_gate_band,
         )
-        # El checkpoint se lee ANTES de construir el backbone: adentro dice con
-        # qué backbone se entrenó la cabeza. Si el backbone de inferencia no es
-        # el mismo que el de entrenamiento, la cabeza ve features que nunca vio
-        # y las detecciones son ruido — el error más caro y más silencioso de
-        # todo el pipeline.
-        ck: Dict[str, Any] = {}
-        if c.pesos:
-            ck = torch.load(c.pesos, map_location="cpu")
-            if not isinstance(ck, dict) or "head" not in ck:
-                ck = {"head": ck}          # .pt viejo de entrenar_objetos.py
 
         pesos_bb = c.pesos_backbone or self._resolver_backbone(ck)
         pretrained = c.backbone_pretrained
@@ -385,9 +397,9 @@ class ObjectsEngine:
                           f"mAP@0.5={m['mAP@0.50']:.4f}")
             clases_ck = ck.get("clases")
             if clases_ck and tuple(clases_ck) != tuple(c.clases):
-                print(f"[motor] ⚠ el checkpoint se entrenó con otras clases: "
-                      f"{clases_ck}. Pasálas en EngineConfig(clases=...) o las "
-                      "etiquetas van a salir cambiadas.")
+                print(f"[motor] ⚠ pediste clases {c.clases} pero el checkpoint "
+                      f"se entrenó con {tuple(clases_ck)}. Las etiquetas van a "
+                      "salir cambiadas.")
         else:
             self._log("[motor] SIN pesos entrenados: esperá 0 detecciones "
                       "(para ver el post-proceso andar usá --umbral 0.005)")
@@ -436,6 +448,30 @@ class ObjectsEngine:
     def _log(self, *a) -> None:
         if self.cfg.verboso:
             print(*a)
+
+
+    def _adoptar_geometria(self, ck: Dict[str, Any]) -> None:
+        """Toma del checkpoint cómo se entrenó la cabeza. Lo explícito en
+        EngineConfig gana, para poder forzar algo a mano si hace falta."""
+        c = self.cfg
+        por_defecto = EngineConfig()
+
+        if c.anchor_sizes == por_defecto.anchor_sizes and ck.get("anchor_sizes"):
+            nuevas = tuple(tuple(x) for x in ck["anchor_sizes"])
+            if nuevas != c.anchor_sizes:
+                self._log(f"[motor] anclas del checkpoint: {nuevas}")
+                c.anchor_sizes = nuevas
+
+        if c.fpn_levels == por_defecto.fpn_levels and ck.get("fpn_levels"):
+            c.fpn_levels = tuple(ck["fpn_levels"])
+
+        if c.clases == por_defecto.clases and ck.get("clases"):
+            c.clases = tuple(ck["clases"])
+
+        if c.input_size == por_defecto.input_size and ck.get("tam"):
+            if int(ck["tam"]) != c.input_size:
+                self._log(f"[motor] input_size del checkpoint: {ck['tam']}px")
+                c.input_size = int(ck["tam"])
 
     def _resolver_backbone(self, ck: Dict[str, Any]) -> Optional[str]:
         """El entrenador guarda el backbone congelado al lado del checkpoint y
@@ -897,6 +933,99 @@ _COLORES = {
 }
 
 
+
+def _modo_imagenes(args) -> int:
+    """Corre el modelo sobre una carpeta de imágenes y guarda las cajas
+    dibujadas. Si al lado hay labels/ en formato YOLO, dibuja también la
+    verdad de referencia en blanco fino: así se ven de un vistazo los falsos
+    negativos (caja blanca sin caja de color) y los falsos positivos (caja de
+    color sin blanca). Un número de mAP no muestra eso."""
+    import cv2
+
+    carpeta = Path(args.fuente)
+    if not carpeta.is_dir():
+        print(f"No es una carpeta: {carpeta}")
+        return 2
+    exts = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
+    imgs = sorted(p for p in carpeta.iterdir() if p.suffix.lower() in exts)
+    if not imgs:
+        print(f"No hay imágenes en {carpeta}")
+        return 2
+
+    # labels/<split>/ paralelo a images/<split>/
+    dir_lbl = None
+    partes = list(carpeta.parts)
+    if "images" in partes:
+        i = len(partes) - 1 - partes[::-1].index("images")
+        partes[i] = "labels"
+        cand = Path(*partes)
+        if cand.is_dir():
+            dir_lbl = cand
+
+    paso = max(1, len(imgs) // args.n) if args.n else 1
+    muestra = imgs[::paso][:args.n] if args.n else imgs
+
+    cfg = EngineConfig(pesos=args.pesos, precision=args.precision,
+                       cuda_graphs=False, score_thresh=args.umbral,
+                       max_batch=1, entrada_bgr=True)
+    eng = ObjectsEngine(cfg)
+    print(f"[motor] {eng.resumen()}\n")
+
+    salida = Path(args.salida)
+    salida.mkdir(parents=True, exist_ok=True)
+
+    n_det = Counter()
+    n_gt = Counter()
+    sin_nada = 0
+    for ruta in muestra:
+        img = cv2.imread(str(ruta))
+        if img is None:
+            continue
+        h, w = img.shape[:2]
+        r = eng.infer(img, camera_id="lote")
+
+        # verdad de referencia primero, para que quede debajo
+        if dir_lbl:
+            txt = dir_lbl / (ruta.stem + ".txt")
+            if txt.exists():
+                for linea in txt.read_text(encoding="utf-8",
+                                           errors="ignore").splitlines():
+                    pr = linea.split()
+                    if len(pr) != 5:
+                        continue
+                    c = int(pr[0]); cx, cy, bw, bh = (float(v) for v in pr[1:])
+                    n_gt[c] += 1
+                    x1 = int((cx - bw / 2) * w); y1 = int((cy - bh / 2) * h)
+                    x2 = int((cx + bw / 2) * w); y2 = int((cy + bh / 2) * h)
+                    cv2.rectangle(img, (x1, y1), (x2, y2), (255, 255, 255), 1)
+
+        for d in r.detections:
+            n_det[d.class_id] += 1
+            x1, y1, x2, y2 = (int(v) for v in d.bbox_xyxy)
+            col = _COLORES.get(d.label, (255, 255, 255))
+            cv2.rectangle(img, (x1, y1), (x2, y2), col, 2)
+            cv2.putText(img, f"{d.label} {d.score:.2f}", (x1, max(y1 - 6, 12)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 2)
+        if not r.detections:
+            sin_nada += 1
+        cv2.imwrite(str(salida / ruta.name), img)
+
+    print(f"  {len(muestra)} imágenes · {sin_nada} sin ninguna detección")
+    print(f"\n  {'clase':<10} {'detectadas':>11} {'en la verdad':>13}")
+    print("  " + "-" * 36)
+    for i, nom in enumerate(DEFAULT_CLASSES):
+        marca = ""
+        if n_gt[i] and not n_det[i]:
+            marca = "  <- no detecta NADA de esta clase"
+        elif n_det[i] and not n_gt[i]:
+            marca = "  <- inventa (no hay ninguna acá)"
+        print(f"  {i} {nom:<8} {n_det[i]:>11} {n_gt[i]:>13}{marca}")
+    print(f"\n  Imágenes anotadas en: {salida}")
+    print("  Blanco fino = verdad de referencia · color = lo que detectó el modelo.")
+    print("  Blanca sin color = se le escapó. Color sin blanca = falso positivo.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Motor CUDA de la cabeza de objetos (producción)")
@@ -916,10 +1045,20 @@ def main() -> int:
                     help="torch.compile (primer frame tarda ~1 min, después vuela)")
     ap.add_argument("--trt", default=None, help="engine .plan de TensorRT")
     ap.add_argument("--max-frames", type=int, default=0, help="0 = sin límite")
+    ap.add_argument("--imagenes", action="store_true",
+                    help="tratar `fuente` como carpeta de imágenes y guardar "
+                         "las cajas dibujadas (compara contra labels/ si están)")
+    ap.add_argument("--n", type=int, default=40,
+                    help="cuántas imágenes muestrear (0 = todas)")
+    ap.add_argument("--salida", default="revision",
+                    help="carpeta donde guardar las imágenes anotadas")
     args = ap.parse_args()
 
     if args.autotest:
         return _autotest()
+
+    if args.imagenes:
+        return _modo_imagenes(args)
 
     import cv2
 

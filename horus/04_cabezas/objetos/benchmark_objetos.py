@@ -120,19 +120,29 @@ def medir_baseline(base: Dict, frames: List[np.ndarray], warmup: int,
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     es_cuda = dev.type == "cuda"
 
-    bb = SharedBackbone(BackboneConfig(pretrained=False,
-                                       input_size=base["input_size"],
+    # Geometría: del checkpoint si lo hay, si no la que venga en `base`.
+    ck = {}
+    if base.get("pesos"):
+        ck = torch.load(base["pesos"], map_location=dev)
+        if not isinstance(ck, dict) or "head" not in ck:
+            ck = {"head": ck}
+    tam = int(ck.get("tam") or base.get("input_size") or 384)
+    niveles = tuple(ck.get("fpn_levels") or base.get("fpn_levels")
+                    or ("p3", "p4", "p5"))
+    anclas = tuple(tuple(x) for x in (ck.get("anchor_sizes")
+                                      or base.get("anchor_sizes")
+                                      or ((32,), (64,), (128,))))
+
+    bb = SharedBackbone(BackboneConfig(pretrained=False, input_size=tam,
                                        freeze_encoder=True)).to(dev).eval()
     if base.get("pesos_backbone"):
         bb.load_state_dict(torch.load(base["pesos_backbone"],
                                       map_location=dev), strict=False)
-    cfg = ObjectsHeadConfig(fpn_levels=base["fpn_levels"],
-                            anchor_sizes=base["anchor_sizes"],
+    cfg = ObjectsHeadConfig(fpn_levels=niveles, anchor_sizes=anclas,
                             score_thresh=base["score_thresh"])
     head = ObjectsHead(cfg).to(dev).eval()
-    if base.get("pesos"):
-        sd = torch.load(base["pesos"], map_location=dev)
-        head.load_state_dict(sd.get("head", sd) if isinstance(sd, dict) else sd)
+    if ck:
+        head.load_state_dict(ck["head"])
 
     def un_frame(f: np.ndarray) -> int:
         rgb = cv2.cvtColor(f, cv2.COLOR_BGR2RGB)
@@ -226,12 +236,66 @@ def medir_batch(base: Dict, frames: List[np.ndarray], batches: Sequence[int],
     return salida
 
 
+
+def _barrer(args) -> int:
+    """Mide el mismo motor a varios input_size. Subir la resolución ayuda a los
+    objetos chicos (humo lejano) pero el cómputo escala con el AREA: pasar de
+    384 a 640 es 2,8x más caro. Esta tabla es para decidir con números."""
+    es_cuda = torch.cuda.is_available()
+    print("=" * 78)
+    print("BARRIDO DE RESOLUCIÓN · cuánto cuesta ver objetos más chicos")
+    print("=" * 78)
+    if es_cuda:
+        print(f"  GPU: {torch.cuda.get_device_name(0)}")
+    else:
+        print("  ⚠ sin CUDA: los números no sirven para dimensionar")
+    print(f"  objetivo: {args.camaras} cámaras a {args.target_fps:g} FPS "
+          f"= {args.camaras * args.target_fps:g} frames/seg\n")
+
+    rng = np.random.default_rng(0)
+    frames = [rng.integers(0, 256, (args.alto, args.ancho, 3), dtype=np.uint8)
+              for _ in range(8)]
+
+    print(f"  {'input':>7} {'media':>9} {'p95':>8} {'FPS':>8} {'VRAM':>8} "
+          f"{'cámaras':>9}  {'costo':>7}")
+    print("  " + "-" * 66)
+    ref = None
+    for size in args.barrer_tamanos:
+        base = dict(pesos=args.pesos, pesos_backbone=args.pesos_backbone,
+                    input_size=size, score_thresh=args.umbral, max_batch=1,
+                    warmup=5, verboso=False)
+        if not args.pesos:      # sin pesos hay que fijar la geometría a mano
+            base["fpn_levels"] = ("p3", "p4", "p5")
+            base["anchor_sizes"] = ((32,), (64,), (128,))
+        nombre = "fp16-graphs" if es_cuda else "fp32"
+        m = medir_variante(nombre, base, frames, args.warmup, args.frames)
+        if m.error:
+            print(f"  {size:>5}px  ⚠ {m.error}")
+            continue
+        if ref is None:
+            ref = m.media_ms
+        cams = m.fps / args.target_fps
+        marca = "  <- alcanza" if cams >= args.camaras else ""
+        print(f"  {size:>5}px {m.media_ms:>8.1f}m {m.p95_ms:>7.1f}m "
+              f"{m.fps:>8.1f} {m.vram_mb:>7.0f}M {cams:>8.1f}  "
+              f"{m.media_ms/ref:>6.2f}x{marca}")
+    print("  " + "-" * 66)
+    print("\n  Subir la resolución ayuda al humo lejano y a la pistola chica,")
+    print("  pero el costo escala con el área. Elegí el más grande que todavía")
+    print("  te dé las cámaras que necesitás.")
+    return 0
+
+
 # --------------------------------------------------------------------------- #
 def main() -> int:
     ap = argparse.ArgumentParser(description="Benchmark del camino de objetos")
     ap.add_argument("--pesos", default=None)
     ap.add_argument("--pesos-backbone", default=None)
     ap.add_argument("--input-size", type=int, default=384)
+    ap.add_argument("--barrer-tamanos", type=int, nargs="+", default=None,
+                    metavar="PX",
+                    help="medir varios input_size y comparar FPS "
+                         "(ej: --barrer-tamanos 384 512 640)")
     ap.add_argument("--frames", type=int, default=100, help="frames medidos")
     ap.add_argument("--warmup", type=int, default=15)
     ap.add_argument("--ancho", type=int, default=1280)
@@ -250,6 +314,9 @@ def main() -> int:
     ap.add_argument("--video", default=None,
                     help="usar frames de un video real en vez de ruido")
     args = ap.parse_args()
+
+    if args.barrer_tamanos:
+        return _barrer(args)
 
     es_cuda = torch.cuda.is_available()
     print("=" * 78)
@@ -313,6 +380,12 @@ def main() -> int:
         fpn_levels=("p3", "p4", "p5"), anchor_sizes=((32,), (64,), (128,)),
         verboso=False,
     )
+    # Con checkpoint real, el motor lee del .pt las anclas y el input_size con
+    # los que se entrenó. Sacamos los defaults para no pisárselos.
+    if args.pesos:
+        base.pop("fpn_levels", None)
+        base.pop("anchor_sizes", None)
+        base.pop("input_size", None)
 
     # --- qué variantes ----------------------------------------------------
     variantes = args.variantes or (_TODAS if args.todas else list(_VARIANTES_DEF))

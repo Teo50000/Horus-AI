@@ -12,7 +12,7 @@ import torch.nn as nn
 from torch import Tensor
 
 from torchvision.ops import boxes as box_ops
-from torchvision.ops import sigmoid_focal_loss
+from torchvision.ops import generalized_box_iou_loss, sigmoid_focal_loss
 from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.models.detection._utils import BoxCoder, Matcher
 
@@ -49,6 +49,10 @@ class ObjectsHeadConfig:
     fg_iou_thresh: float = 0.5
     bg_iou_thresh: float = 0.4
     box_loss_weight: float = 1.0
+    # Pérdida de caja: "giou" optimiza el solape real; "l1" era el original.
+    # Solo afecta al entrenamiento: la arquitectura y los checkpoints no cambian,
+    # y el motor de inferencia ni se entera.
+    box_loss: str = "giou"
     focal_alpha: float = 0.25
     focal_gamma: float = 2.0
 
@@ -265,10 +269,20 @@ class ObjectsHead(nn.Module):
 
             if fg.any():
                 matched = gt_boxes[match[fg]]
-                tgt_deltas = self.box_coder.encode_single(matched, anchors_i[fg])
-                box_losses.append(nn.functional.smooth_l1_loss(
-                    deltas_i[fg], tgt_deltas, beta=0.11, reduction="mean",
-                ))
+                if c.box_loss == "giou":
+                    # Smooth-L1 sobre deltas trata los 4 números por separado y
+                    # no sabe nada de solape: por eso el mAP50 sube pero el
+                    # mAP75 (cajas ajustadas) se queda. GIoU optimiza el IoU
+                    # directamente sobre las cajas decodificadas.
+                    pred = self.box_coder.decode_single(
+                        deltas_i[fg].float(), anchors_i[fg].float())
+                    box_losses.append(generalized_box_iou_loss(
+                        pred, matched.float(), reduction="mean"))
+                else:
+                    tgt_deltas = self.box_coder.encode_single(matched, anchors_i[fg])
+                    box_losses.append(nn.functional.smooth_l1_loss(
+                        deltas_i[fg], tgt_deltas, beta=0.11, reduction="mean",
+                    ))
             else:
                 box_losses.append(deltas_i.sum() * 0.0)
 

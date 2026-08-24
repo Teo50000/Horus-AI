@@ -503,6 +503,51 @@ def verificar(plan: Path, cfg: EngineConfig, imagenes: Optional[Path],
     return 0 if ok else 1
 
 
+
+# --------------------------------------------------------------------------- #
+# Adelgazar el checkpoint para distribuirlo
+# --------------------------------------------------------------------------- #
+def adelgazar(entrada: Path, salida: Optional[Path] = None) -> Path:
+    """Deja solo lo que la inferencia necesita.
+
+    Un checkpoint de entrenamiento carga tres cosas que en producción sobran:
+      - el estado de AdamW (dos momentos por parámetro: el doble del modelo),
+      - los pesos crudos, si ya guardamos los EMA que son los que se usan,
+      - scheduler y scaler.
+    Sacarlos baja el archivo a un tercio y lo deja por debajo del límite de
+    GitHub sin necesidad de LFS.
+    """
+    ck = torch.load(entrada, map_location="cpu")
+    if not isinstance(ck, dict) or "head" not in ck:
+        print(f"[slim] {entrada.name} ya es un state_dict pelado, no hay qué sacar")
+        return entrada
+
+    # Todo lo que el motor lee de un checkpoint, y nada más.
+    quedan = ("head", "clases", "fpn_levels", "anchor_sizes", "tam",
+              "backbone_file", "backbone_pretrained", "metricas", "epoca")
+    flaco = {k: ck[k] for k in quedan if k in ck}
+
+    salida = salida or entrada.with_name(entrada.stem + "_deploy.pt")
+    torch.save(flaco, salida)
+
+    antes = entrada.stat().st_size / 1e6
+    despues = salida.stat().st_size / 1e6
+    sacados = [k for k in ck if k not in flaco]
+    print(f"[slim] {entrada.name}: {antes:.0f} MB -> {salida.name}: "
+          f"{despues:.0f} MB  ({100*(1-despues/antes):.0f}% menos)")
+    print(f"[slim] sacado: {', '.join(sacados)}")
+    if despues > 100:
+        print("[slim] ⚠ sigue por encima de los 100 MB que GitHub rechaza. "
+              "Usá Releases o Git LFS.")
+    elif despues > 50:
+        print("[slim] ⚠ GitHub avisa por encima de 50 MB (lo acepta igual).")
+    else:
+        print("[slim] entra en git sin LFS.")
+    print("[slim] OJO: este archivo YA NO SIRVE para --reanudar. Guardá el "
+          "original si pensás seguir entrenando.")
+    return salida
+
+
 # --------------------------------------------------------------------------- #
 def main() -> int:
     ap = argparse.ArgumentParser(description="Export ONNX / TensorRT de la cabeza de objetos")
@@ -526,6 +571,9 @@ def main() -> int:
     ap.add_argument("--max-batch", type=int, default=4)
     ap.add_argument("--workspace", type=float, default=4.0, help="GB")
 
+    ap.add_argument("--adelgazar", default=None, metavar="CHECKPOINT",
+                    help="dejar solo lo que necesita la inferencia (para subirlo "
+                         "a git sin LFS)")
     ap.add_argument("--verificar", default=None, help="ruta a un .plan a validar")
     ap.add_argument("--verif-imgs", default=None)
     ap.add_argument("--umbral", type=float, default=0.30)
@@ -539,6 +587,10 @@ def main() -> int:
     out_dir = Path(args.salida_dir)
     if not out_dir.is_absolute():
         out_dir = Path(_AQUI) / out_dir
+
+    if args.adelgazar:
+        adelgazar(Path(args.adelgazar))
+        return 0
 
     if args.verificar:
         return verificar(Path(args.verificar), cfg,

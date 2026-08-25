@@ -74,9 +74,9 @@
 /* ── Botones de acción (+ y − / Cancelar y Aceptar) ── */
 .camaras-panel__acciones {
   display: flex;
-  gap: 8px;
+  justify-content: space-between;
   align-items: center;
-  flex-shrink: 0;
+
 }
 
 .camaras-panel__cancelar {

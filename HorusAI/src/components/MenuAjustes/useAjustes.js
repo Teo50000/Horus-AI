@@ -12,7 +12,7 @@ const CONFIG_IA_INICIAL = {
 
 export function useAjustes() {
   // ── Números de emergencia ─────────────────────────────────────
-  const [numeros, setNumeros]       = useState([]);
+  const [contactos, setContactos]       = useState([]);
   const [cargando, setCargando]     = useState(true);
   const [editandoId, setEditandoId] = useState(null);
 
@@ -27,7 +27,7 @@ export function useAjustes() {
         if (!res.ok) throw new Error(`Error ${res.status}`);
         return res.json();
       })
-      .then((data) => setNumeros(data))
+      .then((data) => setContactos(data))
       .catch((err) => console.error("Error al cargar teléfonos:", err))
       .finally(() => setCargando(false));
   }, []);
@@ -35,28 +35,28 @@ export function useAjustes() {
   const toggleEdicion = (id) =>
     setEditandoId((prev) => (prev === id ? null : id));
 
-  const actualizarNumero = (id, campo, valor) =>
-    setNumeros((prev) =>
+  const actualizarContacto = (id, campo, valor) =>
+    setContactos((prev) =>
       prev.map((n) => (n.id === id ? { ...n, [campo]: valor } : n))
     );
 
-  const guardarNumero = async (id) => {
+  const guardarContacto = async (id) => {
     setEditandoId(null);
-    const numero = numeros.find((n) => n.id === id);
-    if (!numero) return;
+    const contacto = contactos.find((n) => n.id === id);
+    if (!contacto) return;
     try {
       await fetch(`${API}/emergencia/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ telefono: numero.telefono, nombre: numero.nombre }),
+        body: JSON.stringify({ telefono: contacto.telefono, nombre: contacto.nombre }),
       });
     } catch (err) {
       console.error("Error al guardar teléfono:", err);
     }
   };
 
-  const agregarNumero = async () => {
-    const nuevo = { nombre: `Numero${numeros.length + 1}`, telefono: "" };
+  const agregarContacto = async () => {
+    const nuevo = { nombre: `Contacto${contactos.length + 1}`, telefono: "" };
     try {
       const res = await fetch(`${API}/emergencia`, {
         method: "POST",
@@ -64,7 +64,7 @@ export function useAjustes() {
         body: JSON.stringify(nuevo),
       });
       const data = await res.json();
-      setNumeros((prev) => [...prev, data]);
+      setContactos((prev) => [...prev, data]);
       setEditandoId(data.id);
     } catch (err) {
       console.error("Error al agregar teléfono:", err);
@@ -93,7 +93,7 @@ export function useAjustes() {
           fetch(DELETE_TELEFONO(id), { method: "DELETE" })
         )
       );
-      setNumeros((prev) => prev.filter((n) => !ids.includes(n.id)));
+      setContactos((prev) => prev.filter((n) => !ids.includes(n.id)));
     } catch (err) {
       console.error("Error al borrar teléfonos:", err);
     }
@@ -129,13 +129,13 @@ export function useAjustes() {
   };
 
   return {
-    numeros,
+    contactos,
     cargando,
     editandoId,
-    agregarNumero,
+    agregarContacto,
     toggleEdicion,
-    actualizarNumero,
-    guardarNumero,
+    actualizarContacto,
+    guardarContacto,
     // borrado
     modoBorrado,
     seleccionadosIds,

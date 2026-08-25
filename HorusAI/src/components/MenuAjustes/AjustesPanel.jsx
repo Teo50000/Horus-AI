@@ -1,4 +1,4 @@
-import NumeroItem from "./NumeroItem/NumeroItem";
+import ContactoItem from "./ContactoItem/ContactoItem";
 import AddButton from "./AddButton/AddButton";
 import RemoveButton from "../RemoveButton/RemoveButton";
 import Toggle from "./Toggle/Toggle";
@@ -7,8 +7,8 @@ import "./AjustesPanel.css";
 
 export default function AjustesPanel({
   onClose,
-  numeros, cargando,
-  editandoId, agregarNumero, toggleEdicion, actualizarNumero, guardarNumero,
+  contactos, cargando,
+  editandoId, agregarContacto, toggleEdicion, actualizarContacto, guardarContacto,
   modoBorrado, seleccionadosIds, toggleModoBorrado, toggleSeleccion,
   confirmarBorrado, cancelarBorrado,
   alertaEnPantalla, toggleAlerta,
@@ -25,9 +25,9 @@ export default function AjustesPanel({
           {cargando ? (
             <p className="ajustes-panel__cargando">Cargando teléfonos...</p>
           ) : (
-            <div className="ajustes-numeros-lista">
-              {numeros.map((n) => (
-                <div key={n.id} className="ajustes-numero-row">
+            <div className="ajustes-contactos-lista">
+              {contactos.map((n) => (
+                <div key={n.id} className="ajustes-contacto-row">
                   {/* Checkbox visible solo en modo borrado */}
                   {modoBorrado && (
                     <input
@@ -37,12 +37,12 @@ export default function AjustesPanel({
                       onChange={() => toggleSeleccion(n.id)}
                     />
                   )}
-                  <NumeroItem
-                    numero={n}
+                  <ContactoItem
+                    contacto={n}
                     editando={!modoBorrado && editandoId === n.id}
                     onToggleEdicion={toggleEdicion}
-                    onActualizar={actualizarNumero}
-                    onGuardar={guardarNumero}
+                    onActualizar={actualizarContacto}
+                    onGuardar={guardarContacto}
                   />
                 </div>
               ))}
@@ -66,8 +66,8 @@ export default function AjustesPanel({
               </>
             ) : (
               <>
-                <AddButton onClick={agregarNumero} label="Agregar número" />
-                <RemoveButton onClick={toggleModoBorrado} label="Eliminar números" />
+                <AddButton onClick={agregarContacto} label="Agregar contacto" />
+                <RemoveButton onClick={toggleModoBorrado} label="Eliminar contactos" />
               </>
             )}
           </div>

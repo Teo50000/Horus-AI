@@ -3,7 +3,7 @@ import "./CeldaCamara.css";
 const API = "http://localhost:8000";
 
 const detenerStream = (camaraId) => {
-  fetch(`${API}/video/stop_feed/${camaraId}`, { method: 'POST' })
+  fetch(`${API}/video/stop_feed/${camaraId}?t=${Date.now()}`, { method: 'POST' })
     .catch(err => console.error('Error al detener stream:', err));
 };
 

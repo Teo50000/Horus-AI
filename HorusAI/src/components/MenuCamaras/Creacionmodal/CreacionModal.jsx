@@ -35,7 +35,7 @@ function HardwareCamaraRow({ camara, seleccionada, onToggle, onPreview }) {
         className="creacion-modal__row-preview"
         onClick={(e) => {
           e.stopPropagation(); // ← evita que el click del preview también seleccione la fila
-          onPreview(camara);
+          onPreview(camara+1);
         }}
         title="Preview"
       >

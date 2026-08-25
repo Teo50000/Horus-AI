@@ -36,6 +36,16 @@ FACTOR_PICO_VELOCIDAD = 3.0   # cuánto por encima del "ruido normal" cuenta com
 VENTANA_POST_PICO_SEG = 4.0   # cuánto tiempo después de un pico dejo disparar la alarma
 ALPHA_BASELINE = 0.05         # suavizado del nivel de "ruido normal" de velocidad
 
+# --- un pico de velocidad NO alcanza: tiene que ser una transición real de
+# pie -> acostado. Si la persona ya está en el piso y se mueve (se acomoda,
+# se da vuelta), el baseline de velocidad ya cayó casi a cero por la quietud
+# previa, y ese movimiento normal se ve como un "pico" gigante en términos
+# relativos aunque no haya pasado nada. Para filtrar eso, exijo que la
+# verticalidad del torso (cadera->hombro) haya caído de verdad: si ya venía
+# baja (acostado), un pico de velocidad no arma la alarma.
+VENTANA_VERTICAL_PREVIA_SEG = 2.0  # cuánto miro hacia atrás para saber si "antes" estaba de pie
+CAIDA_VERTICAL_MINIMA = 0.35      # cuánta verticalidad tiene que haber bajado para contar como caída real
+
 IDX_CI, IDX_CD, IDX_HI, IDX_HD = 23, 24, 11, 12
 MODELO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pose_landmarker.task")
 
@@ -143,6 +153,7 @@ if __name__ == "__main__":
 
     baseline_vel = None               # nivel "normal" de velocidad, se adapta solo en calma
     ultimo_pico_ts = None             # reloj del último movimiento brusco real detectado
+    historial_vertical = deque()      # (timestamp, verticalidad) recientes, solo detecciones reales
 
     tiempos = {"yolo": [], "pose": [], "modelo": [], "total": []}
     n_frame = 0
@@ -164,7 +175,10 @@ if __name__ == "__main__":
 
         #detección de persona
         t0 = time.perf_counter()
-        res = yolo(frame, classes=[0], verbose=False)
+        # conf explícito: el default de ultralytics (~0.25) deja pasar detecciones
+        # espurias en cuarto vacío (sombras, objetos) que después el pipeline
+        # confunde con una pose de caída.
+        res = yolo(frame, classes=[0], conf=0.5, verbose=False)
         tiempos["yolo"].append(time.perf_counter() - t0)
 
         crop = None
@@ -209,6 +223,13 @@ if __name__ == "__main__":
             inicio_racha = None
             alarma_activa = False
             prob_actual = 0.0
+            historial_vertical.clear()
+            # baseline y pico también son historia vieja: si quedan de antes de
+            # irse de cuadro, pueden bloquear una caída real al volver (baseline
+            # stale muy alto) o validar una alarma con un pico que no tiene nada
+            # que ver con lo que pasó al reaparecer.
+            baseline_vel = None
+            ultimo_pico_ts = None
         else:
             deteccion_real_este_frame = kp_norm is not None
 
@@ -227,12 +248,35 @@ if __name__ == "__main__":
                 # frame repetido (fallback) tiene vel=0 y ensuciaría el baseline.
                 if deteccion_real_este_frame:
                     v_escalar = np.linalg.norm(vel[[IDX_CI, IDX_CD, IDX_HI, IDX_HD]], axis=1).mean()
+                    # ~1 con el torso vertical (de pie), ~0 con el torso horizontal (acostado)
+                    verticalidad = -((kp_norm[IDX_HI, 1] + kp_norm[IDX_HD, 1]) / 2)
+
                     if baseline_vel is None:
                         baseline_vel = v_escalar
                     elif baseline_vel > 1e-6 and v_escalar > baseline_vel * FACTOR_PICO_VELOCIDAD:
-                        ultimo_pico_ts = t_frame
+                        # candidato a pico: solo arma la alarma si además la verticalidad
+                        # veía "de pie" hace poco y ahora cayó (transición real). Si ya
+                        # estaba acostado, la verticalidad previa también era baja y este
+                        # movimiento no cuenta como caída.
+                        #
+                        # excepción: si recién volvimos a ver a la persona (poco historial
+                        # todavía, ej. reapareció en cuadro o venía de un hueco largo), no
+                        # puedo probar que "ya estaba acostada de antes" porque no la vi.
+                        # En ese caso prefiero un falso positivo ocasional a perderme una
+                        # caída real que pasó justo al reaparecer.
+                        cobertura_seg = t_frame - historial_vertical[0][0] if historial_vertical else 0.0
+                        if cobertura_seg < VENTANA_VERTICAL_PREVIA_SEG * 0.8:
+                            ultimo_pico_ts = t_frame
+                        else:
+                            vertical_previa_max = max(v for _, v in historial_vertical)
+                            if (vertical_previa_max - verticalidad) >= CAIDA_VERTICAL_MINIMA:
+                                ultimo_pico_ts = t_frame
                     else:
                         baseline_vel = baseline_vel * (1 - ALPHA_BASELINE) + v_escalar * ALPHA_BASELINE
+
+                    historial_vertical.append((t_frame, verticalidad))
+                    while historial_vertical and t_frame - historial_vertical[0][0] > VENTANA_VERTICAL_PREVIA_SEG:
+                        historial_vertical.popleft()
 
         #clasificación: solo con el buffer lleno y cada PASO frames
         t0 = time.perf_counter()

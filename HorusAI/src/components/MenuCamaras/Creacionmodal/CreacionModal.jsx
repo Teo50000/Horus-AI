@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import "./CreacionModal.css";
-
+import iconPreview from "../../../assets/eye.svg";
 
 
 // ── Selector de pestaña ───────────────────────────────────────
@@ -35,11 +35,11 @@ function HardwareCamaraRow({ camara, seleccionada, onToggle, onPreview }) {
         className="creacion-modal__row-preview"
         onClick={(e) => {
           e.stopPropagation(); // ← evita que el click del preview también seleccione la fila
-          onPreview(camara+1);
+          onPreview(camara);
         }}
         title="Preview"
       >
-        👁
+        <img src={iconPreview} alt="Preview" />
       </button>
     </div>
   );

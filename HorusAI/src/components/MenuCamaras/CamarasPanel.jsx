@@ -140,7 +140,7 @@ export default function CamarasPanel({ onClose, onPinearCamara, onPinearSector }
       )}
       {previewHardware && (
         <PreviewModal
-          camaras={[{ id: previewHardware.id, nombre: previewHardware.nombre }]}
+          camaras={[{ id: previewHardware.id+1, nombre: previewHardware.nombre }]}
           onClose={() => setPreviewHardware(null)}
         />
       )}

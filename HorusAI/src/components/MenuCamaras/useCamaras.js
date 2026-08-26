@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from "react";
 const API = "http://localhost:8000/camaras";
 
 // ⚠️ Reemplazar cuando el backend tenga el endpoint
-const DELETE_CAMARA = (id) => `${API}/${id}`;
+const DELETE_CAMARA = (id) => `${API}/config/${id}`;
 
 function dbAItem(config) {
   return {

@@ -142,14 +142,21 @@
 
 /* Botón preview dentro de la fila */
 .creacion-modal__row-preview {
-  background: transparent;
-  border: none;
-  font-size: 14px;
+  width: 1.5vw;
+  aspect-ratio: 1;
+  flex-shrink: 0;
+
+  background: #090326;
+  border: 1.5px solid #ff8427;
+  border-radius: 8px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
   cursor: pointer;
   padding: 0;
-  opacity: 0.6;
-  transition: opacity 0.15s;
-  flex-shrink: 0;
+  transition: background 0.15s;
 }
 
 .creacion-modal__row-preview:hover { opacity: 1; }

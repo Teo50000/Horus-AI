@@ -253,3 +253,19 @@ def eliminar_mail(id: int) -> List[NumeroEmergencia]:
             content={"mensaje": f"Mail {id} eliminado correctamente"},
             status_code=200
         )
+
+@camara_router.delete("/config/{camara_config_id}", tags=["Camaras"])
+def eliminar_configuracion(camara_config_id: int):
+    with Session(engine) as session:
+        db_item = session.get(CamaraConfig, camara_config_id)
+        if not db_item:
+            return JSONResponse(
+                content={"error": "Configuración no encontrada"},
+                status_code=404
+            )
+        session.delete(db_item)
+        session.commit()
+        return JSONResponse(
+            content={"mensaje": f"Configuración {camara_config_id} eliminada correctamente"},
+            status_code=200
+        )

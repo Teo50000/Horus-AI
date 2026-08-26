@@ -1,3 +1,52 @@
-Etapa pendiente — Tracking local por camara.
-Ventana temporal por clase (~0.5-1 s) para confirmar detecciones antes de propagarlas.
-Reemplaza a la vieja carpeta 06_tracking_persistencia.
+TRACKING LOCAL - por camara, ventana por clase
+==============================================
+
+  kalman.py          filtro de Kalman de velocidad constante, 8 estados
+                     (cx, cy, aspecto, alto + sus velocidades). El ruido es
+                     proporcional al alto de la caja, no constante: un objeto
+                     de 20 px y uno de 400 px no comparten escala de error.
+  tracker_local.py   el tracker. TrackerLocal (una camara) y
+                     TrackerMultiCamara (el que se usa en produccion).
+
+Antes de asociar, tres filtros de duplicados (ver el LEEME de 05_tracking):
+dedup dentro de la clase por IoU Y por contencion, dedup entre clases solo
+por IoU, y un portero que no deja nacer un track encima de otro. Con la
+regla del pie para no confundir "el torso de esta persona" con "otra
+persona parada mas cerca".
+
+Tres etapas de asociacion, en este orden:
+
+  1. IoU estricto contra las detecciones de score alto.
+     Estricto a proposito: es la etapa que tiene que resolver bien una
+     multitud, donde dos personas cercanas compiten por la misma caja.
+
+  2. IoU contra las detecciones de score bajo, solo para tracks ya
+     confirmados alguna vez. Una deteccion debil SOSTIENE un track pero
+     nunca CREA uno: ahi esta la asimetria que recupera personas sin
+     inventar fantasmas.
+
+  3. Recuperacion con las cajas expandidas (buffered IoU).
+     Sin esto, un objeto que se desplaza mas que su propio ancho tiene IoU
+     exactamente 0 contra su prediccion y el track muere. El peor caso es el
+     arranque: un track recien nacido tiene velocidad 0, asi que predice que
+     el objeto se queda quieto, y una persona corriendo nunca llega a
+     confirmarse. Va DESPUES de las estrictas para no arruinar la resolucion
+     de multitudes, y solo contra detecciones de score alto.
+
+La asignacion es optima (hungaro), no greedy. El greedy "el par de mayor IoU
+primero" se equivoca justo cuando importa: dos personas que se cruzan.
+
+Lo que le da a la fusion, ademas de la caja:
+  visto_s             cuanto hace que existe el track
+  quieto / quieto_s   el centro no se salio de un radio proporcional a su caja
+  radio_permanencia   que tan grande es la region donde estuvo
+  recorrido           px acumulados
+  desplazamiento      px entre el primer centro y el actual
+  frames_sin_ver      >0 = caja predicha, no observada
+  estado              tentativo | confirmado | perdido
+
+Merodeo sale de `radio_permanencia` + `visto_s`; paquete abandonado sale de
+`quieto_s`. Las dos reglas de 06 son casi gratis gracias a esto.
+
+Reemplaza a la vieja carpeta 06_tracking_persistencia y subsume la
+confirmacion K-de-N de objects_engine (ver config_motor_para_tracking).

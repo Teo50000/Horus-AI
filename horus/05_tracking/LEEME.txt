@@ -1,4 +1,187 @@
-Capa de robustez: tracking en dos niveles (ver docs/arquitectura.png).
-  - local/        -> tracking por camara, ventana por clase (~0.5-1 s). Reduce falsas alarmas.
-  - global_reid/  -> tracking entre camaras usando el vector ReID 512-d, matching en RAM (<10 ms).
-El tracking local alimenta al global; el global alimenta a fusion y decision.
+CAPA 05 - TRACKING (capa de robustez)
+=====================================
+
+Convierte "que hay en este frame" en "que hay en esta escena y desde hace
+cuanto". Sin esta capa la fusion no puede decidir nada: todas las reglas de
+06 se apoyan en tiempo, y el tiempo lo pone el tracking.
+
+Archivos
+--------
+  comun.py                 IoU vectorizado, asignacion optima (hungaro),
+                           conversiones de caja. Solo numpy.
+  local/kalman.py          filtro de Kalman de velocidad constante (8 estados)
+  local/tracker_local.py   tracking por camara, ventana por clase
+  global_reid/tracker_global.py   identidades entre camaras por vector 512-d
+  probar_tracking.py       autotest (sin GPU ni camara) y modo en vivo
+
+Dependencias: numpy. scipy es OPCIONAL (acelera el hungaro); sin scipy se usa
+la implementacion propia de comun.py, que da el mismo resultado y esta
+verificada contra scipy en el autotest.
+
+Verificar
+---------
+  python probar_tracking.py --autotest
+
+12 pruebas, sin GPU ni pesos ni camara. Verifica el hungaro contra scipy,
+persona rapida, cruce sin intercambio de ID, duplicados sobre un mismo
+objeto (10 escenas de solape), fantasmas descartados, objeto quieto,
+oclusion de 3 s, ReID entre camaras, filtro de calidad, latencia del
+matching y carga de CPU.
+
+Las dos pruebas de tiempo se juzgan por la mediana y con presupuesto POR
+CAMARA, no por el total: asi un pico de otro proceso en la maquina no las
+tumba. Un test que da rojo por ruido enseña a ignorar los tests.
+
+Ver en vivo sobre la camara
+---------------------------
+  python probar_tracking.py 0 --ver --pesos ../04_cabezas/objetos/modelos/objetos_v2.pt
+
+
+LO IMPORTANTE: como hay que configurar el motor
+-----------------------------------------------
+El tracker usa asociacion en dos etapas (ByteTrack). La segunda etapa
+recupera tracks con detecciones POR DEBAJO del umbral de campo, y para eso
+necesita que el motor se las entregue. Entonces:
+
+  from tracker_local import config_motor_para_tracking
+  from objects_engine import EngineConfig
+  cfg = EngineConfig(**config_motor_para_tracking(), pesos="...")
+
+Eso hace tres cosas:
+  score_thresh      -> 0.10   (el piso pasa a ser del tracker)
+  umbral_por_clase  -> None   (la tabla UMBRALES_CAMPO se aplica en el tracker
+                               como `score_alto` de cada clase)
+  confirmar_frames  -> 0      (la confirmacion K-de-N del motor la reemplaza
+                               el tracker, que asocia por identidad y no por
+                               IoU contra cualquier caja previa de la clase)
+
+Si se deja el motor filtrando en 0.25, la etapa 2 no recibe nada y el tracker
+se degrada a un SORT comun: vuelve el problema de la persona que se pierde
+con movimiento rapido.
+
+
+Que resuelve de la prueba de campo
+----------------------------------
+1. "La persona se pierde con movimiento rapido"
+   - Kalman predice donde deberia estar antes de asociar.
+   - Etapa 2: una deteccion debil sostiene el track (pero nunca crea uno).
+   - Etapa 3: IoU con las cajas expandidas, para el arranque, cuando el track
+     todavia no aprendio la velocidad. Medido: mantiene un solo ID hasta
+     80 px/frame con una caja de 40 px de ancho (2x su propio ancho).
+
+2. "Crea muchas cajas dentro de una misma persona"
+   - El NMS del motor mide IoU, y el IoU NO ve las cajas anidadas: el torso
+     de una persona dentro de su cuerpo entero da IoU 0.496, justo por
+     debajo del umbral de 0.50 del motor, y sobrevive.
+   - Con el piso del motor en 0.10 (que es lo que la etapa 2 necesita)
+     sobreviven varias por persona. Como la asignacion es uno a uno, la
+     mejor se lleva el track y TODAS las demas fundan tracks nuevos.
+   - Medido: una persona con 5 cajas parciales daba 6 tracks confirmados.
+     Ahora da 1. Ver "Duplicados" mas abajo.
+
+3. "Paquete y celular: detecciones fantasma parpadeando"
+   - Confirmacion por clase: celular pide 0.8 s, paquete 1.0 s.
+   - Medido: 0 de 120 frames con track confirmado sobre un fantasma que
+     aparece 1 de cada 3 frames en posiciones al azar.
+   - Sin tocar umbrales ni el modelo, que es lo que se queria.
+
+
+Duplicados: tres filtros
+------------------------
+1. Dentro de la clase (`_deduplicar`): NMS propio con DOS criterios
+   separados, porque son cosas distintas y quieren umbrales distintos:
+     dedup_iou         dos cajas que son casi la misma caja (0.60-0.70)
+     dedup_contencion  una caja adentro de la otra (0.85-0.90, ALTO)
+   La contencion va alta a proposito: una persona parcialmente tapada por
+   otra puede quedar 60-70% dentro de su caja, y esa es una persona real
+   que no se puede perder. Un torso o unas piernas quedan al 95-100%.
+
+2. Entre clases (`dedup_entre_clases`, 0.80): la misma region que sale a la
+   vez como persona y como paquete es una sola cosa. Se queda la de mejor
+   score RELATIVO a su propio umbral (comparar scores crudos entre clases
+   no significa nada: 0.50 en paquete vale mas que 0.50 en persona).
+   Aca se mide IoU y NUNCA contencion. Es la diferencia con el filtro 1:
+   un celular, una pistola o un paquete en la mano estan 100% ADENTRO de
+   la caja de la persona, y son justo lo que el sistema existe para ver.
+
+3. Portero de nacimientos (`nacer_*`): una deteccion que se superpone con
+   un track que ya existe no puede fundar uno nuevo. Es incremental: cada
+   deteccion que nace se suma a la lista contra la que se comparan las
+   siguientes, porque en el primer frame no hay tracks todavia.
+
+La regla del pie (`respetar_pie`)
+---------------------------------
+Un frame no alcanza para distinguir "el torso de esta persona" de "otra
+persona parada delante": las dos cajas estan 100% contenidas. Pero en una
+camara de vigilancia todos se apoyan en el mismo piso, y el que esta mas
+cerca pisa MAS ABAJO en la imagen. Una parte de una persona nunca puede
+tener los pies por debajo de los pies de esa persona.
+
+Entonces: una caja contenida cuyo borde inferior esta por debajo del de la
+que la contiene queda perdonada, aunque este 100% adentro. Solo se perdona
+a la que esta ADENTRO, nunca a la que se traga a la otra: una caja que
+envuelve a la buena y sobresale un poco por abajo es la misma deteccion
+inflada, no alguien mas cerca.
+
+Se desactiva para humo y llama, que no se apoyan en nada.
+
+Costo: +16% sobre el tracking local. Contadores en tracker.resumen():
+duplicadas, entre clases y nacimientos bloqueados.
+
+Ventana por clase (la del diagrama)
+-----------------------------------
+En SEGUNDOS, no en frames: el pipeline corre a 8-12 FPS segun la carga.
+Ver PARAMETROS_POR_CLASE en local/tracker_local.py.
+
+  persona    ventana 1.5 s  confirma 0.30 s  Kalman si   buffer 1.0
+  pistola    ventana 1.0 s  confirma 0.20 s  Kalman si   buffer 1.0
+  cuchillo   ventana 1.0 s  confirma 0.20 s  Kalman si   buffer 1.0
+  humo       ventana 3.0 s  confirma 0.60 s  Kalman NO   buffer 0.3
+  llama      ventana 2.0 s  confirma 0.40 s  Kalman NO   buffer 0.3
+  celular    ventana 0.8 s  confirma 0.80 s  Kalman si   buffer 0.4
+  paquete    ventana 5.0 s  confirma 1.00 s  Kalman NO   buffer 0.2
+
+Humo y llama van SIN Kalman a proposito: el humo no se traslada, se expande.
+Un modelo de velocidad constante pelea contra eso y predice peor que no
+predecir. Paquete tampoco: no se mueve, y le sobra ventana larga para
+sobrevivir a que alguien pase por delante.
+
+
+Tracking global (ReID)
+----------------------
+Le pone `global_id` a cada persona, y ese numero sobrevive el cambio de
+camara. Necesita el vector 512-d de 04_cabezas/reid_cuerpo.
+
+  tg = TrackerGlobal(topologia=topo)
+  tg.actualizar(tracks, embeddings, tam_frame=(1080, 1920))
+
+Cinco decisiones que hacen que funcione (detalle en el docstring del modulo):
+  1. Filtro de calidad antes que umbral. Un vector de una persona de 30 px o
+     cortada por el borde envenena la galeria para siempre.
+  2. Banco de K=8 vectores por identidad, no un promedio (de frente y de
+     espaldas dan vectores casi ortogonales).
+  3. La topologia poda por fisica ANTES de mirar el coseno.
+  4. Todas las personas del frame se resuelven juntas con asignacion optima,
+     asi dos personas parecidas no pueden llevarse el mismo global_id.
+  5. Un track ya ligado no vuelve a consultar la galeria (cada 2 s).
+
+Medido con la galeria llena (512 identidades x 8 vectores = 4.096, ~8 MB):
+matching de 4 personas por frame en 2.1 ms mediana / 6.3 ms p95. El diagrama
+pide <10 ms.
+
+
+Costo de CPU
+------------
+Tracking local, 8 camaras x 12 objetos: 2.1 ms por camara por frame. A 10 FPS
+son ~170 ms de CPU por segundo para 8 camaras. Nada de esto toca la GPU.
+
+
+Pendiente
+---------
+- Correr el modo en vivo contra la camara real y ajustar las ventanas por
+  clase con lo que se vea (los numeros de arriba son un punto de partida
+  razonado, no medido en esta instalacion).
+- El tracking global necesita que la cabeza de ReID entregue embeddings por
+  persona. Ver la nota de pipeline.py sobre exponer la piramide FPN desde
+  FusedObjectsNet, que es lo unico que falta para cerrarlo sin pagar el
+  backbone dos veces.

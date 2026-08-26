@@ -1,3 +1,48 @@
-Etapa pendiente — Tracking global entre camaras (ReID).
-Matchea vectores 512-d en RAM (<10 ms) para seguir a la misma persona entre camaras.
-Recibe reingestas desde la galeria global (asincrono, no bloquea la alerta).
+TRACKING GLOBAL - identidades entre camaras (ReID)
+==================================================
+
+  tracker_global.py    galeria de identidades en RAM + matching por coseno.
+
+Le pone `global_id` a cada persona; ese numero sobrevive el cambio de camara.
+Es lo que permite que la fusion diga "alguien entro por el porton, cruzo el
+patio y ahora esta en el deposito" en vez de tres detecciones sueltas.
+
+Entrada: el vector 512-d normalizado de 04_cabezas/reid_cuerpo
+(ReIDBodyHead.embed_people). Los vectores se pegan a los tracks por IoU y no
+por orden: las cajas que recibe la cabeza de ReID salen del detector, no del
+tracker, y asumir el orden le pone el vector de una persona a la otra sin
+dejar rastro.
+
+  tg = TrackerGlobal(ConfigGlobal(), topologia=topo)
+  tg.actualizar(tracks_locales, embeddings, tam_frame=(1080, 1920))
+
+Filtro de calidad (lo mas importante del modulo)
+------------------------------------------------
+Se descarta el vector si la persona mide menos de 64 px de alto, si su
+relacion ancho/alto no es de persona de pie, si toca el borde del cuadro
+(truncada), si el track no esta confirmado o tiene pocos hits, o si la caja
+de este frame es predicha y no observada.
+
+Es preferible NO darle global_id a una persona que darselo mal: un vector
+malo no da un match malo y ya, se queda en la galeria y sigue dando matches
+malos, ademas de robarle matches a otras identidades.
+
+Topologia
+---------
+Si se le pasa una Topologia (06_fusion_decision/topologia.py), poda por
+fisica antes de mirar el coseno: transiciones imposibles por tiempo y
+distancia, y una identidad vista en otra camara hace un instante no puede
+estar aca (salvo camaras declaradas como solapadas). Baja falsos matches
+mucho mas que subir el umbral, y sin costo en los verdaderos.
+
+Camino asincrono (no bloquea la alerta)
+---------------------------------------
+  tg.reingestar(gid, vectores, etiqueta)   desde 10_galeria_global
+  tg.etiquetar(gid, "Juan Perez")          desde 09_encoder_facial
+  tg.fusionar(gid_a, gid_b)                desde 12_revision_feedback
+  tg.exportar() / tg.importar(datos)       persistencia entre reinicios
+
+Presupuesto
+-----------
+Galeria llena (512 identidades x 8 vectores = 4.096, ~8 MB): 2.1 ms mediana /
+6.3 ms p95 para 4 personas por frame. El diagrama pide <10 ms.

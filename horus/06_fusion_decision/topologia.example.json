@@ -1,0 +1,122 @@
+{
+  "_ayuda": "Copiá este archivo como topologia.json y editalo. Los poligonos van en pixeles del frame ORIGINAL de cada camara (el mismo espacio en el que objects_engine devuelve las cajas con coords_originales=True), igual que zonas.json de 02_preproceso_roi. Una persona se considera DENTRO de una zona si el punto medio del borde inferior de su caja (los pies) cae adentro del poligono. Verificalo con: python -c \"from topologia import Topologia; t=Topologia.cargar('topologia.json'); print(t.resumen()); print(t.verificar())\"",
+
+  "_tipos_de_zona": {
+    "transito": "se pasa por aca, es normal. Solo sirve para merodeo.",
+    "acceso": "puerta, porton, caja. Merodeo mas corto y paquete abandonado sube a alerta.",
+    "restringida": "estar aca fuera del horario permitido ES un evento (intrusion).",
+    "privada": "no se procesa nada. Para excluir, usar zonas.json de 02_preproceso_roi, que ni siquiera mira esos pixeles."
+  },
+
+  "_horario_permitido": "Cuando se PUEDE estar en una zona restringida. Fuera de esa franja, estar es intrusion. Si se omite (null), la zona esta restringida las 24 horas. Una franja que cruza la medianoche se escribe tal cual ('22:00' a '06:00'). Los dias son lun mar mie jue vie sab dom. tz_offset_horas es opcional: sin el, se usa la hora local de la maquina.",
+
+  "_vecinos": "Que camaras se pueden alcanzar caminando desde esta, y en cuanto tiempo. Lo usa 05_tracking/global_reid para descartar candidatos imposibles ANTES de comparar vectores: si alguien estaba en el porton hace 400 ms no puede estar en el deposito. t_min_s es lo que tarda como minimo una persona apurada; t_max_s es a partir de cuanto deja de ser informacion util. Las relaciones se simetrizan solas.",
+
+  "_solapa": "Camaras que ven el mismo espacio fisico. Entre ellas SI puede aparecer la misma persona al mismo tiempo; sin esto, el tracker global las trata como imposibles y le inventa una identidad nueva.",
+
+  "simetrica": true,
+
+  "camaras": {
+    "cam-porton": {
+      "nombre": "Porton de entrada",
+      "fps": 10.0,
+      "tam_frame": [1080, 1920],
+      "solapa": [],
+      "vecinos": [
+        { "destino": "cam-patio", "t_min_s": 2.0, "t_max_s": 60.0 }
+      ],
+      "zonas": [
+        {
+          "nombre": "vereda",
+          "tipo": "transito",
+          "prioridad": 0,
+          "merodeo_s": 30.0,
+          "puntos": [[0, 620], [1920, 620], [1920, 1080], [0, 1080]]
+        },
+        {
+          "nombre": "acceso",
+          "tipo": "acceso",
+          "prioridad": 1,
+          "merodeo_s": 15.0,
+          "puntos": [[700, 400], [1250, 400], [1250, 950], [700, 950]]
+        }
+      ]
+    },
+
+    "cam-patio": {
+      "nombre": "Patio",
+      "fps": 10.0,
+      "tam_frame": [1080, 1920],
+      "solapa": ["cam-patio-2"],
+      "vecinos": [
+        { "destino": "cam-deposito", "t_min_s": 3.0, "t_max_s": 90.0 }
+      ],
+      "zonas": [
+        {
+          "nombre": "patio",
+          "tipo": "restringida",
+          "prioridad": 0,
+          "merodeo_s": 20.0,
+          "puntos": [[0, 350], [1920, 350], [1920, 1080], [0, 1080]],
+          "horario_permitido": {
+            "dias": ["lun", "mar", "mie", "jue", "vie", "sab"],
+            "desde": "06:00",
+            "hasta": "22:00"
+          }
+        }
+      ]
+    },
+
+    "cam-patio-2": {
+      "nombre": "Patio (segundo angulo)",
+      "fps": 10.0,
+      "tam_frame": [1080, 1920],
+      "solapa": ["cam-patio"],
+      "vecinos": [],
+      "zonas": [
+        {
+          "nombre": "patio",
+          "tipo": "restringida",
+          "prioridad": 0,
+          "merodeo_s": 20.0,
+          "puntos": [[100, 300], [1850, 300], [1850, 1050], [100, 1050]],
+          "horario_permitido": {
+            "dias": ["lun", "mar", "mie", "jue", "vie", "sab"],
+            "desde": "06:00",
+            "hasta": "22:00"
+          }
+        }
+      ]
+    },
+
+    "cam-deposito": {
+      "nombre": "Deposito",
+      "fps": 10.0,
+      "tam_frame": [1080, 1920],
+      "solapa": [],
+      "vecinos": [],
+      "zonas": [
+        {
+          "nombre": "deposito",
+          "tipo": "restringida",
+          "prioridad": 0,
+          "merodeo_s": 12.0,
+          "puntos": [[100, 300], [1800, 300], [1800, 1050], [100, 1050]],
+          "horario_permitido": {
+            "dias": ["lun", "mar", "mie", "jue", "vie"],
+            "desde": "07:00",
+            "hasta": "19:00"
+          }
+        },
+        {
+          "nombre": "estanteria-valores",
+          "tipo": "restringida",
+          "prioridad": 2,
+          "merodeo_s": 6.0,
+          "puntos": [[1300, 400], [1780, 400], [1780, 900], [1300, 900]],
+          "horario_permitido": null
+        }
+      ]
+    }
+  }
+}

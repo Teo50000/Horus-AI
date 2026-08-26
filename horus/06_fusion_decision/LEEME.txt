@@ -1,8 +1,115 @@
-Etapa en progreso — Fusion y decision.
-Combina las salidas del tracking con reglas + topologia de camaras
-(que camara ve que zona, transiciones fisicamente posibles) y decide si hay evento.
+CAPA 06 - FUSION Y DECISION
+===========================
 
-Ya implementado:
-- vlm_gate.py: decide cuando despertar al VLM (por novedad de escena o duda
-  de las cabezas). Antes vivia en el backbone; se movio aca porque la decision
-  combina senales que el backbone no conoce.
+Combina las salidas del tracking con reglas y topologia de camaras (que
+camara ve que zona, que transiciones son fisicamente posibles, que horario
+rige en cada lugar) y decide si hay evento.
+
+Archivos
+--------
+  contratos.py             que entra y que sale. Dataclasses planos, sin
+                           torch: la capa se prueba sin GPU ni modelos.
+  topologia.py             zonas, horarios y transiciones entre camaras.
+  topologia.example.json   copiar como topologia.json y editar.
+  reglas.py                las reglas. Cada una mira un frame de una camara.
+  motor_fusion.py          persistencia, correlacion y ciclo de vida de los
+                           eventos. Es el que decide de verdad.
+  pipeline.py              el cableado 04 -> 05 -> 06 -> 07.
+  probar_fusion.py         20 escenarios sinteticos.
+  vlm_gate.py              cuando despertar al VLM (ya estaba).
+
+Verificar
+---------
+  python probar_fusion.py            20 escenarios, ~2 s, sin GPU
+  python probar_fusion.py --detalle  muestra cada evento generado
+  python probar_fusion.py --listar
+
+Empezar
+-------
+  1. copiar topologia.example.json como topologia.json y dibujar las zonas
+     en pixeles del frame original de cada camara
+  2. verificar:  python -c "from topologia import Topologia; \
+     t=Topologia.cargar('topologia.json'); print(t.resumen()); print(t.verificar())"
+  3. correr:  python pipeline.py 0 --ver --pesos ... --topologia topologia.json
+
+Sin topologia el sistema arranca igual, pero intrusion y merodeo por zona no
+pueden evaluarse: una persona no esta "en la camara 2", esta en el deposito.
+
+Reglas
+------
+  incendio             cruza objetos (humo/llama) con segmentacion
+                       (fuego/humo). Las dos de acuerdo = critico. Fuego de
+                       segmentacion solo ya es evidencia fuerte (F1 99,1%
+                       medido). Humo solo NO: neblina y vapor son humo a
+                       384 px. Ademas mira si el area crece: un incendio
+                       crece, un reflejo de atardecer se queda igual.
+  arma                 pistola o cuchillo, y quien la lleva. NUNCA da critico
+                       sola y SIEMPRE pide VLM: el dataset de esas clases son
+                       fotos de Flickr y esta medido que dan 0% mAP en
+                       objetos chicos. La cabeza marca el candidato, el VLM
+                       verifica.
+  intrusion            persona en zona restringida fuera de horario. Decide
+                       con el punto de los pies, no con el centro de la caja.
+  merodeo              persona que se queda. Se mide con radio_permanencia,
+                       no con velocidad: alguien que camina en circulos
+                       frente a una puerta tiene recorrido alto y radio bajo.
+  paquete_abandonado   bulto quieto Y sin nadie cerca hace N segundos. Las
+                       dos condiciones, si no cada caja apoyada es una alerta
+                       permanente.
+  caida                DORMIDA: falta la cabeza de pose / de accion.
+  accion_externa       DORMIDA: robo, pelea, vandalismo, aglomeracion.
+
+Correlacion: arma + intrusion sobre la misma persona = robo critico, y las
+dos piezas sueltas se callan. Ahi esta el valor de la capa; el resto es
+contabilidad.
+
+Ciclo de vida de un evento
+--------------------------
+Un hallazgo suelto no abre nada: hacen falta 2 confirmaciones en 3 s (1 sola
+si es critico, porque el diagrama promete ~2 s de camara a alerta). Despues
+el evento se sostiene, se re-avisa cada 20 s mientras siga vivo, se cierra a
+los 5 s de silencio y entra en enfriamiento 30 s antes de poder reabrirse.
+Medido: 30 s de incendio a 10 FPS (300 frames) = 1 evento y 2 avisos.
+
+Si el hallazgo trae global_id, el evento sigue a la persona entre camaras en
+vez de abrir uno nuevo por camara.
+
+CABEZAS QUE FALTAN - como enchufarlas
+-------------------------------------
+Las reglas de caida y de accion externa estan escritas y probadas contra
+escenarios sinteticos, pero DUERMEN porque no existen los modelos. Una regla
+dormida no devuelve "no paso nada": se declara dormida y aparece en
+motor.reglas_dormidas(). "No hubo caidas" y "no hay cabeza de caidas" no
+pueden parecer lo mismo.
+
+El contrato (AccionObs en contratos.py) acepta las dos formas posibles:
+
+  a) estimador de POSE -> 17 keypoints COCO por persona:
+         from contratos import acciones_desde_pose
+         acs = acciones_desde_pose(salida_del_modelo, camera_id="cam-1")
+     Si el modelo usa otro orden de keypoints, se pasa orden_keypoints=(...)
+     y se remapea en el adaptador. Las reglas siempre ven COCO-17.
+
+  b) clasificador de ACCION -> etiqueta + score por persona:
+         from contratos import acciones_desde_clasificador
+         acs = acciones_desde_clasificador(salida, mapa={"fall": "caida",
+                                                         "theft": "robo"})
+
+Despues:
+         pipe.procesar(frames, acciones={"cam-1": acs})
+
+Para agregar una accion nueva (pelea, vandalismo, lo que sea) alcanza con una
+linea en la tabla ACCIONES_EXTERNAS de reglas.py. No hay que tocar el motor.
+
+Nota sobre caidas: la regla NO alerta solo con la postura. Sentarse en el
+piso y caerse se ven casi igual en un frame; lo que los separa es que despues
+de una caida la persona no se levanta. Por eso pide quietud sostenida y por
+eso la severidad sube con los segundos.
+
+Pendiente
+---------
+- topologia.json real de la instalacion (zonas y horarios).
+- Calibrar los umbrales de tiempo de merodeo y paquete con la escena real.
+- Exponer la piramide FPN desde FusedObjectsNet para que segmentacion y ReID
+  compartan el backbone. Ver la nota larga en pipeline.py.
+- 07_alerta: consumir Evento.to_dict() y decidir canal por severidad.

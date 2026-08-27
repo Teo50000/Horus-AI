@@ -32,20 +32,33 @@
 # backbone.pt son 108 MB: GitHub RECHAZA cualquier archivo de mas de
 # 100 MB. Los modelos van por Releases o Git LFS, no por git normal.
 **/checkpoints/
+*.ckpt
 *.pt
 *.pth
+*.safetensors
 *.onnx
+*.h5
+*.pkl
+*.bin
 *.plan
 *.engine
 *.trt
+
+# --- datasets procesados --------------------------------------------
+*.npy
+*.npz
+*.parquet
+*.feather
 
 # --- salidas y temporales -------------------------------------------
 diag*.txt
 captura_*.png
 *_horus.png
 historial.json
+*.db
 *.mp4
 *.avi
+HorusAI/src-tauri/binaries/
 
 # --- python ----------------------------------------------------------
 __pycache__/

@@ -1,0 +1,8 @@
+# datasets crudos y derivados pesados, no van a git (se regeneran con los
+# scripts de horus/fight/scripts/ a partir del raw)
+horus/fight/data/raw/
+horus/fight/data/processed/
+
+# derivado de todos.npy (que si esta trackeado), se regenera corriendo
+# horus/fall/scripts/15_generar_desmayo_sintetico.py
+horus/fall/data/processed/todos_con_desmayo.npy

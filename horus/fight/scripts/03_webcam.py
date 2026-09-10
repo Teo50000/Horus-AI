@@ -20,8 +20,8 @@ LADO_FINAL = 112
 VENTANA = 32          # frames por clip que espera el modelo
 
 # RWF-2000 son clips de 5s. Muestreo el buffer POR TIEMPO (no por frame) para que
-# el clip de 32 frames siempre cubra ~5s, sin importar a cuántos fps vaya el webcam
-# -- si no, con un webcam a 30fps el clip serían ~1s y el modelo vería el movimiento
+# el clip de 32 frames siempre cubra unos 5s, sin importar a cuántos fps vaya el webcam
+# si no, con un webcam a 30fps el clip serían ~1s y el modelo vería el movimiento
 # "acelerado" respecto a lo que entrenó.
 DURACION_CLIP_SEG = 5.0
 INTERVALO_BUFFER = DURACION_CLIP_SEG / VENTANA
@@ -37,7 +37,7 @@ _std = np.array(STD_KINETICS, dtype=np.float32)
 
 
 def preprocesar_frame(frame_bgr):
-    """BGR -> RGB, resize a 128x128. Devuelve uint8 (128,128,3)."""
+    "BGR a RGB, resize a 128x128. Devuelve uint8 (128,128,3)."
     rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
     return cv2.resize(rgb, (LADO, LADO))
 
@@ -64,7 +64,7 @@ if __name__ == "__main__":
     print("Modelo de agresión cargado")
 
     # en el sistema integrado este YOLO es el mismo que ya corre para caídas,
-    # acá lo instancio aparte solo para probar el módulo suelto
+    # aca lo instancio aparte solo para probar el módulo suelto
     yolo = YOLO("yolov8n.pt")
 
     cap = cv2.VideoCapture(CAMARA)
@@ -72,7 +72,7 @@ if __name__ == "__main__":
         raise SystemExit(f"No pude abrir la cámara {CAMARA}")
     print("\nCámara abierta. Apretá 'q' sobre la ventana para salir.\n")
 
-    buffer = deque(maxlen=VENTANA)          # últimos 32 frames muestreados (128x128 RGB)
+    buffer = deque(maxlen=VENTANA) # últimos 32 frames muestreados (128x128 RGB)
     ultimo_agregado_ts = 0.0
     ultima_clasif_ts = 0.0
     ultimo_gate_abierto_ts = None
@@ -98,7 +98,7 @@ if __name__ == "__main__":
             frame = cv2.resize(frame, (ANCHO_PROC, int(h0 * escala)))
         h, w = frame.shape[:2]
 
-        # --- YOLO: solo para contar personas (el gate) ---
+        #YOLO solo para contar personas (el gate)
         t0 = time.perf_counter()
         res = yolo(frame, classes=[0], conf=0.5, verbose=False)
         tiempos["yolo"].append(time.perf_counter() - t0)
@@ -118,7 +118,7 @@ if __name__ == "__main__":
             alarma_activa = False
             prob_actual = 0.0
 
-        # --- clasificación: gate abierto, buffer lleno, y cada PASO_CLASIF_SEG ---
+        # clasificación, gate abierto, buffer lleno, y cada PASO_CLASIF_SEG
         t0 = time.perf_counter()
         if gate_abierto and len(buffer) == VENTANA and t_frame - ultima_clasif_ts >= PASO_CLASIF_SEG:
             ultima_clasif_ts = t_frame
@@ -139,7 +139,7 @@ if __name__ == "__main__":
                 alarma_activa = False
         tiempos["modelo"].append(time.perf_counter() - t0)
 
-        # --- dibujo del estado ---
+        # dibujo del estado
         if not gate_abierto:
             texto, color = f"gate cerrado ({n_personas} pers.)", (150, 150, 150)
         elif len(buffer) < VENTANA:

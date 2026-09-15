@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 import time
 from collections import deque
 
@@ -8,8 +9,11 @@ import numpy as np
 import requests
 import torch
 
-sys.path.append("../fall/src")
-sys.path.append("../fight/src")
+# todo relativo al archivo, no al directorio de trabajo: asi el script corre
+# desde donde sea, no solo haciendo cd a 07_alerta/
+_AQUI = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(_AQUI, "..", "fall", "src"))
+sys.path.append(os.path.join(_AQUI, "..", "fight", "src"))
 
 import mediapipe as mp
 from mediapipe.tasks import python
@@ -33,8 +37,8 @@ CAMARA = 0
 ANCHO_PROC = 640
 
 # =================== caidas (ST-GCN sobre pose) ===================
-CHECKPOINT_FALL = "../fall/checkpoints/modelo_demo_todo.pt"
-MODELO_POSE_PATH = "../fall/pose_landmarker.task"
+CHECKPOINT_FALL = os.path.join(_AQUI, "..", "fall", "checkpoints", "modelo_demo_todo.pt")
+MODELO_POSE_PATH = os.path.join(_AQUI, "..", "fall", "pose_landmarker.task")
 
 VENTANA_FALL, PASO_FALL = 32, 4
 UMBRAL_FALL = 0.5
@@ -66,7 +70,7 @@ def visibilidad_confiable(kp):
 
 
 # =================== agresion (MC3-18 sobre clip de video) ===================
-CHECKPOINT_FIGHT = "../fight/checkpoints/modelo_fight.pt"
+CHECKPOINT_FIGHT = os.path.join(_AQUI, "..", "fight", "checkpoints", "modelo_fight.pt")
 
 LADO, LADO_FINAL = 128, 112
 VENTANA_FIGHT = 32
@@ -78,6 +82,10 @@ MIN_PERSONAS = 2
 UMBRAL_FIGHT = 0.5
 PERSISTENCIA_FIGHT = 2.0
 TOLERANCIA_GATE_SEG = 1.5
+# si paso mas de esto sin poder agregar frames (gate que parpadea), el clip
+# quedaria pegoteado de momentos no contiguos -- nada parecido a los 5s
+# continuos con los que entreno el modelo. Mejor arrancar el buffer de nuevo.
+GAP_MAX_BUFFER_SEG = 1.0
 
 _media_fight = np.array(MEDIA_KINETICS, dtype=np.float32)
 _std_fight = np.array(STD_KINETICS, dtype=np.float32)
@@ -98,17 +106,23 @@ def armar_clip_fight(buffer):
 
 def enviar_alerta(tipo, probabilidad):
     """POST al backend con el tipo de evento, la probabilidad y la camara que
-    disparo -- no dejo que un backend caido tumbe el loop de video."""
+    disparo. Va en un hilo aparte: si el backend esta caido, requests se queda
+    esperando el timeout y no quiero que el loop de video se frene justo en el
+    momento de la alarma."""
     payload = {
         "camara_id": CAMARA_ID,
         "tipo": tipo,
         "probabilidad": round(float(probabilidad), 3),
         "timestamp": time.time(),
     }
-    try:
-        requests.post(URL_ALERTA, json=payload, timeout=2)
-    except requests.RequestException as e:
-        print(f"  (no se pudo avisar al backend: {e})")
+
+    def _postear():
+        try:
+            requests.post(URL_ALERTA, json=payload, timeout=2)
+        except requests.RequestException as e:
+            print(f"  (no se pudo avisar al backend: {e})")
+
+    threading.Thread(target=_postear, daemon=True).start()
 
 
 if __name__ == "__main__":
@@ -165,7 +179,10 @@ if __name__ == "__main__":
     alarma_fight = False
     alarmas_fight = []
 
-    tiempos = {"yolo": [], "pose": [], "modelo_fall": [], "modelo_fight": [], "total": []}
+    # ventana rodante: este script queda corriendo indefinidamente, con listas
+    # sin tope las metricas se comen la RAM de a poco
+    tiempos = {k: deque(maxlen=2000) for k in
+               ("yolo", "pose", "modelo_fall", "modelo_fight", "total")}
     n_frame = 0
     t_inicio = time.perf_counter()
 
@@ -288,6 +305,8 @@ if __name__ == "__main__":
         if gate_abierto:
             ultimo_gate_abierto_ts = t_frame
             if t_frame - ultimo_agregado_ts >= INTERVALO_BUFFER_FIGHT:
+                if buffer_fight and (t_frame - ultimo_agregado_ts) > GAP_MAX_BUFFER_SEG:
+                    buffer_fight.clear()  # hubo un hueco, el clip seria discontinuo
                 buffer_fight.append(preprocesar_frame_fight(frame))
                 ultimo_agregado_ts = t_frame
         elif ultimo_gate_abierto_ts is None or (t_frame - ultimo_gate_abierto_ts) > TOLERANCIA_GATE_SEG:
@@ -354,7 +373,7 @@ if __name__ == "__main__":
 
     print(f"\nAlarmas de caída: {[f'{a:.1f}s' for a in alarmas_fall]}")
     print(f"Alarmas de agresión: {[f'{a:.1f}s' for a in alarmas_fight]}")
-    print("\n--- velocidad del pipeline ---")
+    print("\n--- velocidad del pipeline (ultimos 2000 frames) ---")
     for k in ["yolo", "pose", "modelo_fall", "modelo_fight", "total"]:
         if tiempos[k]:
             print(f"{k:>12}: {np.mean(tiempos[k]) * 1000:6.1f} ms/frame")

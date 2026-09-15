@@ -158,6 +158,11 @@
   padding: 0;
   transition: background 0.15s;
 }
+.creacion-modal__row-preview-img {
+  width: 55%;
+  height: 55%;
+  object-fit: contain;
+}
 
 .creacion-modal__row-preview:hover { opacity: 1; }
 

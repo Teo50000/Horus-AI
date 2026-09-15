@@ -6,3 +6,6 @@ horus/fight/data/processed/
 # derivado de todos.npy (que si esta trackeado), se regenera corriendo
 # horus/fall/scripts/15_generar_desmayo_sintetico.py
 horus/fall/data/processed/todos_con_desmayo.npy
+
+# cache de python, no va a git
+__pycache__/

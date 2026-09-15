@@ -39,6 +39,10 @@ ANCHO_PROC = 640
 # =================== caidas (ST-GCN sobre pose) ===================
 CHECKPOINT_FALL = os.path.join(_AQUI, "..", "fall", "checkpoints", "modelo_demo_todo.pt")
 MODELO_POSE_PATH = os.path.join(_AQUI, "..", "fall", "pose_landmarker.task")
+# apunto al yolov8n.pt que ya esta en el repo: si le paso solo el nombre,
+# ultralytics no lo encuentra en esta carpeta y se lo baja de internet cada
+# vez que arranca en una maquina nueva (y deja el archivo tirado en el cwd)
+YOLO_PATH = os.path.join(_AQUI, "..", "fall", "scripts", "yolov8n.pt")
 
 VENTANA_FALL, PASO_FALL = 32, 4
 UMBRAL_FALL = 0.5
@@ -149,7 +153,10 @@ if __name__ == "__main__":
                                       num_poses=1, min_pose_detection_confidence=.3,
                                       min_pose_presence_confidence=.3)
     landmarker = vision.PoseLandmarker.create_from_options(op)
-    yolo = YOLO("yolov8n.pt")  # un solo YOLO, alimenta caídas (mejor persona) y agresión (conteo)
+    yolo = YOLO(YOLO_PATH)  # un solo YOLO, alimenta caídas (mejor persona) y agresión (conteo)
+    # con el device explicito rinde casi el doble (medido: 17.1 -> 9.2 ms/frame).
+    # Sin el argumento ultralytics resuelve el device en cada llamada.
+    device_yolo = 0 if torch.cuda.is_available() else "cpu"
 
     cap = cv2.VideoCapture(CAMARA)
     if not cap.isOpened():
@@ -201,7 +208,7 @@ if __name__ == "__main__":
 
         # ---------- deteccion de personas: UNA sola vez, la usan los dos pipelines ----------
         t0 = time.perf_counter()
-        res = yolo(frame, classes=[0], conf=0.5, verbose=False)
+        res = yolo(frame, classes=[0], conf=0.5, verbose=False, device=device_yolo)
         tiempos["yolo"].append(time.perf_counter() - t0)
         boxes = res[0].boxes
         n_personas = len(boxes)

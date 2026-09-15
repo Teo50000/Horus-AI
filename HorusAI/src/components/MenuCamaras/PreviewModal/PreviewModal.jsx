@@ -2,12 +2,12 @@ import { useState, useEffect } from "react";
 import "./PreviewModal.css";
 
 // Recibe una lista de cámaras del sector y navega entre ellas
-export default function PreviewModal({ camaras = [], onClose }) {
+export default function PreviewModal({ camaras = [],urlBase = "http://localhost:8000/video/video_feed", onClose }) {
   const [indice, setIndice] = useState(0);
 
   // Sin useEffect de cleanup — el stop lo maneja el handler de cierre
   const detenerStream = (camaraId) => {
-  fetch(`http://localhost:8000/video/stop_feed/${camaraId}`, { method: 'POST' })
+  fetch(`${urlBase}/stop_feed/${camaraId}`, { method: 'POST' })
     .catch(err => console.error('Error al detener stream:', err));
   };
   const handleClose = () => {
@@ -42,7 +42,7 @@ export default function PreviewModal({ camaras = [], onClose }) {
           <span className="preview-modal__label">{camara.nombre}</span>
           <img
             key={streamKey}
-            src={`http://localhost:8000/video/video_feed/${camara.id}?t=${streamKey}`}
+            src={`${urlBase}/${camara.id}?t=${streamKey}`}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             alt={camara.nombre}
           />

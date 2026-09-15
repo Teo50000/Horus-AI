@@ -57,3 +57,17 @@ def stop_stream(camara_config_id: int):
         "camara_config_id": camara_config_id,
         "was_running": was_running
     }
+    
+@video_router.get('/preview/{usb_index}', tags=["Streaming video"])
+def video_preview(usb_index: int):
+    source = usb_index
+    test_cap = cv2.VideoCapture(source)
+    if not test_cap.isOpened():
+        test_cap.release()
+        return JSONResponse(content={"error": "No se pudo conectar"}, status_code=400)
+    test_cap.release()
+    # usamos usb_index como id temporal para el stream
+    return StreamingResponse(
+        gen(VideoCamera(source), usb_index),
+        media_type="multipart/x-mixed-replace;boundary=frame"
+    )

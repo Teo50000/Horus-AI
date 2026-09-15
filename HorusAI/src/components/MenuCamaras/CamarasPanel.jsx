@@ -140,7 +140,8 @@ export default function CamarasPanel({ onClose, onPinearCamara, onPinearSector }
       )}
       {previewHardware && (
         <PreviewModal
-          camaras={[{ id: previewHardware.id+1, nombre: previewHardware.nombre }]}
+          camaras={[{ id: previewHardware.id, nombre: previewHardware.nombre }]}
+          urlBase="http://localhost:8000/video/preview"  // ← endpoint por usb_index
           onClose={() => setPreviewHardware(null)}
         />
       )}

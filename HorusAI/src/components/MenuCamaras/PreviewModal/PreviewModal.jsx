@@ -2,12 +2,12 @@ import { useState, useEffect } from "react";
 import "./PreviewModal.css";
 
 // Recibe una lista de cámaras del sector y navega entre ellas
-export default function PreviewModal({ camaras = [],urlBase = "http://localhost:8000/video/video_feed", onClose }) {
+export default function PreviewModal({ camaras = [],urlBase = "http://localhost:8000/video/video_feed",urlStop = "http://localhost:8000/video/stop_feed", onClose }) {
   const [indice, setIndice] = useState(0);
 
   // Sin useEffect de cleanup — el stop lo maneja el handler de cierre
   const detenerStream = (camaraId) => {
-  fetch(`${urlBase}/stop_feed/${camaraId}`, { method: 'POST' })
+  fetch(`${urlStop}/${camaraId}`, { method: 'POST' })
     .catch(err => console.error('Error al detener stream:', err));
   };
   const handleClose = () => {

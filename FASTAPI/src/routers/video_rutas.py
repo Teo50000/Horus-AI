@@ -71,3 +71,13 @@ def video_preview(usb_index: int):
         gen(VideoCamera(source), usb_index),
         media_type="multipart/x-mixed-replace;boundary=frame"
     )
+
+@video_router.post('/stop_preview/{usb_index}', tags=["Streaming video"])
+def stop_preview(usb_index: int):
+    was_running = video_model.is_stream_running(usb_index)
+    video_model.stop_stream(usb_index)
+    return {
+        "status": "Preview detenido",
+        "usb_index": usb_index,
+        "was_running": was_running
+    }

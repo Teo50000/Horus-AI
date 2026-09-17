@@ -185,6 +185,27 @@ class DatasetSintetico(Dataset):
                    "labels": torch.tensor(labels, dtype=torch.int64)}
 
 
+# Clases que, si faltan en el dataset de objetos, NO dejan ciego al sistema:
+# hay otra cabeza que las cubre, y mejor. La distinción importa porque el corte
+# duro de abajo llega DESPUÉS de preparar el dataset — en el run del 17/09 en
+# Kaggle fueron 33 minutos de descarga, deduplicación y balanceo tirados por una
+# clase que segmentación ya detecta con F1 99,1 %.
+#
+# Medido en la cabeza de segmentación (checkpoint del 27/08):
+#     fuego  F1 99,1 %   ·   humo  F1 95,6 %   ·   agua  F1 95,4 %
+#
+# Y no es teoría: probar_segmentation_engine.py::caso_fuego_solo corre el
+# pipeline entero SIN cabeza de objetos y abre igual el evento de incendio.
+#
+# Para agregar una clase acá hace falta lo mismo: otra cabeza que la detecte,
+# una regla de fusión que dispare sin la cabeza de objetos, y una prueba que lo
+# demuestre. Si no, va al corte duro.
+CUBIERTAS_POR_OTRA_CABEZA = {
+    "humo": "segmentación (F1 95,6 %)",
+    "llama": "segmentación (F1 99,1 %)",
+}
+
+
 def revisar_dataset(ds: DatasetYoloRapido, split: str, clases: Sequence[str],
                     fatal: bool = True) -> Dict[str, int]:
     """Chequeo previo. Una corrida de 50 épocas con los índices de clase mal
@@ -252,13 +273,27 @@ def revisar_dataset(ds: DatasetYoloRapido, split: str, clases: Sequence[str],
             sys.exit(f"\nCorregí el dataset '{split}' antes de entrenar. "
                      "Entrenar así es tiempo de GPU tirado.")
 
-    vacias = [f"{i} {n}" for i, n in enumerate(clases) if por_clase[i] == 0]
-    if vacias and fatal and split == "train":
+    nom_vacias = [n for i, n in enumerate(clases) if por_clase[i] == 0]
+    cubiertas = [n for n in nom_vacias if n in CUBIERTAS_POR_OTRA_CABEZA]
+    huerfanas = [n for n in nom_vacias if n not in CUBIERTAS_POR_OTRA_CABEZA]
+
+    if cubiertas and split == "train":
+        print(f"\n[dataset:{split}] ⚠ sin ejemplos de: {', '.join(cubiertas)}")
+        print("     Esta cabeza va a quedar ciega a esas clases. NO corto porque")
+        print("     otra las cubre:")
+        for n in cubiertas:
+            print(f"       {n:<8} -> {CUBIERTAS_POR_OTRA_CABEZA[n]}")
+        print("     Igual es peor que tenerlas: se pierde la confirmación entre")
+        print("     dos cabezas. Si podés conseguir el dato, conseguilo")
+        print("     (ver datasets/DATASETS.md).")
+
+    if huerfanas and fatal and split == "train":
         print(f"\n[dataset:{split}] ❌ Estas clases NO tienen un solo ejemplo de "
-              f"entrenamiento:\n     {', '.join(vacias)}")
+              f"entrenamiento:\n     {', '.join(huerfanas)}")
         print("     Entrenar así produce un modelo CIEGO a esas clases: no va a")
-        print("     fallar, simplemente nunca las va a detectar. Para un sistema")
-        print("     de prevención, esa es la peor forma de fallar.")
+        print("     fallar, simplemente nunca las va a detectar. Y no las cubre")
+        print("     ninguna otra cabeza. Para un sistema de prevención, esa es")
+        print("     la peor forma de fallar.")
         print("\n     Conseguí el dato faltante (ver datasets/DATASETS.md), o si")
         print("     es a propósito — por ejemplo para probar el pipeline —")
         print("     agregá:  --permitir-clases-vacias")

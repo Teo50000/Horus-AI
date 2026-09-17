@@ -58,6 +58,18 @@ TOPE_POR_CLASE = 5000
 TOPE_NEGATIVOS = 4000
 FRACCION_VAL = 0.15
 
+# Cuántas imágenes normalizamos como máximo por fuente. No es una preferencia:
+# normalizar de más es copiar gigabytes que el balanceador de abajo va a tirar
+# igual, porque nunca pasa de TOPE_POR_CLASE cajas por clase. D-Fire trae 21.500
+# imágenes y Pyro-SDIS 33.600; en el run del 17/09 sobrevivieron 6.987 de Pyro a
+# la deduplicación y el balanceo. El resto fueron ~25 minutos y varios GB de
+# disco tirados a la basura — y en Kaggle el disco de /kaggle/working son 20 GB.
+#
+# El muestreo es a PASO CONSTANTE sobre la lista ordenada, no los primeros N:
+# estas fuentes vienen ordenadas por split y por tiempo, así que cortar por la
+# mitad deja fuera un split entero o media jornada de una torre.
+TOPE_NORM_POR_FUENTE = 12000
+
 
 # --------------------------------------------------------------------------- #
 # Utilidades
@@ -104,6 +116,20 @@ def _imagenes(d: Path) -> List[Path]:
     if not d.is_dir():
         return []
     return sorted(p for p in d.rglob("*") if p.suffix.lower() in EXT_IMG)
+
+
+def _a_paso(items: Sequence, tope: int) -> List:
+    """Devuelve como mucho `tope` elementos, repartidos a paso constante.
+
+    No son los primeros `tope`. Estas listas vienen ordenadas por ruta, y la
+    ruta ordena por split y por nombre de archivo — que en las fuentes de
+    cámara fija es el orden temporal. Los primeros N serían todo `test/` o
+    toda una madrugada; el paso constante recorre el rango entero."""
+    n = len(items)
+    if tope <= 0 or n <= tope:
+        return list(items)
+    paso = n / tope
+    return [items[int(i * paso)] for i in range(tope)]
 
 
 def _leer_yolo(txt: Path) -> List[Tuple[int, float, float, float, float]]:
@@ -410,7 +436,8 @@ def _dl_manual(instrucciones: str):
 
 # ---------- normalizadores ------------------------------------------------- #
 def _norm_yolo(remapeo: Dict[int, int], subdir_img: str = "",
-               subdir_lbl: str = "", conservar_negativos: bool = False):
+               subdir_lbl: str = "", conservar_negativos: bool = False,
+               tope: int = 0):
     """Copia pares imagen/label remapeando índices. Las clases que no estén en
     `remapeo` se descartan (ej: purse/bill/card de Sohas).
 
@@ -426,6 +453,12 @@ def _norm_yolo(remapeo: Dict[int, int], subdir_img: str = "",
         clase descartada garantiza que NO hay nada nuestro en la foto — p.ej.
         la clase 'other' de FireAndSmoke (atardeceres, faroles, balizas): son
         justo los falsos positivos que queremos que aprenda a ignorar.
+
+    `tope` (0 = sin tope) acota cuántas imágenes se copian. Se muestrea a paso
+    constante y POR SEPARADO las que tienen caja y las que no, porque no valen
+    lo mismo: las cajas están limitadas por TOPE_POR_CLASE y los negativos por
+    TOPE_NEGATIVOS. D-Fire es ~40% negativos: muestreada de corrido llenaría
+    casi la mitad del cupo con fotos vacías.
     """
     def f(crudo: Path, salida: Path) -> int:
         salida_i = salida / "images"
@@ -434,7 +467,11 @@ def _norm_yolo(remapeo: Dict[int, int], subdir_img: str = "",
         salida_l.mkdir(parents=True, exist_ok=True)
 
         base_i = crudo / subdir_img if subdir_img else crudo
-        n = 0
+
+        # Primera pasada: leer las etiquetas y separar. Solo se leen los .txt
+        # (bytes), no se copia una sola imagen todavía. Es lo que permite
+        # aplicar el tope sabiendo qué foto tiene caja y cuál no.
+        con_caja, sin_caja = [], []
         for img in _imagenes(base_i):
             # buscar el .txt: al lado, o en el labels/ paralelo
             cand = [img.with_suffix(".txt")]
@@ -449,16 +486,31 @@ def _norm_yolo(remapeo: Dict[int, int], subdir_img: str = "",
 
             filas_out = []
             if txt is not None:
-                for fila in _leer_yolo(txt):
+                crudas = _leer_yolo(txt)
+                for fila in crudas:
                     if fila[0] not in remapeo:
                         continue
                     fila = _clip((remapeo[fila[0]], *fila[1:]))
                     if _sano(fila):
                         filas_out.append(fila)
-                if not filas_out and _leer_yolo(txt) and not conservar_negativos:
+                if not filas_out and crudas and not conservar_negativos:
                     continue          # tenía cajas pero ninguna nos sirve
             # sin txt o txt vacío => negativo, se conserva
+            (con_caja if filas_out else sin_caja).append((img, filas_out))
 
+        # El tope: los negativos no pasan de un cuarto del cupo. Más que eso es
+        # llenar el disco con fotos que TOPE_NEGATIVOS va a descartar después.
+        if tope > 0 and len(con_caja) + len(sin_caja) > tope:
+            n_neg = min(len(sin_caja), tope // 4)
+            elegidas = _a_paso(con_caja, tope - n_neg) + _a_paso(sin_caja, n_neg)
+            elegidas.sort(key=lambda par: par[0])
+            log(f"    tope {tope}: de {len(con_caja)} con caja y {len(sin_caja)} "
+                f"sin caja quedan {len(elegidas)} (a paso constante)")
+        else:
+            elegidas = sorted(con_caja + sin_caja, key=lambda par: par[0])
+
+        n = 0
+        for img, filas_out in elegidas:
             destino = salida_i / f"{crudo.name}__{n:06d}{img.suffix.lower()}"
             try:
                 shutil.copy2(img, destino)
@@ -598,14 +650,16 @@ def catalogo() -> Dict[str, Fuente]:
     f["d-fire"] = Fuente(
         "d-fire", "D-Fire (humo + llama)", "CC0-1.0", True,
         "https://github.com/gaiasd/DFireDataset", "kaggle",
-        _dl_dfire, _norm_yolo({0: 0, 1: 1}),
-        "Base de humo/llama. Ya usa 0=smoke 1=fire: coincide con nuestras clases.",
+        _dl_dfire, _norm_yolo({0: 0, 1: 1}, tope=TOPE_NORM_POR_FUENTE),
+        "Base de humo/llama. Ya usa 0=smoke 1=fire: coincide con nuestras clases. "
+        "Trae 21.500 imágenes, ~40% negativos; normalizamos un muestreo porque "
+        "el balanceador nunca va a usar más de TOPE_POR_CLASE cajas.",
         clases=(0, 1), gb=4.0, deps=("kaggle",))
 
     f["pyro-sdis"] = Fuente(
         "pyro-sdis", "Pyro-SDIS (humo, cámara fija)", "Apache-2.0", True,
         "https://huggingface.co/datasets/pyronear/pyro-sdis", "",
-        _dl_pyro, _norm_yolo({0: 0, 1: 0}),
+        _dl_pyro, _norm_yolo({0: 0, 1: 0}, tope=TOPE_NORM_POR_FUENTE),
         "Humo tenue y lejano desde torres fijas. Lo que a D-Fire le falta. "
         "OJO: sus etiquetas usan el índice 1 para smoke aunque la doc diga 0; "
         "mapeamos los dos al 0 nuestro porque es un dataset de una sola clase.",

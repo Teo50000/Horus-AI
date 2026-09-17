@@ -1,6 +1,10 @@
 /* ─── Panel contenedor ───────────────────────────────────────── */
+.ajustes-panel__content::-webkit-scrollbar { width: 4px; }
+.ajustes-panel__content::-webkit-scrollbar-track { background: transparent; }
+.ajustes-panel__content::-webkit-scrollbar-thumb { background: rgba(255,132,39,0.3); border-radius: 4px; }
 .ajustes-panel {
   position: relative;
+  min-width: 218px;
   width: 22vw;
   height: 100vh;
   background: #090326;
@@ -13,6 +17,7 @@
   gap: 4vh;
   flex-shrink: 0;
 }
+
 .ajustes-contactos-lista::-webkit-scrollbar { width: 4px; }
 .ajustes-contactos-lista::-webkit-scrollbar-track { background: transparent; }
 .ajustes-contactos-lista::-webkit-scrollbar-thumb { background: rgba(255,132,39,0.3); border-radius: 4px; }
@@ -22,6 +27,7 @@
   display: flex;
   flex-direction: column;
   gap: 40px;
+  overflow-y: scroll;
 }
 
 /* ─── Secciones ──────────────────────────────────────────────── */
@@ -205,8 +211,8 @@
 }
 
 .ajustes-checkbox {
-  width: 16px;
-  height: 16px;
+  width: 1vw;
+  aspect-ratio: 1;
   accent-color: #ff4444;
   cursor: pointer;
   flex-shrink: 0;

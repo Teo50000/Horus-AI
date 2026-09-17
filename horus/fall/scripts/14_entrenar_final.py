@@ -9,9 +9,10 @@ from modelo_stgcn import STGCN
 from grafo_mediapipe import construir_matriz_adyacencia
 
 # Entrena el modelo "de despliegue" (el que carga 12_webcam.py) usando TODO
-# todos.npy, sin dejar ningún grupo afuera. La evaluación con grupo afuera ya
-# la hace 08_validacion_cruzada.py / 13_cv_3clases.py; este script es sólo
-# para producir el checkpoint que se usa en inferencia real.
+# todos.npy, sin dejar ningún grupo afuera. La evaluación con grupo afuera la
+# hacen 08_validacion_cruzada.py (a nivel clip) y 17_evaluar_evento.py --loso
+# (a nivel evento, en condiciones de despliegue); este script es sólo para
+# producir el checkpoint que se usa en inferencia real.
 
 CARPETA = "../data/processed"
 CHECKPOINT_SALIDA = "../checkpoints/modelo_demo_todo.pt"

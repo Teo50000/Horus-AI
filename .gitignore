@@ -83,3 +83,17 @@ roboflow_config.json
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# --- node / tauri -----------------------------------------------------
+# Se colaron 2.364 archivos de node_modules en el commit cda828f. Se
+# reinstalan con `npm install`: no van al repo, y si van, cada install
+# ensucia miles de archivos y los diffs dejan de servir.
+node_modules/
+dist/
+src-tauri/target/
+
+# --- scratch de las sesiones de Claude --------------------------------
+push_log.txt
+limpieza_log.txt
+mensaje_commit.txt
+Claude outputs/

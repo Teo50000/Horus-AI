@@ -12,3 +12,7 @@ __pycache__/
 
 # streams re-ensamblados, derivados de data/keypoints/* (trackeado) + 16_armar_streams.py
 horus/fall/data/keypoints/streams/
+
+# artefactos del harness 17_evaluar_evento.py: modelos LOSO (reproducibles, ~10 min) y cache de probs
+horus/fall/checkpoints/loso/
+horus/fall/data/processed/streams_probs/

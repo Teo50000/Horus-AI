@@ -43,6 +43,10 @@ class ConfigDetector:
     ventana_vertical_previa_seg: float = 2.0  # cuanto miro hacia atras para saber si "antes" estaba de pie
     caida_vertical_minima: float = 0.35       # cuanta verticalidad tiene que haber bajado para contar como caida real
 
+    # False = alarma solo con modelo + persistencia, sin exigir pico/verticalidad.
+    # Sirve para medir cuanto aportan las heuristicas; en produccion va True.
+    exigir_pico: bool = True
+
 
 @dataclass
 class Estado:
@@ -52,6 +56,7 @@ class Estado:
     n_buffer: int               # cuantos frames hay en el buffer (hasta `ventana`)
     pico_reciente: bool         # hubo un pico de velocidad valido dentro de ventana_post_pico_seg
     verticalidad: float | None  # ultima verticalidad del torso medida en una deteccion real
+    clasifico: bool = False     # True si en esta llamada corrio el modelo (prob es fresca)
 
 
 class DetectorCaidas:
@@ -128,6 +133,8 @@ class DetectorCaidas:
             self.historial_vertical.popleft()
 
     def _pico_reciente(self, t):
+        if not self.cfg.exigir_pico:
+            return True
         return (self.ultimo_pico_ts is not None
                 and (t - self.ultimo_pico_ts) <= self.cfg.ventana_post_pico_seg)
 
@@ -160,7 +167,9 @@ class DetectorCaidas:
 
         # clasificacion: solo con el buffer lleno y cada `paso` llamadas
         alarma_nueva = False
+        clasifico = False
         if len(self.buffer) == c.ventana and self.n_llamadas % c.paso == 0:
+            clasifico = True
             clip = torch.tensor(np.array(self.buffer), dtype=torch.float32).unsqueeze(0).to(self.device)
             with torch.no_grad():
                 self.prob_actual = torch.softmax(self.modelo(clip), 1)[0, 1].item()
@@ -187,4 +196,5 @@ class DetectorCaidas:
             n_buffer=len(self.buffer),
             pico_reciente=self._pico_reciente(t),
             verticalidad=self.ultima_verticalidad,
+            clasifico=clasifico,
         )

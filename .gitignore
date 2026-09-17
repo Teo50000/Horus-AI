@@ -9,3 +9,6 @@ horus/fall/data/processed/todos_con_desmayo.npy
 
 # cache de python, no va a git
 __pycache__/
+
+# streams re-ensamblados, derivados de data/keypoints/* (trackeado) + 16_armar_streams.py
+horus/fall/data/keypoints/streams/

@@ -228,6 +228,78 @@ def caso_la_tabla_no_tapa_lo_importante() -> Tuple[bool, str]:
     return not intrusas, f"tabla = {sorted(ns['CUBIERTAS_POR_OTRA_CABEZA'])}"
 
 
+# --------------------------------------------------------------------------- #
+# Casos · el aviso de pérdida no puede mentir
+# --------------------------------------------------------------------------- #
+def _avisa(clave: str, crudo: int, normalizadas: int) -> bool:
+    """Reproduce la condición del aviso de `--normalizar`."""
+    techo = min(crudo, bd.tope_de(bd.catalogo()[clave]))
+    return bool(techo) and normalizadas < techo * 0.5
+
+
+def caso_el_tope_no_dispara_el_aviso() -> Tuple[bool, str]:
+    """Los números exactos del run del 17/09. Antes decía "se perdió el 64% ...
+    suele ser el remapeo mal puesto" con el remapeo perfecto. Un aviso que
+    miente entrena a ignorar todos los demás."""
+    ok = (not _avisa("pyro-sdis", 33636, 12000)
+          and not _avisa("d-fire", 21527, 12000))
+    return ok, "pyro 33636->12000 y d-fire 21527->12000: callado"
+
+
+def caso_sin_tope_el_aviso_sigue_igual() -> Tuple[bool, str]:
+    """Una fuente sin tope conserva el chequeo de siempre."""
+    ok = not _avisa("openimages", 7936, 7936) and _avisa("openimages", 7936, 900)
+    return ok, "openimages completa: callado · 7936->900: avisa"
+
+
+def caso_remapeo_roto_sigue_avisando() -> Tuple[bool, str]:
+    """Lo que el aviso existe para atrapar: pyro-sdis usaba la clase 1 y no la
+    0, y las imágenes se caían enteras. Con tope y todo, tiene que sonar."""
+    return _avisa("pyro-sdis", 33636, 400), "pyro 33636->400 (con tope 12000): avisa"
+
+
+# --------------------------------------------------------------------------- #
+# Casos · precisión según el silicio
+# --------------------------------------------------------------------------- #
+def _precision(pedida, capacidad):
+    """Corre precision_efectiva aislado, sin importar torch."""
+    src = (_AQUI / "entrenar_objetos_cuda.py").read_text(encoding="utf-8")
+    ini = src.index("def precision_efectiva(")
+    fin = src.index("def entrenar(", ini)
+    ns: Dict = {}
+    exec(src[ini:fin], ns)
+    return ns["precision_efectiva"](pedida, capacidad)
+
+
+def caso_turing_baja_a_fp16() -> Tuple[bool, str]:
+    """La T4 de Kaggle es capacidad 7.5: sin núcleos tensoriales bf16. Medido:
+    928 s por época, o sea 15,5 h las 60 — y Kaggle corta a las 12 h."""
+    r = _precision("bf16", (7, 5))
+    return r == "fp16", f"capacidad 7.5 · bf16 -> {r}"
+
+
+def caso_ampere_se_queda_en_bf16() -> Tuple[bool, str]:
+    """En Ampere para arriba bf16 tiene núcleos tensoriales y no necesita
+    GradScaler. Ahí no se toca nada."""
+    ok = _precision("bf16", (8, 6)) == "bf16" and _precision("bf16", (9, 0)) == "bf16"
+    return ok, "capacidad 8.6 y 9.0 · bf16 -> bf16"
+
+
+def caso_no_pisa_lo_que_pediste() -> Tuple[bool, str]:
+    """Solo interviene sobre bf16. fp16 y fp32 pasan derecho en cualquier placa:
+    si pediste otra cosa es porque tenías un motivo."""
+    ok = (_precision("fp16", (7, 5)) == "fp16"
+          and _precision("fp32", (7, 5)) == "fp32"
+          and _precision("fp32", (8, 6)) == "fp32")
+    return ok, "fp16 y fp32 intactos en 7.5 y 8.6"
+
+
+def caso_sin_gpu_no_rompe() -> Tuple[bool, str]:
+    """Sin CUDA no hay capacidad que consultar. No puede explotar acá: el
+    autotest del script corre en CPU."""
+    return _precision("bf16", None) == "bf16", "capacidad None · no toca nada"
+
+
 CASOS: Dict[str, Callable[[], Tuple[bool, str]]] = {
     "sin_tope": caso_sin_tope_copia_todo,
     "tope_acota": caso_tope_acota,
@@ -242,6 +314,13 @@ CASOS: Dict[str, Callable[[], Tuple[bool, str]]] = {
     "escotilla": caso_permitir_clases_vacias_sigue_andando,
     "completo": caso_dataset_completo_no_dice_nada,
     "tabla_acotada": caso_la_tabla_no_tapa_lo_importante,
+    "aviso_tope": caso_el_tope_no_dispara_el_aviso,
+    "aviso_sin_tope": caso_sin_tope_el_aviso_sigue_igual,
+    "aviso_remapeo": caso_remapeo_roto_sigue_avisando,
+    "turing_fp16": caso_turing_baja_a_fp16,
+    "ampere_bf16": caso_ampere_se_queda_en_bf16,
+    "no_pisa": caso_no_pisa_lo_que_pediste,
+    "sin_gpu": caso_sin_gpu_no_rompe,
 }
 
 

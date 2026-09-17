@@ -606,6 +606,36 @@ def _flags_backend() -> None:
             pass
 
 
+def precision_efectiva(pedida: str, capacidad) -> str:
+    """bf16 solo rinde donde el silicio lo soporta de verdad.
+
+    Los núcleos tensoriales bf16 aparecen recién en Ampere (capacidad 8.0).
+    En Turing —la T4 de Kaggle, capacidad 7.5— PyTorch acepta bf16 igual, pero
+    lo resuelve por un camino sin núcleos tensoriales: anda, y anda lento.
+
+    Medido en la Version #2 del 17/09, T4, bf16, batch 8, 384 px:
+        época 1/60 ... 928s (14.0 img/s)  vram=2.6GB
+    928 s por época son 15,5 h las 60 — y Kaggle corta la sesión a las 12 h.
+    El run no se iba a poder terminar nunca.
+
+    fp16 sí tiene núcleos tensoriales en Turing, y el camino con GradScaler ya
+    está implementado más abajo. Así que en vez de obedecer una bandera que en
+    esta placa significa "andá despacio", se cambia sola y se dice por qué.
+
+    `capacidad` es la tupla de torch.cuda.get_device_capability(). Va como
+    parámetro para poder probar esto sin la placa."""
+    if pedida != "bf16" or capacidad is None:
+        return pedida
+    if capacidad[0] >= 8:
+        return "bf16"
+    print(f"[setup] ⚠ esta GPU es capacidad {capacidad[0]}.{capacidad[1]}: no "
+          "tiene núcleos tensoriales bf16 (aparecen en Ampere, 8.0).")
+    print("[setup]   bf16 acá cae a un camino lento. Cambio a fp16, que sí los")
+    print("[setup]   usa, con GradScaler. Forzá --precision bf16 de nuevo solo")
+    print("[setup]   si sabés lo que estás haciendo.")
+    return "fp16"
+
+
 def entrenar(a: Ajustes, dir_base: Path, autotest: bool = False) -> float:
     _sembrar(a.seed)
     _flags_backend()
@@ -620,6 +650,8 @@ def entrenar(a: Ajustes, dir_base: Path, autotest: bool = False) -> float:
     else:
         print(f"[setup] GPU: {torch.cuda.get_device_name(0)}  "
               f"({torch.cuda.get_device_properties(0).total_memory/1e9:.0f} GB)")
+        a.precision = precision_efectiva(a.precision,
+                                         torch.cuda.get_device_capability(device))
     print(f"[setup] precision={a.precision}  channels_last={a.channels_last}  "
           f"compile={a.compile}  cache={a.cachear_features}")
 

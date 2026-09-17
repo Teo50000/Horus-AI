@@ -435,6 +435,23 @@ def _dl_manual(instrucciones: str):
 
 
 # ---------- normalizadores ------------------------------------------------- #
+def tope_de(f: "Fuente") -> int:
+    """Cuántas imágenes puede llegar a normalizar esta fuente.
+
+    El tope vive en el closure de `_norm_yolo`, así que se lo pregunta a las
+    celdas de la función en vez de duplicarlo en la definición de la fuente —
+    un número repetido en dos lados es un número que en algún momento discrepa.
+    Devuelve un techo infinito (un entero enorme) si la fuente no tiene tope."""
+    try:
+        for celda in (f.normalizar.__closure__ or ()):
+            v = celda.cell_contents
+            if isinstance(v, int) and not isinstance(v, bool) and v > 0:
+                return v
+    except Exception:
+        pass
+    return 10 ** 9
+
+
 def _norm_yolo(remapeo: Dict[int, int], subdir_img: str = "",
                subdir_lbl: str = "", conservar_negativos: bool = False,
                tope: int = 0):
@@ -1221,8 +1238,16 @@ def main() -> int:
                 # puesto: las cajas quedan fuera del mapa y la imagen entera se
                 # descarta. Es exactamente el error que costó descubrir con
                 # pyro-sdis (usaba clase 1, no 0).
-                if entrada and n < entrada * 0.5:
-                    log(f"[{k}] ⚠ se perdió el {100*(1-n/entrada):.0f}% de las "
+                #
+                # Pero desde que existe TOPE_NORM_POR_FUENTE, una fuente grande
+                # pierde imágenes A PROPÓSITO, y el aviso salía igual: en el run
+                # del 17/09 dijo "[pyro-sdis] se perdió el 64% ... suele ser el
+                # remapeo mal puesto" cuando el remapeo estaba perfecto. Un
+                # aviso que miente es peor que no tenerlo: entrena a ignorarlos.
+                # Así que el techo es el tope, no lo que había en el crudo.
+                techo = min(entrada, tope_de(f)) if entrada else 0
+                if techo and n < techo * 0.5:
+                    log(f"[{k}] ⚠ se perdió el {100*(1-n/techo):.0f}% de las "
                         "imágenes. Suele ser el remapeo de clases mal puesto.")
                     log(f"[{k}]   revisalo con:  python bajar_datasets.py "
                         f"--diagnosticar {k}")

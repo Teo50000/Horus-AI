@@ -22,6 +22,8 @@ from ultralytics import YOLO
 
 from modelo_stgcn import STGCN
 from grafo_mediapipe import construir_matriz_adyacencia
+from preproceso import normalizar_frame, visibilidad_confiable
+from detector_caidas import DetectorCaidas, ConfigDetector
 from modelo_fight import crear_modelo as crear_modelo_fight, MEDIA_KINETICS, STD_KINETICS
 
 # Un solo loop de camara + un solo YOLO por frame, alimenta los dos pipelines
@@ -43,34 +45,9 @@ MODELO_POSE_PATH = os.path.join(_AQUI, "..", "fall", "pose_landmarker.task")
 # ultralytics no lo encuentra en esta carpeta y se lo baja de internet cada
 # vez que arranca en una maquina nueva (y deja el archivo tirado en el cwd)
 YOLO_PATH = os.path.join(_AQUI, "..", "fall", "scripts", "yolov8n.pt")
-
-VENTANA_FALL, PASO_FALL = 32, 4
-UMBRAL_FALL = 0.5
-PERSISTENCIA_FALL = 1.0
-TOLERANCIA_SIN_DETECCION_SEG = 0.6
-UMBRAL_VISIBILIDAD = 0.5
-
-FACTOR_PICO_VELOCIDAD = 3.0
-VENTANA_POST_PICO_SEG = 4.0
-ALPHA_BASELINE = 0.05
-VENTANA_VERTICAL_PREVIA_SEG = 2.0
-CAIDA_VERTICAL_MINIMA = 0.35
-
-IDX_CI, IDX_CD, IDX_HI, IDX_HD = 23, 24, 11, 12
-
-
-def normalizar_frame_pose(kp):
-    """Normaliza UN frame de pose: (33,4) -> (33,2). Causal por definicion."""
-    cad = (kp[IDX_CI, :2] + kp[IDX_CD, :2]) / 2
-    hom = (kp[IDX_HI, :2] + kp[IDX_HD, :2]) / 2
-    esc = np.linalg.norm(hom - cad)
-    esc = esc if esc > 1e-6 else 1e-6
-    return (kp[:, :2] - cad) / esc
-
-
-def visibilidad_confiable(kp):
-    vis = kp[[IDX_CI, IDX_CD, IDX_HI, IDX_HD], 3]
-    return vis.mean() >= UMBRAL_VISIBILIDAD
+# toda la logica de alarma de caidas (buffer, pico de velocidad, verticalidad,
+# persistencia) vive en fall/src/detector_caidas.py -- misma clase que usa
+# 12_webcam.py y el harness offline, no hay una segunda copia aca.
 
 
 # =================== agresion (MC3-18 sobre clip de video) ===================
@@ -164,17 +141,9 @@ if __name__ == "__main__":
     print(f"\nCámara abierta (id={CAMARA_ID}). Apretá 'q' sobre la ventana para salir.\n")
 
     # --- estado caidas ---
-    buffer_fall = deque(maxlen=VENTANA_FALL)
-    ultimo_norm = None
-    anterior_norm = None
-    ultima_deteccion_ts = None
-    prob_fall = 0.0
-    inicio_racha_fall = None
-    alarma_fall = False
+    cfg_fall = ConfigDetector()
+    detector_fall = DetectorCaidas(modelo_fall, device, cfg_fall)
     alarmas_fall = []
-    baseline_vel = None
-    ultimo_pico_ts = None
-    historial_vertical = deque()
 
     # --- estado agresion ---
     buffer_fight = deque(maxlen=VENTANA_FIGHT)
@@ -190,7 +159,6 @@ if __name__ == "__main__":
     # sin tope las metricas se comen la RAM de a poco
     tiempos = {k: deque(maxlen=2000) for k in
                ("yolo", "pose", "modelo_fall", "modelo_fight", "total")}
-    n_frame = 0
     t_inicio = time.perf_counter()
 
     while True:
@@ -232,79 +200,17 @@ if __name__ == "__main__":
             if r.pose_landmarks:
                 kp = np.array([[p.x, p.y, p.z, p.visibility] for p in r.pose_landmarks[0]])
                 if visibilidad_confiable(kp):
-                    kp_norm = normalizar_frame_pose(kp)
+                    kp_norm = normalizar_frame(kp)
         tiempos["pose"].append(time.perf_counter() - t0)
 
-        if kp_norm is not None:
-            ultima_deteccion_ts = t_frame
-        sin_deteccion_seg = (t_frame - ultima_deteccion_ts) if ultima_deteccion_ts is not None else None
-
-        if sin_deteccion_seg is None or sin_deteccion_seg > TOLERANCIA_SIN_DETECCION_SEG:
-            buffer_fall.clear()
-            ultimo_norm = None
-            anterior_norm = None
-            inicio_racha_fall = None
-            alarma_fall = False
-            prob_fall = 0.0
-            historial_vertical.clear()
-            baseline_vel = None
-            ultimo_pico_ts = None
-        else:
-            deteccion_real_este_frame = kp_norm is not None
-            if kp_norm is None:
-                kp_norm = ultimo_norm
-
-            if kp_norm is not None:
-                ultimo_norm = kp_norm
-                vel = kp_norm - anterior_norm if anterior_norm is not None else np.zeros_like(kp_norm)
-                anterior_norm = kp_norm
-                buffer_fall.append(np.concatenate([kp_norm, vel], axis=1))
-
-                if deteccion_real_este_frame:
-                    v_escalar = np.linalg.norm(vel[[IDX_CI, IDX_CD, IDX_HI, IDX_HD]], axis=1).mean()
-                    verticalidad = -((kp_norm[IDX_HI, 1] + kp_norm[IDX_HD, 1]) / 2)
-
-                    if baseline_vel is None:
-                        baseline_vel = v_escalar
-                    elif baseline_vel > 1e-6 and v_escalar > baseline_vel * FACTOR_PICO_VELOCIDAD:
-                        cobertura_seg = t_frame - historial_vertical[0][0] if historial_vertical else 0.0
-                        if cobertura_seg < VENTANA_VERTICAL_PREVIA_SEG * 0.8:
-                            ultimo_pico_ts = t_frame
-                        else:
-                            vertical_previa_max = max(v for _, v in historial_vertical)
-                            if (vertical_previa_max - verticalidad) >= CAIDA_VERTICAL_MINIMA:
-                                ultimo_pico_ts = t_frame
-                    else:
-                        baseline_vel = baseline_vel * (1 - ALPHA_BASELINE) + v_escalar * ALPHA_BASELINE
-
-                    historial_vertical.append((t_frame, verticalidad))
-                    while historial_vertical and t_frame - historial_vertical[0][0] > VENTANA_VERTICAL_PREVIA_SEG:
-                        historial_vertical.popleft()
-
         t0 = time.perf_counter()
-        if len(buffer_fall) == VENTANA_FALL and n_frame % PASO_FALL == 0:
-            clip_fall = torch.tensor(np.array(buffer_fall), dtype=torch.float32).unsqueeze(0).to(device)
-            with torch.no_grad():
-                prob_fall = torch.softmax(modelo_fall(clip_fall), 1)[0, 1].item()
-
-            t_seg = time.perf_counter() - t_inicio
-            if prob_fall >= UMBRAL_FALL:
-                if inicio_racha_fall is None:
-                    inicio_racha_fall = t_seg
-                elif not alarma_fall and (t_seg - inicio_racha_fall) >= PERSISTENCIA_FALL:
-                    hubo_movimiento_brusco = (
-                        ultimo_pico_ts is not None
-                        and (t_frame - ultimo_pico_ts) <= VENTANA_POST_PICO_SEG
-                    )
-                    if hubo_movimiento_brusco:
-                        alarma_fall = True
-                        alarmas_fall.append(t_seg)
-                        print(f"  ALARMA (caída) a los {t_seg:.1f}s")
-                        enviar_alerta("caida", prob_fall)
-            else:
-                inicio_racha_fall = None
-                alarma_fall = False
+        estado_fall = detector_fall.actualizar(kp_norm, t_frame)
         tiempos["modelo_fall"].append(time.perf_counter() - t0)
+        if estado_fall.alarma_nueva:
+            t_seg = t_frame - t_inicio
+            alarmas_fall.append(t_seg)
+            print(f"  ALARMA (caída) a los {t_seg:.1f}s")
+            enviar_alerta("caida", estado_fall.prob)
 
         # ==================== pipeline de agresion ====================
         gate_abierto = n_personas >= MIN_PERSONAS
@@ -345,12 +251,12 @@ if __name__ == "__main__":
         tiempos["modelo_fight"].append(time.perf_counter() - t0)
 
         # ---------- dibujo ----------
-        if len(buffer_fall) < VENTANA_FALL:
-            texto_fall, color_fall = f"caida: cargando {len(buffer_fall)}/{VENTANA_FALL}", (180, 180, 180)
-        elif alarma_fall:
+        if estado_fall.n_buffer < cfg_fall.ventana:
+            texto_fall, color_fall = f"caida: cargando {estado_fall.n_buffer}/{cfg_fall.ventana}", (180, 180, 180)
+        elif estado_fall.alarma_activa:
             texto_fall, color_fall = "CAIDA DETECTADA", (0, 0, 255)
         else:
-            texto_fall, color_fall = f"caida P={prob_fall:.2f}", (0, 200, 0)
+            texto_fall, color_fall = f"caida P={estado_fall.prob:.2f}", (0, 200, 0)
 
         if not gate_abierto:
             texto_fight, color_fight = f"agresion: gate cerrado ({n_personas} pers.)", (150, 150, 150)
@@ -373,7 +279,6 @@ if __name__ == "__main__":
             break
 
         tiempos["total"].append(time.perf_counter() - t_frame)
-        n_frame += 1
 
     cap.release()
     cv2.destroyAllWindows()

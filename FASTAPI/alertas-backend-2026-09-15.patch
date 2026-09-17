@@ -1,0 +1,56 @@
+--- a/FASTAPI/src/main.py
++++ b/FASTAPI/src/main.py
+@@ -11,6 +11,8 @@
+ from src.database import crear_tablas
+ from src.models import camara_model # IMPORTANTE para que SQLModel reconozca la tabla antes de crearla
+ from src.routers.video_rutas import video_router
++from src.routers.alerta_rutas import alerta_router
++from src.models import alerta_model # IMPORTANTE: registra la tabla antes de crearla
+ 
+ @asynccontextmanager
+ async def lifespan(app: FastAPI):
+@@ -43,6 +45,7 @@
+ 
+ app.include_router(prefix='/camaras', router=camara_router)
+ app.include_router(prefix='/video', router=video_router)
++app.include_router(prefix='/alertas', router=alerta_router)
+ 
+ if __name__ == "__main__":
+     uvicorn.run(
+--- a/FASTAPI/src/models/camara_model.py
++++ b/FASTAPI/src/models/camara_model.py
+@@ -18,8 +18,16 @@
+     
+     @field_validator("confidence")
+     def validate_confidence(cls, value):
+-        if value < 0.9 or value> 1:
+-            raise ValueError("La confianza debe ser mayor al 90% pero menor al 100%")
++        # 2026-09-15: el piso estaba en 0.90 y rechazaba la mayoria de las
++        # alertas reales de Horus. La capa de fusion trabaja al reves a
++        # proposito -- "persistencia antes que umbral", ver
++        # calibracion-umbrales-objetos: subir el umbral filtra por confianza
++        # y se lleva puestos los positivos debiles. Una pelea confirmada sale
++        # con 0.82 y un arma con 0.50, y el arma con 0.50 es justo la que el
++        # VLM tiene que mirar. Con el piso en 0.90 esas filas explotaban y la
++        # alerta contestaba 500.
++        if not 0.0 <= value <= 1.0:
++            raise ValueError("La confianza tiene que estar entre 0 y 1")
+         return value
+     #@field_validator("event_type")
+     #@classmethod
+--- a/FASTAPI/src/services/email_service.py
++++ b/FASTAPI/src/services/email_service.py
+@@ -21,6 +21,11 @@
+     msg['From'] = EMAIL_SENDER      # el gmail que creen para Horus
+     msg['To'] = email_receiver           # el número que recibe la alerta
+ 
+-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
++    # 2026-09-15: timeout explicito. Sin el, un SMTP inalcanzable (sin red,
++    # puerto 465 filtrado, gmail lento) deja la conexion colgada para siempre
++    # y con ella la tarea de fondo que manda el aviso. La alerta ya se guardo
++    # y ya salio al panel, pero el worker queda tomado y el siguiente aviso
++    # no sale nunca.
++    with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as server:
+         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+         server.send_message(msg)
+\ No newline at end of file

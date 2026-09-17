@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 
+import hashlib
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
@@ -281,3 +282,49 @@ class SharedBackbone(nn.Module):
 
 
 VideoBackbone = SharedBackbone
+
+
+# --------------------------------------------------------------------------- #
+# Identidad del backbone congelado
+# --------------------------------------------------------------------------- #
+# El encoder ResNet-50 sale de ImageNet y se restaura bit a bit en cualquier
+# maquina. El FPN, el embed_head y el GRU temporal NO: se sortean con la init
+# random de PyTorch al construir SharedBackbone y se congelan ahi. Nunca se
+# entrenan, y tampoco se pueden recalcular -- ni sembrando la misma semilla,
+# porque entre `_sembrar(seed)` y `SharedBackbone(...)` hay codigo que consume
+# RNG (medido: 18 de 20 tensores distintos al reconstruir con seed 0).
+#
+# Una cabeza entrenada contra un sorteo concreto no funciona sobre otro. Y no
+# falla: detecta mal, en silencio. Eso costo un mes de sintomas raros con
+# objetos_v2. La huella convierte ese mes en un error al arrancar.
+PREFIJO_IMAGENET = "extractor."
+
+
+def pesos_no_imagenet(origen: Union[nn.Module, Dict[str, torch.Tensor]]
+                      ) -> Dict[str, torch.Tensor]:
+    """Los tensores del backbone que NO se pueden reconstruir.
+
+    Todo lo que no es el encoder: `fpn.*`, `embed_head.*`, `temporal.*` y los
+    buffers del preproceso. Son ~3,5 M de parametros (~14 MB) contra los 23,5 M
+    del encoder, asi que entran de sobra adentro del checkpoint de la cabeza --
+    que es exactamente donde tendrian que haber viajado siempre.
+    """
+    sd = origen.state_dict() if isinstance(origen, nn.Module) else origen
+    return {k: v for k, v in sd.items() if not k.startswith(PREFIJO_IMAGENET)}
+
+
+def huella_backbone(origen: Union[nn.Module, Dict[str, torch.Tensor]],
+                    digitos: int = 16) -> str:
+    """Hash estable de los tensores irreconstruibles.
+
+    Se guarda al entrenar y se compara al cargar. Estable entre maquinas: se
+    normaliza a float32 en CPU y contiguo antes de hashear, asi un checkpoint
+    guardado desde GPU en fp16 y cargado en CPU da la misma huella.
+    """
+    h = hashlib.sha256()
+    for clave, t in sorted(pesos_no_imagenet(origen).items()):
+        h.update(clave.encode("utf-8"))
+        x = t.detach().to("cpu", torch.float32).contiguous()
+        h.update(str(tuple(x.shape)).encode("utf-8"))
+        h.update(x.numpy().tobytes())
+    return h.hexdigest()[:digitos]

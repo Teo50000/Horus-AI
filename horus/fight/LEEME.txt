@@ -1,0 +1,33 @@
+DETECCIÓN DE AGRESIONES FÍSICAS — módulo fight
+================================================
+
+Corre en paralelo al de caídas (horus/fall/), comparte solo la fuente de
+cámara. NO usa MediaPipe/esqueleto: agresión es un comportamiento entre 2+
+personas y el pipeline de pose se rompe con multitud. En su lugar clasifica
+el clip de video entero con una 3D CNN.
+
+MODELO: MC3-18 (torchvision) pre-entrenado en Kinetics-400, con la última capa
+cambiada a 2 clases (nofight / fight) y fine-tuneado sobre RWF-2000.
+
+DATASET: RWF-2000 (2000 clips de 5 seg, Fight/NonFight, train 1600 / val 400).
+Bajarlo de Kaggle. NO va a git (varios GB) -> ver .gitignore en la raíz.
+
+PIPELINE (scripts/, correr en orden):
+    00_extraer_zip.py <ruta_al_zip>   -> descomprime a data/raw/RWF-2000/
+    01_extraer_clips.py               -> samplea 32 frames/clip a 128x128,
+                                         guarda .npz en data/processed/frames/
+    02_entrenar.py                    -> fine-tunea MC3-18, guarda el mejor
+                                         checkpoint (por balanced acc en val)
+                                         en checkpoints/modelo_fight.pt.
+                                         Si ya hay checkpoint, retoma desde ahí.
+
+ENTORNO: usar el venv con torch+CUDA (falldet_env), el python del sistema
+puede ser CPU-only. Deps en horus/requirements.txt.
+
+ESTADO: primer checkpoint entrenado ~88.75% balanced acc en val (rec_nofight
+y rec_fight ~87-90%). El entrenamiento se estanca ahí con este setup; para
+mejorarlo habría que probar LR scheduling, más frames, o un backbone distinto.
+
+INFERENCIA (pendiente): el modelo debe correr gateado -- solo ejecutar el
+clasificador cuando YOLO (que ya corre para caídas) detecta 2+ personas en
+cuadro, y cada N frames, no siempre. Así el costo promedio es bajo.

@@ -509,6 +509,173 @@ def caso_escena_vacia() -> Tuple[bool, str, List[Any]]:
     return not ev, f"{len(ev)} evento(s)", ev
 
 
+
+# --------------------------------------------------------------------------- #
+# Agresión — la cabeza de `fight/` (MC3-18 sobre el clip)
+# --------------------------------------------------------------------------- #
+def _pelea(t: float, dx: float = 0.0, score: float = 0.82,
+           cam: str = "cam-deposito") -> AccionObs:
+    """La observación tal como la emite `fight/detector_agresion.py`: sin
+    `track_id`, porque el clasificador mira el clip entero y no sabe quién de
+    los dos pelea. La caja es la unión de los participantes."""
+    return AccionObs(bbox_xyxy=(900 + dx, 480, 1090 + dx, 920), accion="pelea",
+                     score=score, track_id=None, camera_id=cam, ts=t,
+                     fuente=CABEZA_ACCION)
+
+
+def _dos_peleando(t: float, dx: float = 0.0, cam: str = "cam-deposito",
+                  gid1: Optional[int] = None, gid2: Optional[int] = None):
+    return [track("persona", (900 + dx, 500, 1000 + dx, 900), tid=31, cam=cam,
+                  score=0.66, ts=t, visto_s=4.0, gid=gid1),
+            track("persona", (990 + dx, 500, 1090 + dx, 900), tid=32, cam=cam,
+                  score=0.64, ts=t, visto_s=4.0, gid=gid2)]
+
+
+def caso_pelea() -> Tuple[bool, str, List[Any]]:
+    """Una pelea que se DESPLAZA por el cuadro tiene que alertar igual.
+
+    Regresión del bug que tenía la persistencia de acciones sin `track_id`: se
+    acumulaba contra la caja redondeada, la caja de una pelea se mueve, cada
+    frame abría una clave nueva y el evento no salía nunca. Con la caja quieta
+    pasaba, que es exactamente por qué no se había visto."""
+    pasos = []
+    for i in range(40):
+        t = DIA + i * 0.2
+        dx = i * 3.0
+        pasos.append([obs("cam-deposito", t, _dos_peleando(t, dx),
+                          acciones=[_pelea(t, dx)],
+                          cabezas=(CABEZA_OBJETOS, CABEZA_ACCION))])
+    ev, _ = correr(pasos)
+    peleas = [e for e in ev if e.tipo == "pelea"]
+    ok = (len(peleas) == 1
+          and peleas[0].severidad == Severidad.ALERTA
+          and sorted(peleas[0].track_ids) == [31, 32]
+          and peleas[0].necesita_vlm)
+    return ok, (f"{len(peleas)} pelea(s), participantes "
+                f"{sorted(peleas[0].track_ids) if peleas else '-'}"), ev
+
+
+def caso_pelea_de_a_uno() -> Tuple[bool, str, List[Any]]:
+    """El clasificador dice 'pelea' con una sola persona en cuadro: no alerta.
+
+    La compuerta de 2+ personas vive en el detector, pero la regla no le cree
+    de palabra — es la misma política que hace que un arma nunca sea crítica
+    sola."""
+    pasos = []
+    for i in range(40):
+        t = DIA + i * 0.2
+        p = track("persona", (900, 500, 1000, 900), tid=31, score=0.66, ts=t,
+                  visto_s=4.0)
+        pasos.append([obs("cam-deposito", t, [p], acciones=[_pelea(t)],
+                          cabezas=(CABEZA_OBJETOS, CABEZA_ACCION))])
+    ev, _ = correr(pasos)
+    return not ev, f"{len(ev)} evento(s) (esperado: ninguna pelea)", ev
+
+
+def caso_agresion_con_arma() -> Tuple[bool, str, List[Any]]:
+    """Pelea + arma sobre la misma gente = agresión CRÍTICA.
+
+    La pelea sola se calla (el crítico la contiene); el arma NO, porque sigue
+    necesitando que el VLM la mire por su cuenta."""
+    pasos = []
+    for i in range(40):
+        t = DIA + i * 0.2
+        gente = _dos_peleando(t)
+        cuchillo = track("cuchillo", (960, 640, 1000, 680), tid=33,
+                         score=0.52, ts=t, visto_s=1.5)
+        pasos.append([obs("cam-deposito", t, gente + [cuchillo],
+                          acciones=[_pelea(t)],
+                          cabezas=(CABEZA_OBJETOS, CABEZA_ACCION))])
+    ev, _ = correr(pasos)
+    agr = [e for e in ev if e.tipo == "agresion"]
+    peleas = [e for e in ev if e.tipo == "pelea"]
+    armas = [e for e in ev if e.tipo == "arma"]
+    ids_pelea = {e.evento_id for e in peleas}
+    absorbidas = all(e.evidencia.get("absorbido_por") == "agresion"
+                     for e in peleas)
+    ok = (len(agr) == 1 and agr[0].severidad == Severidad.CRITICO
+          and len(ids_pelea) <= 1 and absorbidas and len(armas) == 1)
+    return ok, (f"{len(agr)} agresión(es) crítica(s), {len(ids_pelea)} pelea "
+                f"absorbida={absorbidas}, {len(armas)} arma"), ev
+
+
+def caso_agresion_caida_diferida() -> Tuple[bool, str, List[Any]]:
+    """La pelea termina y la caída se confirma DESPUÉS. Sigue siendo agresión.
+
+    Es el caso que obliga a que la correlación mire hacia atrás: el otro sale
+    corriendo, la pelea deja de emitirse, y recién entonces la regla de caída
+    junta la quietud sostenida que necesita. Correlacionando solo dentro del
+    mismo tick, la correlación más grave del sistema no se dispara nunca."""
+    pasos = []
+    for i in range(40):                                  # 8 s de pelea
+        t = DIA + i * 0.2
+        pasos.append([obs("cam-deposito", t, _dos_peleando(t, i * 2.0),
+                          acciones=[_pelea(t, i * 2.0)],
+                          cabezas=(CABEZA_OBJETOS, CABEZA_ACCION))])
+    for i in range(30):                                  # 6 s después: uno en el piso
+        t = DIA + 8.0 + i * 0.2
+        caido = track("persona", (860, 820, 1180, 920), tid=32, score=0.65,
+                      ts=t, visto_s=12.0, quieto=True, quieto_s=1.0 + i * 0.2)
+        a = AccionObs(bbox_xyxy=(860, 820, 1180, 920), accion="caida",
+                      score=0.83, track_id=32, camera_id="cam-deposito",
+                      ts=t, fuente=CABEZA_ACCION)
+        pasos.append([obs("cam-deposito", t, [caido], acciones=[a],
+                          cabezas=(CABEZA_OBJETOS, CABEZA_ACCION))])
+    ev, _ = correr(pasos)
+    agr = [e for e in ev if e.tipo == "agresion"]
+    ok = len(agr) == 1 and agr[0].severidad == Severidad.CRITICO
+    sep = agr[0].evidencia.get("separacion_s") if agr else "-"
+    return ok, f"{len(agr)} agresión(es), separación {sep} s", ev
+
+
+def caso_pelea_y_caida_ajenas() -> Tuple[bool, str, List[Any]]:
+    """Pelea de dos y caída de un tercero que no participa: NO es agresión.
+
+    Sin exigir que compartan gente, cualquier cosa que pase en la misma cámara
+    dentro de la ventana se sumaría al crítico."""
+    pasos = []
+    for i in range(40):
+        t = DIA + i * 0.2
+        gente = _dos_peleando(t)
+        ajeno = track("persona", (200, 820, 520, 920), tid=40, score=0.65,
+                      ts=t, visto_s=12.0, quieto=True, quieto_s=1.0 + i * 0.2)
+        a_caida = AccionObs(bbox_xyxy=(200, 820, 520, 920), accion="caida",
+                            score=0.83, track_id=40, camera_id="cam-deposito",
+                            ts=t, fuente=CABEZA_ACCION)
+        pasos.append([obs("cam-deposito", t, gente + [ajeno],
+                          acciones=[_pelea(t), a_caida],
+                          cabezas=(CABEZA_OBJETOS, CABEZA_ACCION))])
+    ev, _ = correr(pasos)
+    agr = [e for e in ev if e.tipo == "agresion"]
+    peleas = [e for e in ev if e.tipo == "pelea"]
+    caidas = [e for e in ev if e.tipo == "caida"]
+    ok = not agr and len(peleas) == 1 and len(caidas) == 1
+    return ok, (f"{len(agr)} agresión(es) (esperado 0), {len(peleas)} pelea, "
+                f"{len(caidas)} caída"), ev
+
+
+def caso_agresion_mirando() -> Tuple[bool, str, List[Any]]:
+    """La cabeza instalada y mirando, sin nada que reportar, NO duerme.
+
+    `detector_agresion.py` emite una `AccionObs` vacía en los frames
+    tranquilos justamente para esto: si solo emitiera al ver una pelea, un
+    frame en calma dejaría la regla dormida y 'no hubo peleas' sería
+    indistinguible de 'no hay modelo de peleas'."""
+    pasos = []
+    for i in range(30):
+        t = DIA + i * 0.2
+        vacia = AccionObs(bbox_xyxy=(0, 0, 0, 0), accion="", score=0.0,
+                          camera_id="cam-deposito", ts=t, fuente=CABEZA_ACCION)
+        pasos.append([obs("cam-deposito", t, _dos_peleando(t),
+                          acciones=[vacia],
+                          cabezas=(CABEZA_OBJETOS, CABEZA_ACCION))])
+    ev, motor = correr(pasos)
+    dormidas = motor.reglas_dormidas()
+    ok = not ev and "accion_externa" not in dormidas
+    return ok, (f"{len(ev)} evento(s), reglas dormidas: "
+                f"{sorted(dormidas) if dormidas else 'ninguna'}"), ev
+
+
 CASOS: Dict[str, Callable[[], Tuple[bool, str, List[Any]]]] = {
     "incendio": caso_incendio_confirmado,
     "humo_solo": caso_humo_solo,
@@ -526,6 +693,12 @@ CASOS: Dict[str, Callable[[], Tuple[bool, str, List[Any]]]] = {
     "caida_clasificador": caso_caida_por_clasificador,
     "sentarse": caso_sentarse_no_es_caida,
     "accion_externa": caso_accion_externa,
+    "pelea": caso_pelea,
+    "pelea_de_a_uno": caso_pelea_de_a_uno,
+    "agresion_arma": caso_agresion_con_arma,
+    "agresion_caida": caso_agresion_caida_diferida,
+    "pelea_ajena": caso_pelea_y_caida_ajenas,
+    "agresion_mirando": caso_agresion_mirando,
     "dedup": caso_un_evento_no_trescientos,
     "entre_camaras": caso_seguimiento_entre_camaras,
     "gate_vlm": caso_gate_vlm,

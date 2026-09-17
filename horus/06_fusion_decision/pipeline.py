@@ -98,6 +98,8 @@ class PipelineHorus:
                  cfg_global: Optional[ConfigGlobal] = None,
                  cfg_fusion: Optional[ConfigFusion] = None,
                  motor_objetos: Any = None,
+                 motor_segmentacion: Any = None,
+                 detector_agresion: Any = None,
                  device: Optional[str] = None,
                  verboso: bool = True) -> None:
         if isinstance(topologia, str):
@@ -110,11 +112,27 @@ class PipelineHorus:
             self.objetos = self._crear_motor(pesos, pesos_backbone, max_batch,
                                              device, verboso)
 
+        # Cabeza de segmentación. Se puede correr SOLA: `ReglaIncendio` declara
+        # `requiere_alguna = {objetos, segmentacion}`, y el fuego de
+        # segmentación por sí solo ya es evidencia fuerte (F1 99,1 % medido).
+        # Es el único camino completo a una alerta real que no depende del
+        # `backbone.pt` de objetos, que sigue perdido.
+        self.segmentacion = motor_segmentacion
+        if self.objetos is None and self.segmentacion is None:
+            raise ValueError(
+                "el pipeline necesita al menos una cabeza: pasá `pesos` (objetos) "
+                "o `motor_segmentacion`. Arrancar sin ninguna daría un sistema "
+                "que no mira nada y no lo dice.")
+
         self.tracking = TrackerMultiCamara(cfg_tracker or ConfigTracker(fps=fps))
         self.reid = TrackerGlobal(cfg_global or ConfigGlobal(),
                                   topologia=topologia)
         self.fusion = MotorFusion(topologia=topologia,
                                   cfg=cfg_fusion or ConfigFusion(), fps=fps)
+
+        # Cabeza de agresión (fight/). Apagada por defecto: cuesta una pasada
+        # de MC3-18 cada 0,75 s por cámara con dos personas en cuadro.
+        self.agresion = self._crear_agresion(detector_agresion)
 
         self.frames = 0
         self.latencias: List[float] = []
@@ -141,6 +159,24 @@ class PipelineHorus:
         return ObjectsEngine(cfg)
 
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _crear_agresion(pedido: Any) -> Any:
+        """Si se pide y no se puede cargar, **el pipeline no arranca**.
+
+        Arrancar "igual pero sin agresión" haría que el operador crea que el
+        sistema la está mirando, que es la misma razón por la que una regla
+        sin su cabeza se declara dormida en vez de devolver "no pasó nada".
+        """
+        if not pedido:
+            return None
+        import sys as _sys
+        _fight = os.path.normpath(os.path.join(_AQUI, "..", "fight"))
+        if _fight not in _sys.path:
+            _sys.path.insert(0, _fight)
+        from detector_agresion import ConfigAgresion, DetectorAgresion
+        cfg = pedido if isinstance(pedido, ConfigAgresion) else ConfigAgresion()
+        return DetectorAgresion(cfg)
+
     def procesar(self,
                  frames: Dict[str, np.ndarray],
                  seg: Optional[Dict[str, Any]] = None,
@@ -155,40 +191,81 @@ class PipelineHorus:
         # 1. Detección — las N cámaras en un solo forward. El batch
         #    multi-cámara es lo que hace que la GPU rinda; a batch 1 no se
         #    llega ni al 20% del pico.
-        resultados = self.objetos.infer_batch([frames[c] for c in cams],
-                                              camera_ids=cams)
+        if self.objetos is not None:
+            resultados = self.objetos.infer_batch([frames[c] for c in cams],
+                                                  camera_ids=cams)
+        else:
+            resultados = [None] * len(cams)
 
-        observaciones: List[ObservacionCamara] = []
+        # 1.b Segmentación — también batcheada, y también antes de la fusión.
+        seg = dict(seg or {})
+        if self.segmentacion is not None:
+            faltan = [c for c in cams if c not in seg]
+            if faltan:
+                for cam, r in zip(faltan, self.segmentacion.infer_batch(
+                        [frames[c] for c in faltan], camera_ids=faltan, ts=ts)):
+                    seg[cam] = r
+
+        por_cam: Dict[str, Any] = {}
         for cam, res in zip(cams, resultados):
-            # 2. Tracking local.
-            tracks = self.tracking.actualizar_desde_resultado(res)
+            # 2. Tracking local. Sin cabeza de objetos no hay nada que trackear,
+            #    y eso NO es lo mismo que "no había nadie": las reglas que
+            #    necesitan tracks quedan dormidas y se declaran como tales.
+            tracks = (self.tracking.actualizar_desde_resultado(res)
+                      if res is not None else [])
+            tam = (res.original_size if res is not None
+                   else tuple(np.asarray(frames[cam]).shape[:2]))
 
             # 3. Tracking global, solo si hay embeddings de ReID por persona.
             embs = (embeddings or {}).get(cam)
             hay_reid = False
-            if embs:
-                self.reid.actualizar(tracks, embs,
-                                     tam_frame=res.original_size, ts=ts)
+            if embs and tracks:
+                self.reid.actualizar(tracks, embs, tam_frame=tam, ts=ts)
                 hay_reid = True
+            por_cam[cam] = (res, tracks, hay_reid, tam)
+
+        # 3.b Agresión — DESPUÉS del tracking, porque la compuerta se calcula
+        #     sobre los tracks, y con todas las cámaras en un solo forward.
+        acciones_agresion: Dict[str, List[AccionObs]] = {}
+        if self.agresion is not None:
+            acciones_agresion = self.agresion.procesar_lote(
+                [(cam, frames[cam], por_cam[cam][1]) for cam in cams], ts=ts)
+
+        observaciones: List[ObservacionCamara] = []
+        for cam in cams:
+            res, tracks, hay_reid, tam = por_cam[cam]
 
             # 4. Armar la observación para la fusión.
-            cabezas = {CABEZA_OBJETOS}
-            sr = (seg or {}).get(cam)
+            cabezas = set()
+            if self.objetos is not None:
+                cabezas.add(CABEZA_OBJETOS)
+            sr = seg.get(cam)
             if sr is not None:
                 cabezas.add(CABEZA_SEGMENTACION)
             acs = list((acciones or {}).get(cam) or ())
+            acs.extend(acciones_agresion.get(cam) or ())
             for a in acs:
                 cabezas.add(a.fuente if a.fuente in (CABEZA_ACCION,) else a.fuente)
+            if self.agresion is not None:
+                # Se declara por tener el detector INSTALADO, no por haber
+                # emitido algo: un frame sin dos personas en cuadro no produce
+                # etiqueta, y sin esto la regla figuraría dormida justo en los
+                # ratos tranquilos.
+                cabezas.add(CABEZA_ACCION)
             if hay_reid:
                 cabezas.add(CABEZA_REID)
 
             observaciones.append(ObservacionCamara(
-                camera_id=cam, frame_idx=res.frame_idx, ts=ts,
+                camera_id=cam,
+                frame_idx=res.frame_idx if res is not None else self.frames,
+                ts=ts,
                 tracks=tracks,
                 seg=seg_desde_resultado(sr) if sr is not None else None,
                 acciones=acs,
-                novelty=res.novelty, incertidumbre=res.incertidumbre,
-                tam_frame=res.original_size,
+                novelty=getattr(res, "novelty", 0.0) if res is not None else 0.0,
+                incertidumbre=(getattr(res, "incertidumbre", 0.0)
+                               if res is not None else 0.0),
+                tam_frame=tam,
                 cabezas=frozenset(cabezas)))
 
         # 5. Fusión y decisión.
@@ -226,13 +303,22 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("fuente", help="índice de webcam, archivo de video o RTSP")
-    ap.add_argument("--pesos", required=True)
+    ap.add_argument("--pesos", help="pesos de la cabeza de objetos")
     ap.add_argument("--pesos-backbone", dest="pesos_backbone")
     ap.add_argument("--topologia", help="topologia.json")
     ap.add_argument("--camara", default="cam-0")
     ap.add_argument("--fps", type=float, default=10.0)
     ap.add_argument("--ver", action="store_true")
     ap.add_argument("--cpu", action="store_true")
+    ap.add_argument("--agresion", action="store_true",
+                    help="prender la cabeza de agresión (fight/, MC3-18)")
+    ap.add_argument("--segmentacion", nargs="?", const="auto", default=None,
+                    metavar="PESOS",
+                    help="prender la cabeza de segmentación (fuego/humo/agua). "
+                         "Sin valor usa el checkpoint por defecto.")
+    ap.add_argument("--sin-objetos", action="store_true",
+                    help="correr SOLO con segmentación: no necesita el "
+                         "backbone.pt de objetos")
     args = ap.parse_args()
 
     try:
@@ -248,7 +334,24 @@ def main() -> int:
         print("[pipeline] sin topología: intrusión y merodeo por zona no van "
               "a poder evaluarse. Copiá topologia.example.json y editalo.")
 
-    pipe = PipelineHorus(pesos=args.pesos, pesos_backbone=args.pesos_backbone,
+    if not args.pesos and not args.segmentacion:
+        ap.error("hace falta --pesos (objetos) o --segmentacion")
+
+    motor_seg = None
+    if args.segmentacion:
+        sys.path.insert(0, os.path.normpath(
+            os.path.join(_AQUI, "..", "04_cabezas", "segmentacion")))
+        from segmentation_engine import ConfigSegmentacion, MotorSegmentacion
+        cfg_seg = ConfigSegmentacion(device="cpu" if args.cpu else None,
+                                     half=not args.cpu)
+        if args.segmentacion != "auto":
+            cfg_seg.pesos = args.segmentacion
+        motor_seg = MotorSegmentacion(cfg_seg)
+
+    pipe = PipelineHorus(detector_agresion=args.agresion,
+                         motor_segmentacion=motor_seg,
+                         pesos=None if args.sin_objetos else args.pesos,
+                         pesos_backbone=args.pesos_backbone,
                          topologia=args.topologia, fps=args.fps,
                          device="cpu" if args.cpu else None)
 

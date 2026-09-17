@@ -85,6 +85,47 @@ class _Pendiente:
 
 
 # --------------------------------------------------------------------------- #
+# Correlaciones de escena
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class DefCorrelacionEscena:
+    """Dos hallazgos que por separado son una cosa y juntos son otra.
+
+    Se diferencia de la correlación de robo en tres puntos, y los tres salieron
+    de conectar el modelo de agresión:
+
+    1. **Agrupa por cámara, no por `global_id`.** Una pelea es de dos o más
+       personas: colgarla de un `global_id` la ata a uno solo y el otro queda
+       afuera, que es justo el que se puede estar cayendo.
+    2. **Mira hacia atrás `correlacion_s` segundos.** Una pelea termina cuando
+       el otro sale corriendo; la caída se confirma después, porque la regla
+       de caída exige quietud sostenida. Si solo se miraran hallazgos del mismo
+       tick, esta correlación —la más grave del sistema— no se dispararía
+       nunca.
+    3. **Exige que compartan gente** cuando las dos partes saben de quién
+       hablan. Una pelea en un rincón y una caída en el otro no son una
+       agresión.
+    """
+    base: str
+    con: str
+    produce: str
+    severidad: Severidad
+    motivo: str
+    necesita_vlm: bool = True
+
+
+# Agregar una correlación nueva = agregar una línea acá.
+CORRELACIONES_ESCENA: Tuple[DefCorrelacionEscena, ...] = (
+    DefCorrelacionEscena(
+        "pelea", "arma", "agresion", Severidad.CRITICO,
+        "forcejeo entre personas con un arma en la escena"),
+    DefCorrelacionEscena(
+        "pelea", "caida", "agresion", Severidad.CRITICO,
+        "forcejeo y una persona en el piso que no se levanta"),
+)
+
+
+# --------------------------------------------------------------------------- #
 class MotorFusion:
     """El orquestador de la capa.
 
@@ -108,6 +149,8 @@ class MotorFusion:
         self.ctx = Contexto(topo=topologia, fps=fps)
 
         self._pendientes: Dict[Tuple, _Pendiente] = {}
+        self._recientes: Dict[str, Deque[Hallazgo]] = {}
+        self._absorbidos: List[Evento] = []
         self._abiertos: Dict[Tuple, Evento] = {}
         self._cooldown: Dict[Tuple, float] = {}
         self._ultimo_aviso: Dict[Tuple, float] = {}
@@ -139,6 +182,7 @@ class MotorFusion:
                     self.stats[h.tipo] = self.stats.get(h.tipo, 0) + 1
 
         hallazgos = self._correlacionar(hallazgos, ts)
+        hallazgos = self._correlacion_escena(hallazgos, ts)
 
         salida: List[Evento] = []
         for h in hallazgos:
@@ -146,6 +190,8 @@ class MotorFusion:
             if e is not None:
                 salida.append(e)
 
+        salida.extend(self._absorbidos)
+        self._absorbidos = []
         salida.extend(self._cerrar_vencidos(ts))
         salida.extend(self._reemitir(ts, {id(e) for e in salida}))
         return [e for e in salida if e.severidad >= self.cfg.severidad_min]
@@ -195,6 +241,124 @@ class MotorFusion:
         if not extra:
             return hallazgos
         return [h for h in hallazgos if id(h) not in suprimir] + extra
+
+    # ------------------------------------------------------------------ #
+    def _correlacion_escena(self, hallazgos: List[Hallazgo],
+                            ts: float) -> List[Hallazgo]:
+        """Pelea + arma, o pelea + caída, sobre la misma gente = agresión.
+
+        La pelea sola **nunca** escala a crítico. El modelo mide 88,75 % de
+        balanced accuracy y lo que peor separa es el juego brusco de la pelea
+        de verdad; disparar lo irreversible con eso solo sería exactamente el
+        error que `ReglaArma` evita desde el primer día. Lo que sí es crítico
+        es una pelea con un arma en la escena, o una pelea donde alguien queda
+        en el piso — dos evidencias independientes que no se equivocan juntas.
+        """
+        c = self.cfg
+        ventana = max(0.0, c.correlacion_s)
+
+        # La memoria se llena ANTES de buscar, así una pareja del mismo tick
+        # entra por el mismo camino que una separada en el tiempo.
+        for h in hallazgos:
+            cola = self._recientes.setdefault(h.camera_id, deque(maxlen=64))
+            cola.append(h)
+        for cam, cola in self._recientes.items():
+            while cola and ts - (cola[0].ts or ts) > ventana:
+                cola.popleft()
+
+        actuales = {id(h) for h in hallazgos}
+        extra: List[Hallazgo] = []
+        suprimir: set = set()
+        ya: set = set()
+
+        for d in CORRELACIONES_ESCENA:
+            for cam, cola in self._recientes.items():
+                bases = [h for h in cola if h.tipo == d.base]
+                otros = [h for h in cola if h.tipo == d.con]
+                if not bases or not otros:
+                    continue
+                par = self._mejor_par(bases, otros, actuales)
+                if par is None:
+                    continue
+                base, otro = par
+                clave = (cam, d.produce)
+                if clave in ya:
+                    continue
+                ya.add(clave)
+
+                juntos = sorted(set(base.track_ids) | set(otro.track_ids))
+                extra.append(Hallazgo(
+                    tipo=d.produce, severidad=d.severidad,
+                    confianza=min(0.97, 0.5 * (base.confianza + otro.confianza) + 0.15),
+                    camera_id=cam, zona=otro.zona or base.zona, ts=ts,
+                    motivo=d.motivo, track_ids=juntos,
+                    global_id=(base.global_id if base.global_id is not None
+                               else otro.global_id),
+                    necesita_vlm=d.necesita_vlm,
+                    evidencia={d.base: base.evidencia, d.con: otro.evidencia,
+                               "correlacion": f"{d.base}+{d.con}",
+                               "separacion_s": round(abs((base.ts or ts) - (otro.ts or ts)), 1)}))
+
+                # Se calla la pelea, no el arma ni la caída. El arma sigue
+                # necesitando que el VLM la mire y la caída puede necesitar una
+                # ambulancia aunque la agresión ya esté avisada: taparlas haría
+                # que dos cosas accionables se vean como una sola.
+                if c.suprimir_componentes:
+                    if id(base) in actuales:
+                        suprimir.add(id(base))
+                    self._absorber(d.base, cam, juntos, ts, d.produce)
+
+        if not extra:
+            return hallazgos
+        return [h for h in hallazgos if id(h) not in suprimir] + extra
+
+    def _absorber(self, tipo: str, cam: str, tracks: Sequence[int],
+                  ts: float, por: str) -> None:
+        """Cierra el evento del componente que ya estaba abierto.
+
+        Suprimir el hallazgo del tick no alcanza cuando el componente alerta
+        ANTES que la correlación: la pelea se confirma en 1,5 s y el arma tarda
+        lo suyo, así que para cuando sale la agresión el operador ya tiene una
+        tarjeta de pelea en pantalla. Dejarla abierta le deja dos tarjetas del
+        mismo incidente, que es el problema que ya costó caro una vez con el
+        incendio. Se cierra marcada, no se borra: el evento existió y alertó
+        bien, y el historial tiene que poder contarlo.
+        """
+        tset = set(tracks)
+        for clave, ev in list(self._abiertos.items()):
+            if ev.tipo != tipo or ev.camera_id != cam:
+                continue
+            if tset and set(ev.track_ids) and not (tset & set(ev.track_ids)):
+                continue
+            ev.estado = "cerrado"
+            ev.ts_ultimo = max(ev.ts_ultimo, ts)
+            ev.evidencia["absorbido_por"] = por
+            del self._abiertos[clave]
+            self._cooldown[clave] = ts + self.cfg.cooldown_s
+            self._ultimo_aviso.pop(clave, None)
+            self._absorbidos.append(ev)
+
+    @staticmethod
+    def _mejor_par(bases: Sequence[Hallazgo], otros: Sequence[Hallazgo],
+                   actuales: set) -> Optional[Tuple[Hallazgo, Hallazgo]]:
+        """El par de mayor confianza que comparte gente y toca este tick.
+
+        Que al menos uno sea del tick actual es lo que impide que la
+        correlación se auto-sostenga para siempre a partir de la memoria: sin
+        eso, una pelea y una caída de hace diez segundos seguirían pariendo
+        agresiones nuevas aunque en cuadro ya no quede nadie.
+        """
+        mejor = None
+        for b in bases:
+            for o in otros:
+                if id(b) not in actuales and id(o) not in actuales:
+                    continue
+                if not _misma_gente(b, o):
+                    continue
+                puntaje = b.confianza + o.confianza
+                if mejor is None or puntaje > mejor[0]:
+                    mejor = (puntaje, b, o)
+        return (mejor[1], mejor[2]) if mejor else None
 
     # ------------------------------------------------------------------ #
     def _integrar(self, h: Hallazgo, ts: float) -> Optional[Evento]:
@@ -332,6 +496,7 @@ class MotorFusion:
 
     def reset(self) -> None:
         self._pendientes.clear()
+        self._recientes.clear()
         self._abiertos.clear()
         self._cooldown.clear()
         self._ultimo_aviso.clear()
@@ -352,3 +517,21 @@ class MotorFusion:
         for ev in self.abiertos[:5]:
             partes.append("  " + ev.linea())
         return "\n".join(partes)
+
+
+# --------------------------------------------------------------------------- #
+def _misma_gente(a: Hallazgo, b: Hallazgo) -> bool:
+    """¿Los dos hallazgos hablan de las mismas personas?
+
+    Si alguno no sabe de quién habla (`track_ids` vacío), no se puede exigir
+    coincidencia sin perder el caso — se cae a "misma cámara", que es la
+    condición que ya se cumplió al agruparlos. Si los dos saben, se exige
+    solapamiento: una pelea en un rincón y una caída en el otro no son la
+    misma cosa.
+    """
+    ga, gb = set(a.track_ids), set(b.track_ids)
+    if ga and gb and not (ga & gb):
+        gida = {a.global_id} - {None}
+        gidb = {b.global_id} - {None}
+        return bool(gida & gidb)
+    return True

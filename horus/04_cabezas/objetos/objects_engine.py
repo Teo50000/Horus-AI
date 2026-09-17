@@ -75,7 +75,9 @@ if _DIR_BACKBONE not in sys.path:
 if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from shared_backbone import BackboneConfig, SharedBackbone  # noqa: E402
+from shared_backbone import (  # noqa: E402
+    BackboneConfig, SharedBackbone, huella_backbone, pesos_no_imagenet,
+)
 from objects_head import (  # noqa: E402
     CRITICAL_CLASSES,
     DEFAULT_CLASSES,
@@ -91,7 +93,16 @@ _BBOX_XFORM_CLIP = math.log(1000.0 / 16)
 # Niveles/anclas por defecto: los que usa entrenar_objetos.py. Si entrenás con
 # otros, pasálos por EngineConfig o el checkpoint no va a cargar.
 _FPN_LEVELS_ENTRENADOS: Tuple[str, ...] = ("p3", "p4", "p5")
-_ANCHOR_SIZES_ENTRENADOS: Tuple[Tuple[int, ...], ...] = ((32,), (64,), (128,))
+# 2026-09-15: alineado con el entrenador. Un checkpoint que trae
+# "anchor_sizes" pisa esto (ver _aplicar_checkpoint); el default solo se usa
+# con checkpoints viejos que no lo anotan, y ahi un preset equivocado da
+# detecciones corridas sin tirar ninguna excepcion.
+_ANCHOR_SIZES_ENTRENADOS: Tuple[Tuple[int, ...], ...] = (
+    (16, 20, 25), (32, 40, 51), (64, 81, 102))
+
+
+class ErrorBackbone(RuntimeError):
+    """El backbone no es el que entrenó la cabeza, o no está."""
 
 
 # --------------------------------------------------------------------------- #
@@ -105,6 +116,9 @@ class EngineConfig:
     # --- modelo -----------------------------------------------------------
     pesos: Optional[str] = None                # state_dict de la cabeza (.pt)
     pesos_backbone: Optional[str] = None       # state_dict del backbone (.pt)
+    # Escape explicito: arrancar con un backbone que NO es el que entreno la
+    # cabeza. Solo para diagnostico -- las detecciones no valen nada.
+    sin_backbone: bool = False
     clases: Tuple[str, ...] = DEFAULT_CLASSES
     fpn_levels: Tuple[str, ...] = _FPN_LEVELS_ENTRENADOS
     anchor_sizes: Tuple[Tuple[int, ...], ...] = _ANCHOR_SIZES_ENTRENADOS
@@ -363,7 +377,11 @@ class ObjectsEngine:
             vlm_gate_band=c.vlm_gate_band,
         )
 
-        pesos_bb = c.pesos_backbone or self._resolver_backbone(ck)
+        # Si los tensores vienen adentro, no hay que buscar ningún archivo al
+        # lado — ni avisar de que falta.
+        _parcial = bool(ck.get("backbone_parcial") and ck.get("backbone_tensores"))
+        pesos_bb = c.pesos_backbone or (None if _parcial
+                                        else self._resolver_backbone(ck))
         pretrained = c.backbone_pretrained
         if pesos_bb is None and ck.get("backbone_pretrained") and not pretrained:
             pretrained = True
@@ -374,18 +392,60 @@ class ObjectsEngine:
             BackboneConfig(pretrained=pretrained,
                            input_size=c.input_size, freeze_encoder=True)
         ).eval()
-        if pesos_bb:
+        # --- 1. tensores incrustados en el propio checkpoint --------------
+        incrustados = ck.get("backbone_tensores") if ck.get("backbone_parcial") else None
+        if incrustados:
+            faltan, sobran = self.backbone.load_state_dict(incrustados, strict=False)
+            if sobran:
+                raise ErrorBackbone(
+                    f"el checkpoint trae {len(sobran)} tensores que este "
+                    f"backbone no conoce (ej: {sobran[0]}).")
+            self._log(f"[motor] backbone incrustado en el checkpoint "
+                      f"({len(incrustados)} tensores) — no depende de ningún "
+                      f"archivo al lado")
+        # --- 2. o el archivo de al lado -----------------------------------
+        elif pesos_bb:
             sd_bb = torch.load(pesos_bb, map_location="cpu")
             faltan, sobran = self.backbone.load_state_dict(sd_bb, strict=False)
             self._log(f"[motor] backbone cargado de {pesos_bb}")
             if faltan:
                 print(f"[motor] ⚠ al backbone le faltaron {len(faltan)} tensores "
                       f"(ej: {faltan[0]}). ¿Es el backbone correcto?")
-        elif c.pesos and not pretrained and not ck.get("backbone_pretrained"):
-            print("[motor] ⚠ backbone SIN pesos (random) con una cabeza "
-                  "entrenada. Si el entrenamiento usó otro backbone, las "
-                  "detecciones van a ser basura. Pasá --pesos-backbone o "
-                  "reentrená con entrenar_objetos_cuda.py, que lo guarda solo.")
+
+        # --- 3. la huella: lo que convierte "detecta mal" en un error ------
+        esperada = ck.get("backbone_huella")
+        if c.pesos and esperada and not c.sin_backbone:
+            actual = huella_backbone(self.backbone)
+            if actual != esperada:
+                raise ErrorBackbone(
+                    f"El backbone NO es el que entrenó esta cabeza.\n"
+                    f"  esperada: {esperada}\n  actual:   {actual}\n"
+                    f"El FPN y el embed_head se sortean al azar al construir "
+                    f"SharedBackbone y se congelan ahí: una cabeza entrenada "
+                    f"contra un sorteo no funciona sobre otro, y NO falla — "
+                    f"detecta mal en silencio. Traé el backbone.pt correcto, o "
+                    f"pasá sin_backbone=True si estás diagnosticando.")
+            self._log(f"[motor] huella del backbone verificada: {actual}")
+        elif c.pesos and esperada and c.sin_backbone:
+            print(f"[motor] ⚠ --sin-backbone: NO se verificó la huella "
+                  f"({esperada}). Las detecciones no valen nada.")
+        elif c.pesos and not esperada and not incrustados and not pesos_bb:
+            # Checkpoint viejo, sin huella y sin backbone: es exactamente el
+            # caso de objetos_v2.pt. No se puede verificar, así que se corta.
+            if not c.sin_backbone:
+                raise ErrorBackbone(
+                    "Este checkpoint no trae huella y no se encontró su "
+                    "backbone.pt.\n"
+                    "Con ImageNet se restaura el ResNet-50, pero el FPN queda "
+                    "en un sorteo NUEVO y distinto del que entrenó la cabeza: "
+                    "medido sobre ruido puro, según el sorteo salen 'persona "
+                    "0.41' o 20 detecciones fantasma. Eso es peor que no "
+                    "arrancar.\n"
+                    "Traé el backbone.pt, reentrená (el entrenador lo guarda y "
+                    "le pone huella), o pasá sin_backbone=True para "
+                    "diagnosticar.")
+            print("[motor] ⚠ --sin-backbone con un checkpoint sin huella: "
+                  "el FPN es un sorteo al azar. Solo para diagnóstico.")
 
         self.head = ObjectsHead(self.head_cfg).eval()
         if c.pesos:

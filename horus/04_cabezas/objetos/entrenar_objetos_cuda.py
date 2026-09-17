@@ -63,7 +63,9 @@ for _p in (os.path.join(_RAIZ, "03_backbone"), _AQUI):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from shared_backbone import BackboneConfig, SharedBackbone  # noqa: E402
+from shared_backbone import (
+    BackboneConfig, SharedBackbone, huella_backbone, pesos_no_imagenet,
+)  # noqa: E402
 from objects_head import ObjectsHead, ObjectsHeadConfig  # noqa: E402
 
 TAM = 384
@@ -71,7 +73,15 @@ _MEAN = (0.485, 0.456, 0.406)
 _STD = (0.229, 0.224, 0.225)
 
 _FPN_LEVELS = ("p3", "p4", "p5")
-_ANCHOR_SIZES = ((32,), (64,), (128,))
+
+# 2026-09-15: restaurados los del v2, que es el unico entrenamiento con metrica
+# conocida (mAP@0.50 = 0.5335). El arbol tenia ((32,),(64,),(128,)): un solo
+# anchor por nivel y arrancando en 32 px. En una camara de vigilancia una
+# pistola ocupa 16-47 px y las cajas de D-Fire son muchas de 4% x 6% del cuadro,
+# asi que ese preset se pierde justo los objetos que el sistema existe para ver,
+# y ademas no seria comparable contra el v2. Tres escalas por nivel cuesta 3x
+# anchors; el costo esta en el post-proceso vectorizado, no en la red.
+_ANCHOR_SIZES = ((16, 20, 25), (32, 40, 51), (64, 81, 102))
 
 
 # --------------------------------------------------------------------------- #
@@ -681,8 +691,18 @@ def entrenar(a: Ajustes, dir_base: Path, autotest: bool = False) -> float:
     # del checkpoint, por el nombre que se anota en "backbone_file".
     ruta_bb = dir_ckpt / "backbone.pt"
     torch.save(backbone.state_dict(), ruta_bb)
+
+    # La huella de los tensores que NO se pueden reconstruir (FPN, embed_head,
+    # GRU). Va adentro de cada checkpoint de la cabeza, y el motor la compara
+    # al cargar: sin esto, "el backbone es otro" es un mes de detecciones raras
+    # en vez de un error en el arranque. Es la leccion que costo objetos_v2.
+    huella_bb = huella_backbone(backbone)
+    no_in = pesos_no_imagenet(backbone)
     print(f"[setup] backbone congelado guardado en {ruta_bb.name} "
           f"({ruta_bb.stat().st_size/1e6:.0f} MB) — va junto al checkpoint")
+    print(f"[setup] huella del backbone: {huella_bb}  "
+          f"({len(no_in)} tensores irreconstruibles, "
+          f"{sum(v.numel() for v in no_in.values())/1e6:.1f} M parametros)")
 
     # --- reanudar de verdad: pesos + optimizador + scheduler + scaler ------
     epoca_ini = 1
@@ -840,6 +860,13 @@ def entrenar(a: Ajustes, dir_base: Path, autotest: bool = False) -> float:
             # reconstruir exactamente el mismo camino en inferencia.
             "backbone_file": ruta_bb.name,
             "backbone_pretrained": not autotest,
+            # Con esto, el motor puede VERIFICAR que el backbone que encontro
+            # es el que entreno esta cabeza, en vez de confiar en el nombre.
+            "backbone_huella": huella_bb,
+            # False = los tensores viajan en backbone.pt, al lado.
+            # exportar_objetos.py --incrustar-backbone los mete adentro y lo
+            # pone en True, y ahi el .pt ya no depende de ningun archivo suelto.
+            "backbone_parcial": False,
         }
         torch.save(ck, dir_ckpt / "head_last.pt")
         # Se reescribe en CADA época, no al final: si la corrida se corta con

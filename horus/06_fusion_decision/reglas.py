@@ -586,18 +586,39 @@ class DefAccion:
     necesita_vlm: bool = True
     motivo: str = ""
 
+    # Acciones que son de la ESCENA y no de una persona. Un clasificador de
+    # clips (agresión, aglomeración) mira el cuadro entero y no puede decir
+    # "esta persona pelea": la pelea es el conjunto. Con esto la regla sabe
+    # que no tiene que esperar un `track_id` y que la identidad hay que
+    # reconstruirla mirando quién está adentro de la región.
+    por_camara: bool = False
+
+    # Una pelea con una sola persona en cuadro no es una pelea. El
+    # clasificador ya tiene su propia compuerta, pero la regla no le cree de
+    # palabra: es la misma política que "arma nunca es crítico sola".
+    min_personas: int = 0
+
+    # Cuánto tiene que estar una persona adentro de la región para contarla
+    # como participante.
+    contencion_min: float = 0.50
+
 
 # Agregar un modelo de acción nuevo = agregar una línea acá. No hay que tocar
 # el motor ni escribir una regla.
 ACCIONES_EXTERNAS: Tuple[DefAccion, ...] = (
     DefAccion("robo", "robo", Severidad.CRITICO, umbral=0.60,
               persistencia_s=0.8, motivo="acción de robo detectada"),
+    # pelea: la produce `fight/detector_agresion.py` (MC3-18 sobre el clip).
+    # bal. acc medida 88,75%, y lo que peor separa es el juego brusco — por eso
+    # nunca sale crítica sola: escala solo por correlación (ver motor_fusion).
     DefAccion("pelea", "pelea", Severidad.ALERTA, umbral=0.60,
-              persistencia_s=1.5, motivo="forcejeo entre personas"),
+              persistencia_s=1.5, motivo="forcejeo entre personas",
+              por_camara=True, min_personas=2),
     DefAccion("vandalismo", "vandalismo", Severidad.ALERTA, umbral=0.60,
               persistencia_s=1.5, motivo="daño a la propiedad"),
     DefAccion("aglomeracion", "aglomeracion", Severidad.AVISO, umbral=0.55,
-              persistencia_s=3.0, motivo="concentración de personas"),
+              persistencia_s=3.0, motivo="concentración de personas",
+              por_camara=True, min_personas=4),
 )
 
 
@@ -622,7 +643,8 @@ class ReglaAccionExterna(Regla):
         if not self.defs:
             return []
         mem = ctx.mem(self).setdefault("desde", {})
-        personas = {t.track_id: t for t in obs.confirmados("persona")}
+        personas = [t for t in obs.confirmados("persona")]
+        por_id = {t.track_id: t for t in personas}
         fuera: List[Hallazgo] = []
 
         vistas = set()
@@ -630,30 +652,85 @@ class ReglaAccionExterna(Regla):
             d = self.defs.get(a.accion)
             if d is None or a.score < d.umbral:
                 continue
-            clave = (obs.camera_id, a.accion,
-                     a.track_id if a.track_id is not None else _redondear(a.bbox_xyxy))
+
+            participantes = self._participantes(a, d, personas, por_id)
+            if len(participantes) < d.min_personas:
+                continue
+
+            clave = self._clave(obs.camera_id, a, d)
             vistas.add(clave)
             desde = mem.setdefault(clave, obs.ts)
             if obs.ts - desde < d.persistencia_s:
                 continue
 
-            persona = personas.get(a.track_id) if a.track_id is not None else None
-            z = ctx.zona(persona) if persona is not None else None
+            ancla = por_id.get(a.track_id) if a.track_id is not None else None
+            if ancla is None and participantes:
+                ancla = participantes[0]
+            z = ctx.zona(ancla) if ancla is not None else None
+            gids = [g for g in (getattr(p, "global_id", None)
+                                for p in participantes) if g is not None]
             fuera.append(Hallazgo(
                 tipo=d.tipo_evento, severidad=d.severidad,
                 confianza=min(0.95, a.score), camera_id=obs.camera_id,
                 zona=z.nombre if z else None,
                 motivo=d.motivo or f"acción {a.accion}", ts=obs.ts,
-                track_ids=[t for t in (a.track_id,) if t is not None],
-                global_id=getattr(persona, "global_id", None),
+                track_ids=sorted({p.track_id for p in participantes}),
+                global_id=getattr(ancla, "global_id", None),
                 necesita_vlm=d.necesita_vlm,
                 evidencia={"accion": a.accion, "score": round(a.score, 3),
                            "fuente": a.fuente,
-                           "persistencia_s": round(obs.ts - desde, 1)}))
+                           "persistencia_s": round(obs.ts - desde, 1),
+                           "participantes": len(participantes),
+                           "global_ids": sorted(gids)}))
 
         for k in [k for k in mem if k[0] == obs.camera_id and k not in vistas]:
             mem.pop(k, None)
         return fuera
+
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _clave(cam: str, a: AccionObs, d: DefAccion) -> Tuple:
+        """La clave con la que se acumula la persistencia.
+
+        Redondear la caja —lo que hacía la primera versión cuando no había
+        `track_id`— es un bug silencioso: la caja de una pelea se mueve, cada
+        frame genera una clave nueva, `desde` se reinicia y la persistencia
+        **nunca** se cumple. Medido: con la caja quieta sale el evento, con la
+        caja desplazándose 3 px por frame no sale ninguno, para siempre y sin
+        una sola excepción.
+
+        Sin `track_id` no hay identidad que separar, así que la honesta es la
+        cámara: dos instancias anónimas de la misma acción en una cámara no
+        son distinguibles y fundirlas es lo correcto.
+        """
+        if a.track_id is not None and not d.por_camara:
+            return (cam, a.accion, a.track_id)
+        return (cam, a.accion)
+
+    @staticmethod
+    def _participantes(a: AccionObs, d: DefAccion,
+                       personas: Sequence[Any],
+                       por_id: Dict[int, Any]) -> List[Any]:
+        """Quiénes están adentro de la región de la acción.
+
+        Un clasificador de clips dice "acá hay una pelea", no quién pelea. Sin
+        esta reconstrucción el hallazgo sale con `track_ids=[]` y
+        `global_id=None`, y entonces **no se puede correlacionar con nada**:
+        ni con el arma que lleva uno de los dos, ni con la caída del otro. Es
+        justo la correlación lo que convierte una pelea en una agresión.
+
+        Se mide contención (la persona adentro de la región), no IoU: la
+        región es la unión de varias personas, así que cada una por separado
+        tiene IoU bajo contra ella.
+        """
+        if a.track_id is not None and not d.por_camara:
+            p = por_id.get(a.track_id)
+            return [p] if p is not None else []
+        caja = tuple(float(v) for v in a.bbox_xyxy)
+        if caja[2] <= caja[0] or caja[3] <= caja[1]:
+            return list(personas)
+        return [p for p in personas
+                if _contencion(p.bbox_xyxy, caja) >= d.contencion_min]
 
 
 # --------------------------------------------------------------------------- #

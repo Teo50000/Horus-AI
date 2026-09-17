@@ -549,6 +549,68 @@ def adelgazar(entrada: Path, salida: Optional[Path] = None) -> Path:
 
 
 # --------------------------------------------------------------------------- #
+def incrustar_backbone(ruta_ck: Path, ruta_bb: Optional[Path],
+                       salida: Optional[Path]) -> int:
+    """Mete el backbone irreconstruible ADENTRO del checkpoint de la cabeza.
+
+    El backbone son 27 M de parámetros, pero 23,5 M son el ResNet-50 de
+    ImageNet, que se restaura en cualquier máquina. Los que no se pueden
+    reconstruir —FPN, embed_head, GRU— son ~3,5 M (~14 MB) y entran de sobra
+    adentro del `.pt` de la cabeza.
+
+    Ahí es donde tendrían que haber estado siempre. `objetos_v2.pt` apuntaba a
+    un `backbone.pt` al lado, ese archivo se perdió, y con él se perdió un
+    modelo de 41 épocas que por lo demás está intacto. Un checkpoint que
+    depende de un archivo suelto es un checkpoint a medias.
+    """
+    from shared_backbone import huella_backbone, pesos_no_imagenet
+
+    if not ruta_ck.exists():
+        print(f"No existe {ruta_ck}")
+        return 1
+    ck = torch.load(ruta_ck, map_location="cpu", weights_only=False)
+
+    if ruta_bb is None:
+        nombre = ck.get("backbone_file", "backbone.pt")
+        ruta_bb = ruta_ck.parent / nombre
+    if not ruta_bb.exists():
+        print(f"No existe el backbone {ruta_bb}.\n"
+              f"El checkpoint anota '{ck.get('backbone_file')}'. Sin ese "
+              f"archivo exacto no hay nada que incrustar: el FPN no se puede "
+              f"reconstruir ni sembrando la misma semilla.")
+        return 1
+
+    sd_bb = torch.load(ruta_bb, map_location="cpu", weights_only=False)
+    no_in = pesos_no_imagenet(sd_bb)
+    huella = huella_backbone(sd_bb)
+
+    # Si el checkpoint ya traía huella, esto verifica que sea ESTE backbone.
+    previa = ck.get("backbone_huella")
+    if previa and previa != huella:
+        print(f"El backbone no es el de este checkpoint.\n"
+              f"  el checkpoint espera: {previa}\n"
+              f"  {ruta_bb.name} tiene: {huella}\n"
+              f"Incrustarlo dejaría un .pt que carga sin protestar y detecta "
+              f"mal para siempre.")
+        return 1
+
+    ck["backbone_tensores"] = {k: v.detach().to(torch.float32).clone()
+                               for k, v in no_in.items()}
+    ck["backbone_parcial"] = True
+    ck["backbone_huella"] = huella
+    ck.setdefault("backbone_file", ruta_bb.name)
+
+    salida = salida or ruta_ck.with_name(ruta_ck.stem + "_solo" + ruta_ck.suffix)
+    torch.save(ck, salida)
+    mb_extra = sum(v.numel() * 4 for v in no_in.values()) / 1e6
+    print(f"[ok] {salida.name}  ({salida.stat().st_size/1e6:.1f} MB, "
+          f"+{mb_extra:.1f} MB de backbone)")
+    print(f"[ok] {len(no_in)} tensores irreconstruibles incrustados · "
+          f"huella {huella}")
+    print(f"[ok] a partir de acá el .pt no depende de ningún archivo al lado.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Export ONNX / TensorRT de la cabeza de objetos")
     ap.add_argument("--pesos", default=None, help="state_dict de la cabeza (.pt)")
@@ -577,7 +639,22 @@ def main() -> int:
     ap.add_argument("--verificar", default=None, help="ruta a un .plan a validar")
     ap.add_argument("--verif-imgs", default=None)
     ap.add_argument("--umbral", type=float, default=0.30)
+    ap.add_argument("--incrustar-backbone", dest="incrustar_backbone",
+                    metavar="CHECKPOINT",
+                    help="mete los tensores irreconstruibles del backbone "
+                         "ADENTRO del checkpoint de la cabeza, y le pone huella. "
+                         "A partir de ahí el .pt viaja solo.")
+    ap.add_argument("--backbone", help="backbone.pt a incrustar (por defecto, "
+                                       "el que anota el checkpoint)")
+    ap.add_argument("--salida", help="dónde escribir el checkpoint incrustado "
+                                     "(por defecto, al lado con sufijo _solo)")
+
     args = ap.parse_args()
+
+    if args.incrustar_backbone:
+        return incrustar_backbone(Path(args.incrustar_backbone),
+                                  Path(args.backbone) if args.backbone else None,
+                                  Path(args.salida) if args.salida else None)
 
     cfg = EngineConfig(
         pesos=args.pesos, pesos_backbone=args.pesos_backbone,

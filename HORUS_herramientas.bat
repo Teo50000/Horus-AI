@@ -23,6 +23,7 @@ echo   6  Armar topologia.json ^(zonas: prende intrusion y merodeo^)
 echo   7  Adelgazar head_best_solo.pt  ^(93 MB -^> 33 MB^)
 echo   8  Subir los commits a GitHub
 echo   9  Solo el backend, sin panel ni modelos
+echo   C  Compactar el repositorio ^(.git ocupa 2,9 GB^)
 echo.
 echo   0  Salir
 echo.
@@ -37,6 +38,7 @@ if "%OPCION%"=="6" goto topologia
 if "%OPCION%"=="7" goto adelgazar
 if "%OPCION%"=="8" goto subir
 if "%OPCION%"=="9" goto backend
+if /i "%OPCION%"=="C" goto compactar
 if "%OPCION%"=="0" exit /b
 goto menu
 
@@ -210,6 +212,43 @@ echo.
 git push origin Models
 echo.
 git status --short --branch
+echo.
+pause
+goto menu
+
+rem ===============================================================
+:compactar
+cls
+echo ==============================================================
+echo  Compactar .git
+echo ==============================================================
+echo.
+echo  De los 2,9 GB que ocupa .git, 2,37 GB son objetos sueltos sin
+echo  empaquetar. Esto los comprime.
+echo.
+echo  NO toca el historial, ni las ramas, ni los stashes, ni nada de
+echo  lo que tenes commiteado. Es solo como estan guardados los
+echo  archivos adentro de .git.
+echo.
+echo  Tarda varios minutos y usa bastante CPU. No cierres la ventana.
+echo.
+set SEGUIR=
+set /p SEGUIR=  Dale (s/n):
+if /i not "%SEGUIR%"=="s" goto menu
+echo.
+echo  Antes:
+git count-objects -vH ^| findstr /R "^size"
+echo.
+echo  Trabajando...
+git gc
+echo.
+echo  Despues:
+git count-objects -vH ^| findstr /R "^size"
+echo.
+echo  Si queres achicarlo MUCHO mas hay que reescribir el historial,
+echo  porque adentro quedaron backend.exe de 70 MB de commits viejos.
+echo  Eso rompe el clon de cualquiera que ya tenga el repo, asi que
+echo  es una decision de a dos, no un boton.
 echo.
 pause
 goto menu

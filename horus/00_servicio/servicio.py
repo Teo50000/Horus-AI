@@ -802,8 +802,10 @@ def main() -> int:
                     help="lista local, por si el backend no está")
     ap.add_argument("--cpu", action="store_true")
     ap.add_argument("--segmentacion", action="store_true",
+                    # El %% es a proposito: argparse le hace %-formato al
+                    # texto de ayuda, y un % suelto rompe --help entero.
                     help="prender la cabeza de fuego y humo (la que mejor "
-                         "anda: F1 99,1 %)")
+                         "anda: F1 99,1 %%)")
     ap.add_argument("--segmentacion-checkpoint", dest="segmentacion_checkpoint",
                     help="por defecto 04_cabezas/segmentacion/checkpoints/"
                          "head_v4_produccion.pt")

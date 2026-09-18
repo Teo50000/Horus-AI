@@ -17,7 +17,7 @@ Dos modos.
 
 2) En vivo, contra el motor de objetos:
 
-       python probar_tracking.py 0 --ver --pesos modelos/objetos_v2.pt
+       python probar_tracking.py 0 --ver --pesos modelos/head_best_solo.pt
        python probar_tracking.py video.mp4 --ver --pesos checkpoints/head_best.pt
 
    Dibuja las cajas con su `track_id` y el tiempo que lleva cada track. Es la

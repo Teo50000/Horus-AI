@@ -34,7 +34,7 @@ tumba. Un test que da rojo por ruido enseña a ignorar los tests.
 
 Ver en vivo sobre la camara
 ---------------------------
-  python probar_tracking.py 0 --ver --pesos ../04_cabezas/objetos/modelos/objetos_v2.pt
+  python probar_tracking.py 0 --ver --pesos ../04_cabezas/objetos/modelos/head_best_solo.pt
 
 
 LO IMPORTANTE: como hay que configurar el motor

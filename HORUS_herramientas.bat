@@ -1,0 +1,229 @@
+@echo off
+chcp 65001 >nul
+setlocal enabledelayedexpansion
+set PYTHONIOENCODING=utf-8
+cd /d "%~dp0"
+title Horus - herramientas
+
+:menu
+cls
+echo ==============================================================
+echo   HORUS - herramientas
+echo ==============================================================
+echo.
+echo   Para usar el sistema no hace falta nada de esto:
+echo   con HORUS.bat alcanza. Esto es lo de vez en cuando.
+echo.
+echo   1  Correr las 10 suites de pruebas
+echo   2  Mandar una alerta de prueba al panel
+echo   3  Ver que esta instalado y que falta
+echo   4  Pasar el detector por una carpeta de fotos tuyas
+echo   5  Instalar mediapipe  ^(hace falta para la cabeza de caidas^)
+echo   6  Armar topologia.json ^(zonas: prende intrusion y merodeo^)
+echo   7  Adelgazar head_best_solo.pt  ^(93 MB -^> 33 MB^)
+echo   8  Subir los commits a GitHub
+echo   9  Solo el backend, sin panel ni modelos
+echo.
+echo   0  Salir
+echo.
+set /p OPCION=  Numero:
+
+if "%OPCION%"=="1" goto pruebas
+if "%OPCION%"=="2" goto alerta
+if "%OPCION%"=="3" goto chequeo
+if "%OPCION%"=="4" goto fotos
+if "%OPCION%"=="5" goto mediapipe
+if "%OPCION%"=="6" goto topologia
+if "%OPCION%"=="7" goto adelgazar
+if "%OPCION%"=="8" goto subir
+if "%OPCION%"=="9" goto backend
+if "%OPCION%"=="0" exit /b
+goto menu
+
+rem ===============================================================
+:pruebas
+cls
+echo ==============================================================
+echo  HORUS - las 10 suites
+echo ==============================================================
+echo.
+set FALLAS=0
+set SALIDA=%TEMP%\horus_suite.txt
+
+call :suite "horus\03_backbone"             probar_huella_backbone.py
+call :suite "horus\04_cabezas\segmentacion" probar_segmentation_engine.py
+call :suite "horus\04_cabezas\objetos"      probar_tope_y_guarda.py
+call :suite "horus\05_tracking"             probar_tracking.py
+call :suite "horus\06_fusion_decision"      probar_fusion.py
+call :suite "horus\07_alerta"               probar_alerta.py
+call :suite "horus\fight"                   probar_detector_agresion.py
+call :suite "horus\fall"                    probar_detector_caidas.py
+call :suite "horus\00_servicio"            probar_servicio.py
+call :suite "FASTAPI"                       probar_alertas_backend.py
+
+echo ==============================================================
+if !FALLAS!==0 (
+  echo   TODO VERDE
+) else (
+  echo   !FALLAS! suite^(s^) con fallas
+)
+echo ==============================================================
+echo.
+pause
+goto menu
+
+:suite
+pushd "%~1"
+python "%~2" > "%SALIDA%" 2>&1
+set RC=!ERRORLEVEL!
+set RESUMEN=
+for /f "usebackq delims=" %%L in (`findstr /R /V "^$" "%SALIDA%"`) do set RESUMEN=%%L
+if !RC!==0 (
+  echo   OK     %~2   !RESUMEN!
+) else (
+  echo   FALLA  %~2   ^(codigo !RC!^)
+  echo   ------------------------------------------------------------
+  type "%SALIDA%"
+  echo   ------------------------------------------------------------
+  set /a FALLAS+=1
+)
+popd
+exit /b
+
+rem ===============================================================
+:alerta
+cls
+echo  Tene HORUS.bat corriendo y el panel abierto para verla llegar.
+echo.
+echo  Escenarios:  incendio   agresion_arma   caida_pose   merodeo
+echo.
+set ESC=
+set /p ESC=  Cual (Enter = incendio):
+if "%ESC%"=="" set ESC=incendio
+pushd FASTAPI
+python enviar_alerta_prueba.py %ESC%
+popd
+echo.
+pause
+goto menu
+
+rem ===============================================================
+:chequeo
+cls
+python chequeo_pruebas.py
+echo.
+pause
+goto menu
+
+rem ===============================================================
+:fotos
+cls
+echo  Pasa el detector de objetos por 40 fotos tuyas y te las deja
+echo  con las cajas dibujadas, para que veas con tus ojos que detecta
+echo  y que se pierde.
+echo.
+echo  Ejemplo:  C:\Users\terra\Pictures\camaras
+echo.
+set CARPETA=
+set /p CARPETA=  Carpeta con fotos:
+if "%CARPETA%"=="" goto menu
+if not exist "horus\04_cabezas\objetos\modelos\head_best_solo.pt" (
+  echo.
+  echo  FALTA horus\04_cabezas\objetos\modelos\head_best_solo.pt
+  echo.
+  pause
+  goto menu
+)
+pushd horus\04_cabezas\objetos
+echo.
+echo  En CPU tarda un rato. Paciencia.
+python objects_engine.py "%CARPETA%" --imagenes --n 40 --precision fp32 --pesos modelos\head_best_solo.pt --salida revision
+popd
+echo.
+echo  Listo. Las fotos con cajas quedaron en:
+echo     %~dp0horus\04_cabezas\objetos\revision\
+echo.
+start "" "%~dp0horus\04_cabezas\objetos\revision"
+pause
+goto menu
+
+rem ===============================================================
+:mediapipe
+cls
+echo  mediapipe saca los 33 puntos del cuerpo. Es lo que necesita la
+echo  cabeza de caidas para correr EN VIVO (la suite no lo necesita).
+echo.
+python -m pip install mediapipe
+echo.
+pause
+goto menu
+
+rem ===============================================================
+:topologia
+cls
+echo  Sin topologia.json, intrusion y merodeo se declaran DORMIDAS:
+echo  no dicen "no paso nada", dicen "no puedo mirar esto".
+echo.
+pushd horus\06_fusion_decision
+python crear_topologia.py
+popd
+echo.
+pause
+goto menu
+
+rem ===============================================================
+:adelgazar
+cls
+echo  Saca el estado de AdamW y los pesos crudos, que solo sirven para
+echo  RETOMAR un entrenamiento. Los 20 tensores irreconstruibles quedan
+echo  adentro, asi que el .pt sigue siendo autocontenido.
+echo     93 MB  ->  33 MB
+echo.
+if not exist "horus\04_cabezas\objetos\modelos\head_best_solo.pt" (
+  echo  FALTA modelos\head_best_solo.pt
+  echo.
+  pause
+  goto menu
+)
+pushd horus\04_cabezas\objetos
+if not exist "checkpoints" mkdir checkpoints
+copy /y "modelos\head_best_solo.pt" "checkpoints\head_best_solo_completo.pt" >nul
+python exportar_objetos.py --adelgazar "modelos\head_best_solo.pt"
+if exist "modelos\head_best_solo_deploy.pt" (
+  move /y "modelos\head_best_solo_deploy.pt" "modelos\head_best_solo.pt" >nul
+  echo.
+  echo  Listo. El completo quedo en checkpoints\head_best_solo_completo.pt
+)
+popd
+echo.
+pause
+goto menu
+
+rem ===============================================================
+:subir
+cls
+if exist ".git\index.lock" del /f /q ".git\index.lock"
+echo  Commits que todavia no estan en GitHub:
+echo.
+git log --oneline origin/Models..HEAD
+echo.
+git push origin Models
+echo.
+git status --short --branch
+echo.
+pause
+goto menu
+
+rem ===============================================================
+:backend
+cls
+echo  Backend solo, en http://127.0.0.1:8000
+echo  Probalo a mano en http://127.0.0.1:8000/docs
+echo.
+echo  Ctrl+C para cortar.
+echo.
+pushd FASTAPI
+python -m uvicorn src.main:app --host 127.0.0.1 --port 8000 --reload
+popd
+pause
+goto menu

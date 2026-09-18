@@ -6,7 +6,7 @@ No inventa un JSON a mano: arma un evento con el motor de fusión de verdad y
 lo pasa por `armar_payload`, el mismo camino que va a usar el servicio cuando
 corra sobre cámaras. Si esto llega al panel, llega lo real.
 
-Con el backend arriba (3_backend.bat u 8_arrancar_todo.bat):
+Con el backend arriba (HORUS.bat):
 
     python enviar_alerta_prueba.py                # incendio
     python enviar_alerta_prueba.py agresion
@@ -111,7 +111,7 @@ def main() -> int:
         return 1
     except urllib.error.URLError as e:
         print(f"  no pude hablar con {URL}: {e.reason}")
-        print("  ¿Está corriendo el backend? (3_backend.bat)")
+        print("  ¿Está corriendo el backend? Arrancalo con HORUS.bat")
         return 1
 
 

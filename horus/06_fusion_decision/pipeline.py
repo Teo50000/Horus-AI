@@ -11,7 +11,7 @@ Uso como librería
 -----------------
     from pipeline import PipelineHorus
 
-    pipe = PipelineHorus(pesos="modelos/objetos_v2.pt",
+    pipe = PipelineHorus(pesos="modelos/head_best_solo.pt",
                          topologia="topologia.json",
                          fps=10.0)
 
@@ -21,7 +21,7 @@ Uso como librería
 
 Uso como programa
 -----------------
-    python pipeline.py 0 --ver --pesos ../04_cabezas/objetos/modelos/objetos_v2.pt
+    python pipeline.py 0 --ver --pesos ../04_cabezas/objetos/modelos/head_best_solo.pt
     python pipeline.py rtsp://... --topologia topologia.json
 
 Cabezas opcionales

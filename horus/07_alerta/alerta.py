@@ -408,6 +408,9 @@ class ConfigAlerta:
     timeout_s: float = 5.0
     usar_proxy: bool = False
     cola_max: int = 2048
+    # Adónde van los avisos de "no puedo entregar". Por defecto a stderr.
+    # Se puede pasar el `_log` del servicio para que salgan con su timestamp.
+    avisar: Optional[Any] = None
 
 
 class EmisorAlertas:
@@ -434,6 +437,9 @@ class EmisorAlertas:
         self._parar = False
         self.stats = {"emitidos": 0, "entregados": 0, "spool": 0,
                       "descartados": 0, "reintentos": 0}
+        # Cuántas seguidas no se pudieron entregar. Sirve para avisar UNA vez
+        # cuando se corta y UNA vez cuando vuelve, en lugar de por alerta.
+        self._fallando = 0
         self._hilo = threading.Thread(target=self._bucle, name="horus-alertas",
                                       daemon=True)
         self._hilo.start()
@@ -485,19 +491,56 @@ class EmisorAlertas:
                     self._en_vuelo -= 1
                     self._hay.notify_all()
 
+    def _aviso(self, texto: str) -> None:
+        try:
+            if callable(self.cfg.avisar):
+                self.cfg.avisar(texto)
+            else:
+                print(texto, file=sys.stderr, flush=True)
+        except Exception:                                # pragma: no cover
+            pass
+
     def _entregar(self, payload: dict) -> None:
+        """Entrega con reintentos; lo que no entra, al spool.
+
+        18/09: el `except Exception` de acá abajo no decía NADA. Un error de
+        entrega —el backend caído, una URL mal armada, un proxy de por
+        medio— hacía tres reintentos callados y mandaba la alerta a un
+        archivo. El sistema seguía andando, la consola seguía imprimiendo
+        eventos, y ni una alerta llegaba a nadie. Así estuvo hasta que se
+        midió: 6 eventos, 6 al spool, 0 al backend.
+
+        Ahora avisa UNA vez cuando se corta la entrega y UNA vez cuando
+        vuelve. Por alerta sería ruido; por transición es justo lo que hay
+        que saber.
+        """
         espera = self.cfg.espera_base_s
+        ultimo: Optional[BaseException] = None
         for intento in range(1, self.cfg.reintentos + 1):
             try:
                 self.transporte.enviar(payload)
                 self.stats["entregados"] += 1
+                if self._fallando:
+                    self._aviso(f"[alerta] entrega restablecida — "
+                                f"{self._fallando} alerta(s) habían quedado en "
+                                f"disco; se reenvían con reenviar_spool()")
+                    self._fallando = 0
                 return
-            except Exception:
+            except Exception as e:                       # noqa: BLE001
+                ultimo = e
                 self.stats["reintentos"] += 1
                 if intento == self.cfg.reintentos:
                     break
                 time.sleep(espera)
                 espera *= 2
+
+        self._fallando += 1
+        if self._fallando == 1 or self._fallando % 50 == 0:
+            destino = self.cfg.spool or "ningún spool configurado: SE DESCARTAN"
+            self._aviso(f"[alerta] NO se pudo entregar la alerta "
+                        f"{payload.get('id')}.{payload.get('secuencia')}: "
+                        f"{type(ultimo).__name__}: {str(ultimo)[:160]} · "
+                        f"van a {destino}")
         self._al_spool(payload)
 
     def _al_spool(self, payload: dict) -> None:

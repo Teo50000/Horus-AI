@@ -24,3 +24,11 @@ modelos/*
 
 __pycache__/
 *.pyc
+
+# ...pero head_best_solo.pt son 89 MB. GitHub avisa arriba de 50 y rechaza
+# arriba de 100, y una vez que entra al historial ya no sale sin reescribirlo.
+# Va por Releases o Git LFS. En disco esta donde tiene que estar y HORUS.bat
+# lo encuentra; lo unico que no pasa es que viaje por git.
+# Si algun dia lo adelgazas a 33 MB (HORUS_herramientas.bat, opcion 7), sacale
+# el "!" de abajo y entra.
+modelos/head_best_solo.pt

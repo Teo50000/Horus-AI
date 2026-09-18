@@ -24,7 +24,7 @@ REM  hace config_motor_para_tracking() solo.
 REM ====================================================================
 cd /d "%~dp0"
 
-set PESOS=..\04_cabezas\objetos\modelos\objetos_v2.pt
+set PESOS=..\04_cabezas\objetos\modelos\head_best_solo.pt
 set BACKBONE=..\04_cabezas\objetos\checkpoints_v2\backbone.pt
 
 if not exist "%PESOS%" (

@@ -141,11 +141,11 @@ def veredicto(faltan_mod, listos):
     no = []
 
     (puede if not faltan_mod else no).append(
-        ("las 8 suites de modelos + la del backend", "2_pruebas.bat"))
+        ("las 10 suites de pruebas", "HORUS_herramientas.bat (1)"))
     (puede if not faltan_mod else no).append(
-        ("levantar el backend y abrir /docs", "3_backend.bat"))
+        ("levantar todo: modelos, backend y panel", "HORUS.bat"))
     (puede if "objetos" in listos else no).append(
-        ("detección sobre tus fotos", "4_revisar_fotos.bat <carpeta>"))
+        ("detección sobre tus fotos", "HORUS_herramientas.bat (4)"))
     (puede if "segmentación" in listos else no).append(
         ("fuego y humo sobre tus fotos", "horus/04_cabezas/segmentacion/probar_camara.py"))
 

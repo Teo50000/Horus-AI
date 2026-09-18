@@ -97,3 +97,8 @@ push_log.txt
 limpieza_log.txt
 mensaje_commit.txt
 Claude outputs/
+
+# --- lo guardado por las dudas --------------------------------------
+# Datasets intermedios, el modelo viejo que no arranca y el backend
+# compilado. Nada de esto lo mira el codigo; ver _archivo/LEEME.txt.
+_archivo/

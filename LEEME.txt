@@ -1,0 +1,65 @@
+HORUS
+=====
+
+Vigilancia que mira video en vivo, decide si algo pasa, y avisa.
+
+
+Arrancar
+--------
+
+    HORUS.bat          doble clic
+
+Levanta las tres partes:
+
+    modelos   horus/00_servicio/servicio.py   mira el video y decide
+    backend   FASTAPI                          camaras, historial, alertas
+    panel     HorusAI                          lo que ves
+
+Se fija solo que dependencias y que modelos tenes, prende cada cabeza cuyos
+pesos esten, y te dice en voz alta cual falta. Despues abre el navegador.
+
+Arriba a la derecha del panel hay un cartel. Verde "En vivo" = el panel esta
+recibiendo alertas. Rojo = no. Eso importa mas de lo que parece: un panel
+desconectado se ve igual que una noche tranquila.
+
+
+Lo de vez en cuando
+-------------------
+
+    HORUS_herramientas.bat     doble clic, menu de 9 opciones
+
+    1  las 9 suites de pruebas            6  armar topologia.json
+    2  mandar una alerta de prueba        7  adelgazar el modelo
+    3  ver que falta instalar             8  subir los commits
+    4  pasar el detector por tus fotos    9  solo el backend
+    5  instalar mediapipe                 0  salir
+
+
+Que hay en cada carpeta
+-----------------------
+
+    horus/          los modelos y la logica
+      00_servicio/    el proceso que corre 24/7 con la GPU
+      04_cabezas/     objetos, segmentacion, reid
+      05_tracking/    seguir a cada persona entre frames y entre camaras
+      06_fusion_decision/  de detecciones a EVENTOS (las reglas)
+      07_alerta/      mandar el aviso, con reintentos y spool a disco
+      fall/           caidas    fight/  agresion
+
+    FASTAPI/        el backend: camaras, historial, websocket al panel
+    HorusAI/        el panel (React + Tauri)
+    _archivo/       lo pesado que no hace falta para correr. Ver su LEEME.
+
+
+Lo que falta para que esto sea de verdad
+----------------------------------------
+
+  - topologia.json  Sin zonas, intrusion y merodeo se declaran DORMIDAS: no
+                    dicen "no paso nada", dicen "no puedo mirar esto".
+                    Opcion 6 del menu.
+
+  - persona AP50 0.16 en la cabeza de objetos. Antes de arreglarlo hay que
+    mirar con los ojos que significa: opcion 4 del menu, sobre fotos tuyas.
+
+  - reid_cuerpo no tiene pesos entrenados: por ahora seguir a la misma
+    persona entre dos camaras anda solo por posicion y tiempo.

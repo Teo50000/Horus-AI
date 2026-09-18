@@ -42,7 +42,7 @@ Cuatro decisiones que importan
 
 Correr
 ------
-    python servicio.py --pesos ../04_cabezas/objetos/modelos/objetos_v2.pt \
+    python servicio.py --pesos ../04_cabezas/objetos/modelos/head_best_solo.pt \
                        --backend http://127.0.0.1:8000 \
                        --topologia ../06_fusion_decision/topologia.json
 
@@ -106,6 +106,20 @@ class ConfigServicio:
     caidas: bool = False
     caidas_checkpoint: Optional[str] = None
     caidas_max_personas: int = 4
+
+    # --- cabeza de segmentación (04_cabezas/segmentacion) ----------------
+    # 18/09: el servicio no la prendía NUNCA. El pipeline la acepta desde
+    # siempre (`motor_segmentacion`) y nadie se la pasaba, así que el sistema
+    # corría sin la única cabeza que de verdad anda bien —F1 99,1 % medido en
+    # fuego y humo— y sin decirlo. Es además el único camino completo a una
+    # alerta real que no depende del backbone de objetos.
+    segmentacion: bool = False
+    segmentacion_checkpoint: Optional[str] = None
+
+    # --- cabeza de agresión (fight/) -------------------------------------
+    # Apagada por defecto igual que caídas: cuesta una pasada de MC3-18 cada
+    # 0,75 s por cámara con dos personas en cuadro.
+    agresion: bool = False
 
     # --- video ------------------------------------------------------------
     fps: float = 10.0                      # ritmo de análisis, no de la cámara
@@ -361,7 +375,14 @@ class TransporteBackend:
 
     def __init__(self, cfg_alerta: ConfigAlerta,
                  mapa: Dict[str, Optional[int]]) -> None:
-        self._http = TransporteHTTP(cfg_alerta)
+        # 18/09, MEDIDO: acá decía `TransporteHTTP(cfg_alerta)`, pasándole el
+        # objeto de configuración entero donde va la URL. El primer parámetro
+        # de TransporteHTTP es `url: str`, así que self.url quedaba siendo un
+        # ConfigAlerta y urllib moría con "unknown url type: configalerta(...".
+        # El emisor atrapa el error, manda la alerta al spool y sigue: o sea
+        # que TODAS las alertas del servicio iban a un archivo en disco y
+        # ninguna llegaba al backend, sin una sola línea de error visible.
+        self._http = TransporteHTTP(cfg_alerta.url, cfg_alerta.token)
         self.mapa = mapa
 
     def enviar(self, payload: Dict[str, Any]) -> None:
@@ -407,6 +428,31 @@ class Servicio:
         if c.topologia and topo is None:
             _log(c, f"aviso: no encuentro {c.topologia}; sigo sin zonas")
 
+        motor_seg = None
+        if c.segmentacion and not c.simular:
+            # Mismo trato que las otras cabezas: si se pide y no carga, el
+            # servicio NO arranca. Correr sin la cabeza pero creyendo que está
+            # es la falla que este sistema no se puede permitir.
+            try:
+                _seg = os.path.normpath(os.path.join(
+                    _AQUI, "..", "04_cabezas", "segmentacion"))
+                if _seg not in sys.path:
+                    sys.path.insert(0, _seg)
+                from segmentation_engine import (ConfigSegmentacion,
+                                                 MotorSegmentacion)
+                cfg_s = ConfigSegmentacion()
+                if c.segmentacion_checkpoint:
+                    cfg_s.pesos = c.segmentacion_checkpoint
+                if c.device:
+                    cfg_s.device = c.device
+                motor_seg = MotorSegmentacion(cfg_s)
+            except Exception as e:                       # noqa: BLE001
+                raise RuntimeError(
+                    f"se pidió la cabeza de segmentación y no se pudo cargar: "
+                    f"{type(e).__name__}: {e}\nHacen falta "
+                    f"horus/04_cabezas/segmentacion/checkpoints/"
+                    f"head_v4_produccion.pt y backbone.pt.") from e
+
         det_caidas = None
         if c.caidas:
             # Se construye acá, y si falla se corta. Arrancar "igual pero sin
@@ -433,7 +479,8 @@ class Servicio:
             pesos=None if c.simular else c.pesos,
             pesos_backbone=c.pesos_backbone,
             topologia=topo, fps=c.fps, max_batch=max(c.max_batch, 1),
-            motor_objetos=motor, device=c.device,
+            motor_objetos=motor, motor_segmentacion=motor_seg,
+            device=c.device, detector_agresion=(c.agresion and not c.simular),
             detector_caidas=det_caidas, verboso=c.verboso)
 
         cfg_al = ConfigAlerta(
@@ -441,7 +488,19 @@ class Servicio:
             severidad_min=c.severidad_min, sitio=c.sitio, nodo=c.nodo)
         self.emisor = EmisorAlertas(
             cfg_al, transporte=TransporteBackend(cfg_al, self.config_ids))
-        self.pipe.emisor = self.emisor
+        # (antes acá se hacía `self.pipe.emisor = self.emisor`, que no servía
+        # de nada: el pipeline no lee ese atributo. Quien emite es el bucle.)
+
+        # Qué está mirando y qué no. Un operador tiene que poder leer esto de
+        # un vistazo: la diferencia entre "no pasó nada" y "nadie lo estaba
+        # mirando" empieza acá.
+        for nombre, prendida, porque in (
+                ("objetos     ", self.pipe.objetos is not None, "--pesos"),
+                ("segmentación", self.pipe.segmentacion is not None, "--segmentacion"),
+                ("agresión    ", self.pipe.agresion is not None, "--agresion"),
+                ("caídas      ", self.pipe.caidas is not None, "--caidas")):
+            _log(c, f"  cabeza {nombre} {'SI' if prendida else 'no'}"
+                    + ("" if prendida else f"  (se prende con {porque})"))
 
         self.listo_en_s = time.time() - self.arranque
         _log(c, f"modelos listos en {self.listo_en_s:.1f} s — "
@@ -559,6 +618,22 @@ class Servicio:
                     self.eventos += len(eventos)
                     for ev in eventos:
                         _log(self.cfg, "  " + ev.linea())
+                        # 18/09, MEDIDO: acá el bucle imprimía el evento y
+                        # nada más. `self.pipe.emisor = self.emisor` de más
+                        # arriba no hace nada: pipeline.py no lee ese atributo
+                        # en ningún lado. O sea que el servicio detectaba un
+                        # incendio, escribía "[ALERTA] incendio" en su consola
+                        # con toda la ceremonia, y NO avisaba a nadie: ni un
+                        # POST al backend, ni una fila en la base, ni un frame
+                        # por el websocket, ni un mail.
+                        #
+                        # Verificado corriendo el servicio contra el backend
+                        # real: 6 eventos en la consola, 0 filas en /alertas.
+                        # Es la peor falla posible en este sistema, y encima
+                        # la que mejor disimula: la consola se llena de
+                        # alertas y da la sensación de que está funcionando.
+                        if self.emisor is not None:
+                            self.emisor.emitir(ev)
                     if self.cfg.dibujar and self.cfg.puerto_stream:
                         self._anotar(lote)
                 except Exception as exc:
@@ -660,6 +735,7 @@ class Servicio:
 
     # ------------------------------------------------------------------ #
     def estado(self) -> Dict[str, Any]:
+        st = dict(self.emisor.stats) if self.emisor else {}
         return {
             "ok": True,
             "modelos": "simulados" if self.cfg.simular else "cargados",
@@ -675,10 +751,18 @@ class Servicio:
                        if getattr(self.pipe, "caidas", None) is not None
                        else None),
             "camaras": [f.resumen() for f in self.fuentes.values()],
+            # 18/09: esto leía `emisor.enviados`, `emisor.fallidos` y
+            # `emisor.pendientes_en_spool()`, y NINGUNO de los tres existe.
+            # Los dos primeros iban con getattr(..., 0), así que el resumen
+            # decía "alertas enviadas 0" para siempre, hubiera mandado una o
+            # trescientas. El tercero no tenía default, así que cerrar el
+            # servicio con Ctrl+C terminaba en un AttributeError en vez de en
+            # el resumen. Los nombres de verdad están en EmisorAlertas.stats.
             "alertas": {
-                "enviadas": getattr(self.emisor, "enviados", 0),
-                "fallidas": getattr(self.emisor, "fallidos", 0),
-                "en_disco": self.emisor.pendientes_en_spool() if self.emisor else 0,
+                "enviadas": st.get("entregados", 0),
+                "fallidas": st.get("descartados", 0),
+                "en_cola": self.emisor.pendientes() if self.emisor else 0,
+                "en_disco": st.get("spool", 0),
             },
         }
 
@@ -694,9 +778,11 @@ class Servicio:
     def resumen(self) -> str:
         e = self.estado()
         cams = ", ".join(f"{c['camara']}:{c['estado']}" for c in e["camaras"]) or "ninguna"
+        a = e["alertas"]
         return (f"[servicio] {e['ticks']} ticks · {e['eventos']} eventos · "
-                f"cámaras: {cams} · alertas enviadas {e['alertas']['enviadas']}, "
-                f"en disco {e['alertas']['en_disco']}")
+                f"cámaras: {cams} · alertas: {a['enviadas']} entregadas, "
+                f"{a['en_cola']} en cola, {a['en_disco']} en disco, "
+                f"{a['fallidas']} descartadas")
 
 
 # --------------------------------------------------------------------------- #
@@ -715,6 +801,14 @@ def main() -> int:
     ap.add_argument("--camaras-json", dest="camaras_json",
                     help="lista local, por si el backend no está")
     ap.add_argument("--cpu", action="store_true")
+    ap.add_argument("--segmentacion", action="store_true",
+                    help="prender la cabeza de fuego y humo (la que mejor "
+                         "anda: F1 99,1 %)")
+    ap.add_argument("--segmentacion-checkpoint", dest="segmentacion_checkpoint",
+                    help="por defecto 04_cabezas/segmentacion/checkpoints/"
+                         "head_v4_produccion.pt")
+    ap.add_argument("--agresion", action="store_true",
+                    help="prender la cabeza de peleas (fight/)")
     ap.add_argument("--caidas", action="store_true",
                     help="prender la cabeza de caídas (horus/fall). Cuesta una "
                          "pasada de MediaPipe por persona por frame")
@@ -735,11 +829,16 @@ def main() -> int:
         fps=args.fps, max_batch=args.max_batch, sondeo_s=args.sondeo,
         puerto_stream=args.puerto_stream, camaras_json=args.camaras_json,
         device="cpu" if args.cpu else None, simular=args.simular,
+        segmentacion=args.segmentacion,
+        segmentacion_checkpoint=args.segmentacion_checkpoint,
+        agresion=args.agresion,
         caidas=args.caidas, caidas_checkpoint=args.caidas_checkpoint,
         caidas_max_personas=args.caidas_max_personas)
 
-    if not cfg.simular and not cfg.pesos:
-        print("falta --pesos (o usá --simular para probar el cableado)")
+    if not cfg.simular and not cfg.pesos and not cfg.segmentacion:
+        print("hace falta al menos una cabeza: --pesos (objetos) o "
+              "--segmentacion (fuego y humo).")
+        print("Para probar el cableado sin modelos ni cámaras: --simular")
         return 2
 
     print("=" * 78)

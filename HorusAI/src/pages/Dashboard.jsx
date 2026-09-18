@@ -69,17 +69,25 @@ export default function Dashboard() {
           andando y los modelos apagados se ve igual que uno vigilando. */}
       <div
         className={`dashboard__modelos ${
-          servicio.activo ? "dashboard__modelos--ok" : "dashboard__modelos--no"
+          !servicio.activo
+            ? "dashboard__modelos--no"
+            : servicio.fase === "cargando"
+              ? "dashboard__modelos--cargando"
+              : "dashboard__modelos--ok"
         }`}
         role="status"
-        title={servicio.activo
-          ? `${Object.keys(servicio.camaras).length} camara(s) en analisis`
-          : "El servicio de modelos no esta corriendo: nadie esta mirando el video"}
+        title={!servicio.activo
+          ? "El servicio de modelos no esta corriendo: nadie esta mirando el video"
+          : servicio.fase === "cargando"
+            ? "Subiendo los modelos a la placa. Tarda entre 15 y 40 segundos."
+            : `${Object.keys(servicio.camaras).length} camara(s) en analisis`}
       >
         <span className="dashboard__conexion-punto" aria-hidden="true" />
-        {servicio.activo
-          ? `Analizando ${Object.keys(servicio.camaras).length}`
-          : "MODELOS APAGADOS"}
+        {!servicio.activo
+          ? "MODELOS APAGADOS"
+          : servicio.fase === "cargando"
+            ? "Cargando modelos..."
+            : `Analizando ${Object.keys(servicio.camaras).length}`}
       </div>
 
       <Sidebar

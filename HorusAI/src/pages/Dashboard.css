@@ -98,3 +98,15 @@ body,
   background: rgba(255, 169, 77, 0.12);
   font-weight: 600;
 }
+
+/* Todavía subiendo los modelos: ni verde (no está listo) ni rojo (no está
+   roto). Ver el comentario en servicio.py sobre por qué el servidor de
+   estado arranca antes que los modelos. */
+.dashboard__modelos--cargando {
+  color: rgba(120, 170, 240, 0.8);
+  background: rgba(120, 170, 240, 0.12);
+}
+
+.dashboard__modelos--cargando .dashboard__conexion-punto {
+  animation: dashboard-latido 1.6s ease-in-out infinite;
+}

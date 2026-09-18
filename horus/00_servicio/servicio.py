@@ -423,11 +423,28 @@ class Servicio:
         self.eventos = 0
         self.arranque = 0.0
         self.listo_en_s = 0.0
+        self.fase = "arrancando"
 
     # ------------------------------------------------------------------ #
     def iniciar(self) -> None:
         c = self.cfg
         self.arranque = time.time()
+
+        # El servidor HTTP arranca ANTES de los modelos, a propósito.
+        #
+        # 18/09, medido: cargar el motor de objetos tarda 17 s en CPU. Hasta
+        # hoy el servidor se levantaba DESPUES, asi que durante esos 17 s el
+        # puerto 8010 no contestaba nada y el panel mostraba "MODELOS
+        # APAGADOS" — indistinguible de que el servicio no estuviera. Uno abre
+        # el panel, lee APAGADOS, y da por hecho que algo se rompio.
+        #
+        # "Todavia no cargo" y "no hay nadie" son cosas distintas y tienen que
+        # verse distintas. Es el mismo criterio que reglas_dormidas() en la
+        # fusion.
+        self.fase = "cargando"
+        if c.puerto_stream:
+            self._levantar_http()
+
         _log(c, "cargando modelos…")
 
         from pipeline import PipelineHorus
@@ -512,6 +529,7 @@ class Servicio:
                     + ("" if prendida else f"  (se prende con {porque})"))
 
         self.listo_en_s = time.time() - self.arranque
+        self.fase = "listo"
         _log(c, f"modelos listos en {self.listo_en_s:.1f} s — "
                 f"de acá en más, una cámara nueva empieza a analizarse en el "
                 f"siguiente frame")
@@ -522,8 +540,8 @@ class Servicio:
             h.start()
             self._hilos.append(h)
 
-        if c.puerto_stream:
-            self._levantar_http()
+        # (el servidor HTTP ya se levantó al principio de iniciar(), antes de
+        # cargar los modelos: ver el comentario de allá arriba.)
 
     # ------------------------------------------------------------------ #
     def _bucle_descubrir(self) -> None:
@@ -745,8 +763,23 @@ class Servicio:
     # ------------------------------------------------------------------ #
     def estado(self) -> Dict[str, Any]:
         st = dict(self.emisor.stats) if self.emisor else {}
+        if self.pipe is None:
+            # Todavía cargando. Se contesta igual —y esa es la gracia: el panel
+            # tiene que poder distinguir "esperá que estoy subiendo los modelos
+            # a la placa" de "no hay ningún servicio corriendo".
+            return {
+                "ok": True,
+                "fase": getattr(self, "fase", "cargando"),
+                "modelos": "cargando",
+                "arriba_s": round(time.time() - self.arranque, 1) if self.arranque else 0,
+                "listo_en_s": 0,
+                "ticks": 0, "eventos": 0, "caidas": None,
+                "camaras": [],
+                "alertas": {"enviadas": 0, "fallidas": 0, "en_cola": 0, "en_disco": 0},
+            }
         return {
             "ok": True,
+            "fase": getattr(self, "fase", "listo"),
             "modelos": "simulados" if self.cfg.simular else "cargados",
             "listo_en_s": round(self.listo_en_s, 2),
             "arriba_s": round(time.time() - self.arranque, 1) if self.arranque else 0,

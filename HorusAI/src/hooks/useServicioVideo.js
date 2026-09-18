@@ -19,6 +19,7 @@ import { SERVICIO_URL } from "../config";
  */
 export function useServicioVideo(cadaMs = 4000) {
   const [activo, setActivo]   = useState(false);
+  const [fase, setFase]       = useState(null); // "cargando" | "listo" | null
   const [camaras, setCamaras] = useState({});   // config_id -> {camara, estado, error}
   const vivo = useRef(true);
 
@@ -38,12 +39,14 @@ export function useServicioVideo(cadaMs = 4000) {
           }
         }
         setCamaras(porId);
+        setFase(e.fase ?? "listo");
         setActivo(true);
       } catch {
         // Que el servicio no este es normal: se puede usar el panel solo para
         // ver camaras. No es un error, es otro modo.
         if (!vivo.current) return;
         setActivo(false);
+        setFase(null);
         setCamaras({});
       }
     };
@@ -67,5 +70,5 @@ export function useServicioVideo(cadaMs = 4000) {
     return { url: null, conIA: false, estado: null, error: null };
   };
 
-  return { activo, camaras, urlDe };
+  return { activo, fase, camaras, urlDe };
 }

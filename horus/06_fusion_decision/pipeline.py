@@ -73,7 +73,7 @@ for _p in (_AQUI,
         sys.path.insert(0, _p)
 
 from contratos import (  # noqa: E402
-    CABEZA_ACCION, CABEZA_OBJETOS, CABEZA_REID, CABEZA_SEGMENTACION,
+    CABEZA_ACCION, CABEZA_OBJETOS, CABEZA_POSE, CABEZA_REID, CABEZA_SEGMENTACION,
     AccionObs, Evento, ObservacionCamara, seg_desde_resultado,
 )
 from motor_fusion import ConfigFusion, MotorFusion  # noqa: E402
@@ -100,6 +100,7 @@ class PipelineHorus:
                  motor_objetos: Any = None,
                  motor_segmentacion: Any = None,
                  detector_agresion: Any = None,
+                 detector_caidas: Any = None,
                  device: Optional[str] = None,
                  verboso: bool = True) -> None:
         if isinstance(topologia, str):
@@ -133,6 +134,11 @@ class PipelineHorus:
         # Cabeza de agresión (fight/). Apagada por defecto: cuesta una pasada
         # de MC3-18 cada 0,75 s por cámara con dos personas en cuadro.
         self.agresion = self._crear_agresion(detector_agresion)
+
+        # Cabeza de caídas (fall/). Mismo trato que agresión: apagada por
+        # defecto, y cuando está se declara por estar INSTALADA. Los pesos son
+        # un ST-GCN de 103.074 parámetros sobre los 33 puntos de MediaPipe.
+        self.caidas = self._crear_caidas(detector_caidas)
 
         self.frames = 0
         self.latencias: List[float] = []
@@ -176,6 +182,30 @@ class PipelineHorus:
         from detector_agresion import ConfigAgresion, DetectorAgresion
         cfg = pedido if isinstance(pedido, ConfigAgresion) else ConfigAgresion()
         return DetectorAgresion(cfg)
+
+    @staticmethod
+    def _crear_caidas(pedido: Any):
+        """Igual que `_crear_agresion`: se acepta el detector ya armado, una
+        `ConfigCaidas`, o True para el default.
+
+        A diferencia de agresión, acá NO hay `procesar_lote`: el recorte de
+        cada persona sale de su `TrackLocal`, así que se llama por cámara y
+        después del tracking. Es la misma razón por la que no se puede
+        inyectar desde afuera — quien llama al pipeline todavía no tiene los
+        tracks.
+        """
+        if not pedido:
+            return None
+        import sys as _sys
+        _fall = os.path.normpath(os.path.join(_AQUI, "..", "fall"))
+        for _p in (_fall, os.path.join(_fall, "src")):
+            if _p not in _sys.path:
+                _sys.path.insert(0, _p)
+        from detector_caidas import ConfigCaidas, DetectorCaidas
+        if isinstance(pedido, DetectorCaidas):
+            return pedido
+        cfg = pedido if isinstance(pedido, ConfigCaidas) else ConfigCaidas()
+        return DetectorCaidas(cfg)
 
     def procesar(self,
                  frames: Dict[str, np.ndarray],
@@ -231,6 +261,14 @@ class PipelineHorus:
             acciones_agresion = self.agresion.procesar_lote(
                 [(cam, frames[cam], por_cam[cam][1]) for cam in cams], ts=ts)
 
+        # 3.c Caídas — también después del tracking, pero por cámara: el
+        #     recorte de cada persona sale de su caja, no del frame entero.
+        acciones_caidas: Dict[str, List[AccionObs]] = {}
+        if self.caidas is not None:
+            for cam in cams:
+                acciones_caidas[cam] = self.caidas.procesar(
+                    cam, frames[cam], por_cam[cam][1], ts=ts)
+
         observaciones: List[ObservacionCamara] = []
         for cam in cams:
             res, tracks, hay_reid, tam = por_cam[cam]
@@ -244,6 +282,7 @@ class PipelineHorus:
                 cabezas.add(CABEZA_SEGMENTACION)
             acs = list((acciones or {}).get(cam) or ())
             acs.extend(acciones_agresion.get(cam) or ())
+            acs.extend(acciones_caidas.get(cam) or ())
             for a in acs:
                 cabezas.add(a.fuente if a.fuente in (CABEZA_ACCION,) else a.fuente)
             if self.agresion is not None:
@@ -251,6 +290,12 @@ class PipelineHorus:
                 # emitido algo: un frame sin dos personas en cuadro no produce
                 # etiqueta, y sin esto la regla figuraría dormida justo en los
                 # ratos tranquilos.
+                cabezas.add(CABEZA_ACCION)
+            if self.caidas is not None:
+                # Mismo criterio: instalada, no "emitió". El detector de caídas
+                # habla por dos cabezas — declara CABEZA_POSE siempre y emite
+                # CABEZA_ACCION cuando además clasifica.
+                cabezas.add(CABEZA_POSE)
                 cabezas.add(CABEZA_ACCION)
             if hay_reid:
                 cabezas.add(CABEZA_REID)

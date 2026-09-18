@@ -523,8 +523,17 @@ def adelgazar(entrada: Path, salida: Optional[Path] = None) -> Path:
         return entrada
 
     # Todo lo que el motor lee de un checkpoint, y nada más.
+    #
+    # 18/09: `backbone_tensores`, `backbone_huella` y `backbone_parcial` NO
+    # estaban en esta lista. Esta función es de agosto; `incrustar_backbone()`
+    # es de ayer, y no se conocían. Adelgazar un checkpoint autocontenido le
+    # sacaba los 20 tensores irreconstruibles y lo dejaba dependiendo otra vez
+    # de un `backbone.pt` al lado — exactamente el agujero que costó el v2.
+    # Son 13,6 MB contra los 39,6 del optimizador: no es lo que engorda el
+    # archivo, y es lo único que no se puede volver a generar.
     quedan = ("head", "clases", "fpn_levels", "anchor_sizes", "tam",
-              "backbone_file", "backbone_pretrained", "metricas", "epoca")
+              "backbone_file", "backbone_pretrained", "metricas", "epoca",
+              "backbone_tensores", "backbone_huella", "backbone_parcial")
     flaco = {k: ck[k] for k in quedan if k in ck}
 
     salida = salida or entrada.with_name(entrada.stem + "_deploy.pt")
@@ -543,6 +552,13 @@ def adelgazar(entrada: Path, salida: Optional[Path] = None) -> Path:
         print("[slim] ⚠ GitHub avisa por encima de 50 MB (lo acepta igual).")
     else:
         print("[slim] entra en git sin LFS.")
+    if "backbone_tensores" in flaco:
+        print(f"[slim] los {len(flaco['backbone_tensores'])} tensores "
+              f"irreconstruibles siguen adentro · huella "
+              f"{flaco.get('backbone_huella')}")
+    elif "backbone_huella" in ck:
+        print("[slim] ⚠ el checkpoint de entrada tenía huella pero no tensores: "
+              "el resultado NECESITA un backbone.pt al lado.")
     print("[slim] OJO: este archivo YA NO SIRVE para --reanudar. Guardá el "
           "original si pensás seguir entrenando.")
     return salida

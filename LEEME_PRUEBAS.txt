@@ -34,20 +34,29 @@ LAS CUATRO PRUEBAS
   commit_y_push.bat      Sube a GitHub el commit que ya está hecho.
 
 
-LO ÚNICO QUE FALTA BAJAR
+EL MODELO YA ESTÁ PUESTO
 ------------------------
 
-head_best_solo.pt (93 MB), la cabeza de objetos entrenada el 17/09.
+  horus\04_cabezas\objetos\modelos\head_best_solo.pt   (93 MB)
 
-  https://www.kaggle.com/code/teonieto/notebook361d659594/output
+Verificado el 18/09: huella f05b1b43d593ac4b (la misma que imprimió el
+entrenamiento en Kaggle), época 16, mAP@0.50 0,4901, y los 20 tensores
+irreconstruibles adentro. Carga sin ningún backbone.pt al lado.
 
-Clic en la flecha de descarga y ponelo en:
+Al lado quedó objetos_v2.pt: ese NO sirve, necesita un backbone.pt que se
+perdió. No lo borres todavía, pero tampoco lo uses.
 
-  horus\04_cabezas\objetos\modelos\head_best_solo.pt
+OJO la primera vez que corras: el motor baja el ResNet-50 de ImageNet
+(~98 MB) desde pytorch.org. Pasa una sola vez y queda cacheado. Eso es a
+propósito: ese encoder se puede volver a bajar siempre, así que no se
+guarda adentro del .pt. Lo que sí se guarda es lo que no se puede
+recuperar.
 
-En esa carpeta ya hay un objetos_v2.pt: ese NO sirve, necesita un
-backbone.pt que se perdió. El nuevo es autocontenido y verifica su
-propia huella al cargar.
+  5_adelgazar_modelo.bat   opcional: lo baja de 93 a 33 MB sacando el
+                           estado del optimizador, para que entre en git.
+                           Sigue siendo autocontenido. Solo perdés poder
+                           RETOMAR el entrenamiento desde esa época — y
+                           guarda el original en checkpoints\ por las dudas.
 
 
 QUÉ ESPERAR CUANDO PRUEBES

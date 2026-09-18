@@ -8,7 +8,7 @@ import "./CamaraGrid.css";
 
 const POSICIONES_GRID = [0, 1, 2, 3, 5, 6, 7, 8]; // posición 4 = logo
 
-export default function CamaraGrid({ slots, onNavegar, onVaciar }) {
+export default function CamaraGrid({ slots, onNavegar, onVaciar, servicio }) {
   return (
     <div className="camara-grid">
       {POSICIONES_GRID.map((posGrid, slotIdx) => (
@@ -22,6 +22,7 @@ export default function CamaraGrid({ slots, onNavegar, onVaciar }) {
             slotIdx={slotIdx}
             onNavegar={onNavegar}
             onVaciar={onVaciar}
+            servicio={servicio}
           />
         </div>
       ))}

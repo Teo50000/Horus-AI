@@ -68,3 +68,33 @@ body,
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.15; }
 }
+
+/* --- estado del servicio de modelos -----------------------------------
+   Ver el comentario en Dashboard.jsx: que las cámaras se vean no quiere
+   decir que algo las esté mirando. */
+.dashboard__modelos {
+  position: fixed;
+  top: 38px;
+  right: 14px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  user-select: none;
+}
+
+.dashboard__modelos--ok {
+  color: rgba(120, 220, 150, 0.55);
+  background: rgba(120, 220, 150, 0.08);
+}
+
+.dashboard__modelos--no {
+  color: #ffa94d;
+  background: rgba(255, 169, 77, 0.12);
+  font-weight: 600;
+}

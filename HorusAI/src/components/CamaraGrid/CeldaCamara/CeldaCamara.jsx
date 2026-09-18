@@ -1,3 +1,4 @@
+import { fuenteVideo } from "../fuenteVideo";
 import "./CeldaCamara.css";
 
 import { API_URL } from "../../../config";
@@ -8,18 +9,42 @@ const detenerStream = (camaraId) => {
     .catch(err => console.error('Error al detener stream:', err));
 };
 
-export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
+function Stream({ camaraId, nombre, servicio, claveExtra }) {
+  const f = fuenteVideo(camaraId, servicio);
+  const caida = f.conIA && f.estado && f.estado !== "ok";
+
+  return (
+    <>
+      <img
+        key={`${camaraId}-${f.conIA}-${claveExtra ?? ""}`}
+        src={f.url}
+        className="celda-camara__stream"
+        alt={nombre}
+      />
+      {f.conIA && (
+        <span className="celda-camara__ia" title="Video con las detecciones dibujadas">
+          IA
+        </span>
+      )}
+      {/* Una camara caida y una camara donde no pasa nada se ven igual: negro.
+          Este cartel es para que no se confundan. */}
+      {caida && (
+        <span className="celda-camara__caida">
+          {f.estado}{f.error ? ` · ${f.error}` : ""}
+        </span>
+      )}
+    </>
+  );
+}
+
+export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar, servicio }) {
   if (!slot) {
     return <div className="celda-camara celda-camara--vacia" />;
   }
   if (slot.tipo === "camara") {
     return (
       <div className="celda-camara">
-        <img
-          src={`${API}/video/video_feed/${slot.id}?t=${Date.now()}`}
-          className="celda-camara__stream"
-          alt={slot.nombre}
-        />
+        <Stream camaraId={slot.id} nombre={slot.nombre} servicio={servicio} />
         <span className="celda-camara__nombre">{slot.nombre}</span>
         <button
           className="celda-camara__unpin"
@@ -38,12 +63,8 @@ export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
 
   return (
     <div className="celda-camara">
-      <img
-        key={`${slot.id}-${slot.indice}`}
-        src={`${API}/video/video_feed/${camaraActual.id}?t=${Date.now()}`}
-        alt={camaraActual.nombre}
-        className="celda-camara__stream"
-      />
+      <Stream camaraId={camaraActual.id} nombre={camaraActual.nombre}
+              servicio={servicio} claveExtra={slot.indice} />
       <span className="celda-camara__nombre">{camaraActual.nombre}</span>
       <span className="celda-camara__sector-tag">{slot.nombre}</span>
 

@@ -1,7 +1,10 @@
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 # import numpy as np
 import cv2
+import json
+import os
 import threading
+import urllib.request
 import time
 from typing import Any, Dict, Optional
 from sqlmodel import Session
@@ -32,6 +35,35 @@ def _backends():
     else:
         orden = ("CAP_V4L2", "CAP_ANY")
     return [getattr(cv2, n) for n in orden if hasattr(cv2, n)]
+
+
+SERVICIO_URL = os.environ.get("HORUS_SERVICIO_URL", "http://127.0.0.1:8010")
+
+
+def servicio_tiene(config_id: int) -> Optional[str]:
+    """Si el servicio de modelos ya tiene esta cámara abierta, su cam_id.
+
+    18/09, el problema que trajo Teo: "me detecta la cámara pero el modelo no
+    corre cuando la cam está prendida". En Windows una webcam la abre UN
+    proceso a la vez. El panel le pedía el video al backend, el backend abría
+    la cámara, y entonces el servicio no podía: los modelos corriendo sobre
+    nada, y en pantalla todo normal.
+
+    Turnarse no sirve. La cámara la abre el servicio, que es el que la
+    necesita para analizar, y el video sale de ahí — ya viene con las cajas
+    dibujadas, que además es lo que uno quiere ver. Este chequeo es para que
+    el backend no se la saque ni aunque alguien pegue el endpoint viejo a
+    mano.
+    """
+    try:
+        with urllib.request.urlopen(f"{SERVICIO_URL}/estado", timeout=0.6) as r:
+            estado = json.loads(r.read().decode("utf-8"))
+    except Exception:                                    # noqa: BLE001
+        return None                                      # no está: seguimos nosotros
+    for c in estado.get("camaras", []):
+        if c.get("config_id") == config_id:
+            return c.get("camara")
+    return None
 
 
 def _abrir(fuente):
@@ -69,6 +101,12 @@ def video_feed(camara_config_id: int):
         else:
                 return JSONResponse(content={"error": "Debe proveer rtsp_url o usb_index"}, status_code=400)
             
+        # ¿La tiene el servicio de modelos? Entonces el video sale de ahí.
+        cam = servicio_tiene(camara_config_id)
+        if cam:
+            return RedirectResponse(
+                url=f"{SERVICIO_URL}/camaras/{cam}/stream", status_code=307)
+
         # validar conexión
         test_cap = _abrir(source)
         if test_cap is None:

@@ -8,6 +8,7 @@ import { useHistorial } from "../components/MenuHist/useHistorial";
 import { useAjustes } from "../components/MenuAjustes/useAjustes";
 import { useGrid } from "../components/CamaraGrid/useGrid";
 import { useWebSocketEventos } from "../hooks/useWebSocketEventos";
+import { useServicioVideo } from "../hooks/useServicioVideo";
 import { WS_ALERTAS } from "../config";
 import "./Dashboard.css";
 
@@ -17,6 +18,11 @@ export default function Dashboard() {
 
   // El hook va ACÁ ADENTRO, no afuera del componente
   const { eventos, conectado } = useWebSocketEventos(WS_ALERTAS);
+
+  // El servicio de modelos: si esta corriendo, el video de las camaras sale
+  // de el (con las cajas dibujadas) en vez de salir del backend. Ver el
+  // comentario en useServicioVideo.
+  const servicio = useServicioVideo();
 
   const historial = useHistorial(eventos);
   const ajustes   = useAjustes();
@@ -57,6 +63,25 @@ export default function Dashboard() {
         {conectado ? "En vivo" : "SIN CONEXION AL BACKEND"}
       </div>
 
+      {/* Que las camaras se vean no quiere decir que algo las este mirando.
+          Son dos procesos distintos: el backend sirve el video, el servicio
+          corre los modelos. Sin este cartel, un panel con las camaras
+          andando y los modelos apagados se ve igual que uno vigilando. */}
+      <div
+        className={`dashboard__modelos ${
+          servicio.activo ? "dashboard__modelos--ok" : "dashboard__modelos--no"
+        }`}
+        role="status"
+        title={servicio.activo
+          ? `${Object.keys(servicio.camaras).length} camara(s) en analisis`
+          : "El servicio de modelos no esta corriendo: nadie esta mirando el video"}
+      >
+        <span className="dashboard__conexion-punto" aria-hidden="true" />
+        {servicio.activo
+          ? `Analizando ${Object.keys(servicio.camaras).length}`
+          : "MODELOS APAGADOS"}
+      </div>
+
       <Sidebar
         activeSection={activeSection}
         onSectionChange={handleSectionChange}
@@ -80,6 +105,7 @@ export default function Dashboard() {
         slots={grid.slots}
         onNavegar={grid.navegarSector}
         onVaciar={grid.vaciarSlot}
+        servicio={servicio}
       />
 
     </div>

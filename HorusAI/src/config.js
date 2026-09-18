@@ -32,3 +32,17 @@ export const API_ALERTAS = `${API_URL}/alertas`;
 // carambola. Si algun dia broadcast pasa a filtrar por camara —que es lo
 // razonable cuando haya varias— el panel se queda mudo sin un solo error.
 export const WS_ALERTAS = `${WS_URL}/alertas/ws?camara_config_id=0`;
+
+// El servicio de modelos (horus/00_servicio/servicio.py).
+//
+// 18/09: en Windows una webcam la abre UN proceso a la vez. El panel pedia el
+// video al backend, el backend abria la camara, y entonces el servicio no
+// podia abrirla: los modelos quedaban sin nada que mirar. El sintoma es "me
+// detecta la camara pero el modelo no corre cuando la cam esta prendida".
+//
+// La solucion no es turnarse: el servicio YA sirve el video con las cajas
+// dibujadas en su propio puerto. Asi que la camara la abre el servicio y
+// nadie mas, y el panel muestra ese stream — que ademas es mejor, porque
+// tiene las detecciones encima. Si el servicio no esta, se cae al video crudo
+// del backend.
+export const SERVICIO_URL = env.VITE_SERVICIO_URL ?? "http://localhost:8010";

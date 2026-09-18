@@ -14,7 +14,7 @@ echo.
 echo   Para usar el sistema no hace falta nada de esto:
 echo   con HORUS.bat alcanza. Esto es lo de vez en cuando.
 echo.
-echo   1  Correr las 10 suites de pruebas
+echo   1  Correr las 11 suites de pruebas
 echo   2  Mandar una alerta de prueba al panel
 echo   3  Ver que esta instalado y que falta
 echo   4  Pasar el detector por una carpeta de fotos tuyas
@@ -48,7 +48,7 @@ rem ===============================================================
 :pruebas
 cls
 echo ==============================================================
-echo  HORUS - las 10 suites
+echo  HORUS - las 11 suites
 echo ==============================================================
 echo.
 set FALLAS=0
@@ -64,6 +64,24 @@ call :suite "horus\fight"                   probar_detector_agresion.py
 call :suite "horus\fall"                    probar_detector_caidas.py
 call :suite "horus\00_servicio"            probar_servicio.py
 call :suite "FASTAPI"                       probar_alertas_backend.py
+
+rem La del panel es javascript, asi que va con node y aparte.
+pushd HorusAI
+where node >nul 2>&1
+if errorlevel 1 (
+  echo   SALTEADA probar_fuente_video.mjs   ^(no encuentro node^)
+) else (
+  node pruebas\probar_fuente_video.mjs > "%SALIDA%" 2>&1
+  if errorlevel 1 (
+    echo   FALLA  probar_fuente_video.mjs
+    type "%SALIDA%"
+    set /a FALLAS+=1
+  ) else (
+    for /f "usebackq delims=" %%L in (`findstr /R /V "^$" "%SALIDA%"`) do set RES2=%%L
+    echo   OK     probar_fuente_video.mjs          !RES2!
+  )
+)
+popd
 
 echo ==============================================================
 if !FALLAS!==0 (

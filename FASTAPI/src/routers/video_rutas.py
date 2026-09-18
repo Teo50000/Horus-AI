@@ -1,6 +1,9 @@
 from fastapi.responses import JSONResponse, StreamingResponse
 # import numpy as np
 import cv2
+import threading
+import time
+from typing import Any, Dict, Optional
 from sqlmodel import Session
 from src.database import engine
 import src.models.video_model as video_model  
@@ -88,60 +91,116 @@ def video_feed(camara_config_id: int):
             media_type="multipart/x-mixed-replace;boundary=frame"
         )
     
-@video_router.get('/cameras/available', tags=["Streaming video"])
-def get_available_cameras():
-    """Las cámaras que esta máquina puede abrir DE VERDAD.
+# --------------------------------------------------------------------------- #
+# Búsqueda de cámaras
+#
+# 18/09, medido en la máquina de Teo: abrir el índice 0 con MSMF tarda 9,3
+# SEGUNDOS antes de fallar. La versión anterior de este endpoint recorría los
+# índices 0..4 en serie dentro del request, o sea entre 20 y 45 segundos de
+# espera. El navegador cortaba el fetch mucho antes, el modal recibía un error
+# que no miraba nadie, y la lista quedaba vacía. O sea: aunque la cámara
+# hubiera andado perfecto, igual no aparecía.
+#
+# Ahora la búsqueda pasa fuera del request: una al arrancar el backend, y
+# después cada tanto o cuando se pide de prepo. El endpoint contesta al toque
+# con lo último que se sabe, y dice si todavía está buscando.
+# --------------------------------------------------------------------------- #
+_CACHE: Dict[str, Any] = {"lista": [], "motivo": None, "ts": 0.0,
+                          "buscando": False, "tardo_s": 0.0}
+_CACHE_LOCK = threading.Lock()
+FRESCO_S = 120.0
 
-    Dos cosas cambiaron el 18/09, las dos por el mismo síntoma —"no me aparece
-    la cámara en la lista":
 
-    1. Se prueban los backends en orden (DirectShow primero en Windows). Ver
-       la nota en `_backends()`.
-    2. No alcanza con `isOpened()`: se pide un frame. Un dispositivo puede
-       abrir y después no entregar una sola imagen, que es justo lo que pasa
-       con el permiso de cámara cortado o con la webcam tomada por otro
-       programa. Ofrecer en la lista una cámara que no da imagen es peor que
-       no ofrecerla: el usuario la agrega y el recuadro queda negro para
-       siempre sin decir por qué.
+def _probar(indice: int) -> Optional[dict]:
+    """Abre, pide una imagen, cierra. None si no sirve.
+
+    `isOpened()` no alcanza: un dispositivo puede abrir y después no entregar
+    un solo frame —permiso de Windows cortado, o la webcam tomada por otro
+    programa. Ofrecer en la lista una cámara así es peor que no ofrecerla: el
+    usuario la agrega y el recuadro queda negro para siempre sin decir por qué.
     """
-    disponibles = []
-    abren_sin_imagen = []
-
-    for i in range(5):
-        cap = _abrir(i)
-        if cap is None:
-            continue
-        try:
-            ok, frame = False, None
-            for _ in range(3):
-                ok, frame = cap.read()
-                if ok and frame is not None:
-                    break
+    cap = _abrir(indice)
+    if cap is None:
+        return None
+    try:
+        for _ in range(3):
+            ok, frame = cap.read()
             if ok and frame is not None:
-                disponibles.append({
-                    "usb_index": i,
-                    "nombre": f"Cámara {i}",
-                    "resolucion": f"{frame.shape[1]}x{frame.shape[0]}",
-                })
-            else:
-                abren_sin_imagen.append(i)
-        finally:
-            cap.release()
+                return {"usb_index": indice, "nombre": f"Cámara {indice}",
+                        "resolucion": f"{frame.shape[1]}x{frame.shape[0]}"}
+        return {"usb_index": indice, "_sin_imagen": True}
+    finally:
+        cap.release()
 
-    # La lista sigue siendo una lista: el panel viejo no se entera del cambio.
-    # El "por qué está vacía" viaja en una cabecera, para que el panel nuevo
-    # pueda decirlo en vez de mostrar un cuadro en blanco.
-    cabeceras = {}
-    if not disponibles:
-        if abren_sin_imagen:
-            cabeceras["X-Horus-Motivo"] = (
-                f"indices {abren_sin_imagen} abren pero no dan imagen: la "
-                f"camara la tiene otro programa, o Windows tiene cortado el "
-                f"permiso de camara para apps de escritorio")
-        else:
-            cabeceras["X-Horus-Motivo"] = (
-                "no se encontro ninguna camara en los indices 0 a 4")
-    return JSONResponse(content=disponibles, headers=cabeceras)
+
+def _buscar_camaras() -> None:
+    t0 = time.time()
+    encontradas, sin_imagen, vacios = [], [], 0
+    for i in range(5):
+        r = _probar(i)
+        if r is None:
+            vacios += 1
+            # Si los dos primeros índices no existen, no hay nada más atrás:
+            # seguir probando solo suma segundos de espera.
+            if vacios >= 2 and not encontradas and not sin_imagen:
+                break
+            continue
+        vacios = 0
+        (sin_imagen if r.get("_sin_imagen") else encontradas).append(r)
+
+    if encontradas:
+        motivo = None
+    elif sin_imagen:
+        idx = [c["usb_index"] for c in sin_imagen]
+        motivo = (f"la camara del indice {idx[0]} se abre pero no entrega "
+                  f"imagen: la tiene otro programa, o Windows tiene cortado "
+                  f"el permiso de camara para apps de escritorio "
+                  f"(Configuracion > Privacidad > Camara, el interruptor de "
+                  f"abajo de todo)")
+    else:
+        motivo = "no se encontro ninguna camara conectada"
+
+    with _CACHE_LOCK:
+        _CACHE.update(lista=encontradas, motivo=motivo, ts=time.time(),
+                      buscando=False, tardo_s=round(time.time() - t0, 1))
+
+
+def refrescar_camaras(forzar: bool = False) -> None:
+    """Dispara la búsqueda en un hilo, si no hay una en curso."""
+    with _CACHE_LOCK:
+        if _CACHE["buscando"]:
+            return
+        if not forzar and (time.time() - _CACHE["ts"]) < FRESCO_S:
+            return
+        _CACHE["buscando"] = True
+    threading.Thread(target=_buscar_camaras, name="horus-buscar-camaras",
+                     daemon=True).start()
+
+
+@video_router.get('/cameras/available', tags=["Streaming video"])
+def get_available_cameras(refrescar: bool = False):
+    """Las cámaras que esta máquina puede abrir de verdad. Contesta al toque."""
+    refrescar_camaras(forzar=refrescar)
+    with _CACHE_LOCK:
+        lista = list(_CACHE["lista"])
+        motivo = _CACHE["motivo"]
+        buscando = _CACHE["buscando"]
+        nunca = _CACHE["ts"] == 0.0
+        tardo = _CACHE["tardo_s"]
+
+    # La respuesta sigue siendo una lista: el panel viejo no se entera del
+    # cambio. El contexto va en cabeceras.
+    cab = {}
+    if buscando and nunca:
+        cab["X-Horus-Buscando"] = "1"
+        cab["X-Horus-Motivo"] = ("buscando camaras... en Windows cada intento "
+                                 "puede tardar varios segundos")
+    elif motivo:
+        cab["X-Horus-Motivo"] = motivo
+    if tardo:
+        cab["X-Horus-Tardo"] = str(tardo)
+    return JSONResponse(content=lista, headers=cab)
+
 
 @video_router.post('/stop_feed/{camara_config_id}', tags=["Streaming video"])
 def stop_stream(camara_config_id: int):

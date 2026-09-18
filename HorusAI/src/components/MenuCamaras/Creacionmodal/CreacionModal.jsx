@@ -75,13 +75,18 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
   // no tiene cámaras" de "el backend está caído" de "la cámara la tiene
   // Discord agarrada". Ahora el backend manda el motivo en X-Horus-Motivo y
   // acá se muestra.
-  const buscar = () => {
+  const buscar = (forzar = false) => {
     setBuscando(true);
-    fetch(`${API_VIDEO}/cameras/available`)
+    fetch(`${API_VIDEO}/cameras/available${forzar ? "?refrescar=true" : ""}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         setMotivo(res.headers.get("X-Horus-Motivo"));
-        return res.json();
+        // El backend puede estar buscando todavia: en Windows cada intento
+        // tarda segundos. En vez de mostrar "no hay camaras" -que seria
+        // mentira- se vuelve a preguntar en un rato.
+        return res.headers.get("X-Horus-Buscando")
+          ? res.json().then((d) => { setTimeout(() => buscar(false), 2500); return d; })
+          : res.json();
       })
       .then((data) => setCamarasDisponibles(Array.isArray(data) ? data : []))
       .catch((err) => {
@@ -91,7 +96,7 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
       .finally(() => setBuscando(false));
   };
 
-  useEffect(buscar, []);
+  useEffect(() => { buscar(false); }, []);
 
   const confirmar = () => {
     if (seleccionada === null) return;
@@ -137,7 +142,7 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
                   HORUS_herramientas.bat → opción V.
                 </div>
                 <button type="button" className="creacion-modal__reintentar"
-                        onClick={buscar}>
+                        onClick={() => buscar(true)}>
                   Buscar de nuevo
                 </button>
               </>

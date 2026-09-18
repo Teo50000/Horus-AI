@@ -52,6 +52,16 @@ async def lifespan(app: FastAPI):
         print("=" * 70)
     else:
         print(f"[backend] websockets: {impl} · el panel puede recibir alertas")
+
+    # Buscar las cámaras ACÁ y no cuando el panel las pide.
+    #
+    # En Windows abrir un índice que no anda puede tardar 9 segundos, y son
+    # cinco índices: el fetch del modal se moría esperando y la lista salía
+    # vacía aunque hubiera cámara. Se busca una vez al arrancar, en un hilo, y
+    # para cuando alguien abre el modal ya está la respuesta.
+    from src.routers.video_rutas import refrescar_camaras
+    refrescar_camaras(forzar=True)
+
     yield
 
 app = FastAPI(lifespan=lifespan)

@@ -83,6 +83,21 @@ que estén rotas — es que no reciben a quién mirar. La causa está medida:
 le enseñaron a la red que ahí no hay nadie.
 
 
+SI CORRÉS UN SCRIPT A MANO CON >
+---------------------------------
+
+Los .bat de acá ya fuerzan UTF-8. Si corrés un script vos y redirigís la
+salida a un archivo, la consola de Windows usa cp1252 y revienta con
+
+  UnicodeEncodeError: 'charmap' codec can't encode character '\u26a0'
+
+porque el código imprime ⚠, ★ y ❌. Antes de redirigir:
+
+  set PYTHONIOENCODING=utf-8
+
+No es cosmético: pasa lo mismo si guardás el log de un entrenamiento.
+
+
 SI ALGO EXPLOTA
 ---------------
 

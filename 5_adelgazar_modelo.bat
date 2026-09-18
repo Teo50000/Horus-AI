@@ -1,4 +1,6 @@
 @echo off
+chcp 65001 >nul
+set PYTHONIOENCODING=utf-8
 cd /d "%~dp0\horus\04_cabezas\objetos"
 echo ==============================================================
 echo  Adelgazar head_best_solo.pt para que entre en git

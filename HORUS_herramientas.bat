@@ -23,6 +23,7 @@ echo   6  Armar topologia.json ^(zonas: prende intrusion y merodeo^)
 echo   7  Adelgazar head_best_solo.pt  ^(93 MB -^> 33 MB^)
 echo   8  Subir los commits a GitHub
 echo   9  Solo el backend, sin panel ni modelos
+echo   V  Ver que camaras encuentra tu PC
 echo   C  Compactar el repositorio ^(.git ocupa 2,9 GB^)
 echo.
 echo   0  Salir
@@ -38,6 +39,7 @@ if "%OPCION%"=="6" goto topologia
 if "%OPCION%"=="7" goto adelgazar
 if "%OPCION%"=="8" goto subir
 if "%OPCION%"=="9" goto backend
+if /i "%OPCION%"=="V" goto camaras
 if /i "%OPCION%"=="C" goto compactar
 if "%OPCION%"=="0" exit /b
 goto menu
@@ -212,6 +214,20 @@ echo.
 git push origin Models
 echo.
 git status --short --branch
+echo.
+pause
+goto menu
+
+rem ===============================================================
+:camaras
+cls
+echo  Prueba cada indice con cada backend y pide una imagen de verdad.
+echo  Si alguna otra cosa tiene la camara agarrada (Zoom, Discord, la app
+echo  Camara de Windows, o la ventana "Horus modelos"), cerrala primero.
+echo.
+pushd FASTAPI
+python diagnostico_camaras.py
+popd
 echo.
 pause
 goto menu

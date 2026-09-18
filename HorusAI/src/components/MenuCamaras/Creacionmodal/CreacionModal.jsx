@@ -66,12 +66,32 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
   const [nombre, setNombre]         = useState("Nueva Cámara");
   const [seleccionada, setSeleccion] = useState(null);
   const [camarasDisponibles, setCamarasDisponibles] = useState([]);
+  const [buscando, setBuscando] = useState(true);
+  const [motivo, setMotivo]     = useState(null);
 
-  useEffect(() => {
+  // 18/09: esto era un fetch sin .catch y sin estado de "buscando". Si el
+  // backend no contestaba, o contestaba una lista vacía, el modal mostraba un
+  // rectángulo en blanco y listo. No había forma de distinguir "esta máquina
+  // no tiene cámaras" de "el backend está caído" de "la cámara la tiene
+  // Discord agarrada". Ahora el backend manda el motivo en X-Horus-Motivo y
+  // acá se muestra.
+  const buscar = () => {
+    setBuscando(true);
     fetch(`${API_VIDEO}/cameras/available`)
-      .then(res => res.json())
-      .then(data => setCamarasDisponibles(data))
-  }, []);
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setMotivo(res.headers.get("X-Horus-Motivo"));
+        return res.json();
+      })
+      .then((data) => setCamarasDisponibles(Array.isArray(data) ? data : []))
+      .catch((err) => {
+        setCamarasDisponibles([]);
+        setMotivo(`no se pudo preguntar al backend (${err.message})`);
+      })
+      .finally(() => setBuscando(false));
+  };
+
+  useEffect(buscar, []);
 
   const confirmar = () => {
     if (seleccionada === null) return;
@@ -95,12 +115,35 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
         {camarasDisponibles.map((cam) => (
           <HardwareCamaraRow
             key={cam.usb_index}
-            camara={{ id: cam.usb_index, nombre: cam.nombre }}
+            camara={{ id: cam.usb_index, nombre: cam.nombre + (cam.resolucion ? ` · ${cam.resolucion}` : "") }}
             seleccionada={seleccionada === cam.usb_index}
             onToggle={() => setSeleccion((prev) => prev === cam.usb_index ? null : cam.usb_index)}
             onPreview={onPreview}
           />
         ))}
+
+        {camarasDisponibles.length === 0 && (
+          <div className="creacion-modal__vacio">
+            {buscando ? (
+              "Buscando cámaras..."
+            ) : (
+              <>
+                <div>No encontré ninguna cámara.</div>
+                {motivo && <div className="creacion-modal__motivo">{motivo}</div>}
+                <div className="creacion-modal__ayuda">
+                  En Windows la webcam la abre un programa a la vez: si la
+                  tenés abierta en Zoom, Discord o la app Cámara, cerralos.
+                  Para ver qué encuentra tu PC, corré
+                  HORUS_herramientas.bat → opción V.
+                </div>
+                <button type="button" className="creacion-modal__reintentar"
+                        onClick={buscar}>
+                  Buscar de nuevo
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="creacion-modal__footer">

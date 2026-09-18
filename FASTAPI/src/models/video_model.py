@@ -9,7 +9,12 @@ class VideoCamera(object):
         #self.video = cv2.VideoCapture(1)
         #self.video = cv2.VideoCapture("rtsp://localhost:8554/live")
         #si lo queremos hacer con direccion IP, habria que cambiarlo a self.video = cv2.VideoCapture('rstp://direccion_ip:puerto/video_feed')
-        self.video = cv2.VideoCapture(source)
+        # 18/09: era `cv2.VideoCapture(source)` a secas. En Windows eso usa
+        # MSMF, que no abre muchas webcams que DirectShow abre al toque — el
+        # mismo motivo por el que no aparecían en la lista. El orden de
+        # backends vive en un solo lugar, en video_rutas.
+        from src.routers.video_rutas import _abrir
+        self.video = _abrir(source) or cv2.VideoCapture(source)
         self.video.set(3, 1920)  # float `width`
         self.video.set(4, 1080)  # float `height`
         # self.video = cv2.VideoCapture('Class_Det.mp4')

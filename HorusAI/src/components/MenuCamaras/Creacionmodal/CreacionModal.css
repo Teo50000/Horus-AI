@@ -221,3 +221,38 @@
 }
 
 .creacion-modal__btn--confirmar:not(:disabled):hover { opacity: 0.85; }
+
+/* Lista de cámaras vacía. Ver el comentario en CreacionModal.jsx: antes era
+   un rectángulo en blanco, y "no tenés cámara" se veía igual que "el backend
+   está caído". */
+.creacion-modal__vacio {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.creacion-modal__motivo {
+  color: #ff6b6b;
+  font-size: 11px;
+}
+
+.creacion-modal__ayuda {
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.creacion-modal__reintentar {
+  align-self: center;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 4px 14px;
+}

@@ -31,7 +31,8 @@ import json
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Path, Query, WebSocket, WebSocketDisconnect
+from fastapi import (APIRouter, BackgroundTasks, Depends, HTTPException, Path,
+                     Query, WebSocket, WebSocketDisconnect)
 from sqlmodel import Session, select
 
 from src.database import get_session
@@ -228,12 +229,32 @@ def listar_alertas(session: Session = Depends(get_session),
             vistos.add(f.evento_id)
             out.append(f)
         filas = out
-    return [_json(f) for f in filas[:limite]]
+    filas = filas[:limite]
+    ids = {f.camara_config_id for f in filas if f.camara_config_id is not None}
+    nombres = {}
+    if ids:
+        for cfg in session.exec(select(CamaraConfig).where(CamaraConfig.id.in_(ids))).all():
+            nombres[cfg.id] = cfg.nombre
+    return [_json(f, nombres) for f in filas]
 
 
 @alerta_router.get("/{evento_id}")
 def historial_evento(evento_id: str = Path(...),
                      session: Session = Depends(get_session)):
+    # "ws" no es un evento: es la ruta del WebSocket, que se declara mas abajo.
+    #
+    # Si el servidor no sabe hacer el upgrade —falta `websockets`— el pedido
+    # llega hasta aca como un GET comun y esta ruta contesta 200 con
+    # {"encontrado": false}. El navegador informa "Unexpected response code:
+    # 200" y el panel se queda callado. Un 501 explicito convierte esa falla
+    # muda en una que se lee.
+    if evento_id == "ws":
+        raise HTTPException(
+            status_code=501,
+            detail="Este servidor no tiene soporte de WebSocket instalado "
+                   "(pip install websockets). Sin eso el panel no recibe "
+                   "alertas en vivo.")
+
     """Todos los mensajes de un evento, en orden de `secuencia`.
 
     Acá está lo que NO se emite al panel: los re-avisos cada 20 s, el cierre, y
@@ -268,11 +289,19 @@ async def ws_alertas(websocket: WebSocket, camara_config_id: int = Query(0)):
 
 
 # --------------------------------------------------------------------------- #
-def _json(f: Alerta) -> dict:
+def _json(f: Alerta, nombres: Optional[dict] = None) -> dict:
     d = f.model_dump()
     for k in ("camaras", "tracks", "aportes", "modelos", "evidencia"):
         try:
             d[k] = json.loads(d.get(k) or ("{}" if k == "evidencia" else "[]"))
         except (TypeError, ValueError):
             d[k] = None
+    # El nombre que se ve en el panel.
+    #
+    # La fila guarda `camara`, que es como la nombra Horus (`cam-deposito`), y
+    # el `camara_config_id` de la camara registrada. El websocket manda
+    # `nombre_camara` resuelto contra esa config, pero el historial no lo
+    # resolvia: al recargar, el mismo evento pasaba de "Deposito" a
+    # "cam-deposito". Se resuelve aca para que las dos vias digan lo mismo.
+    d["nombre_camara"] = (nombres or {}).get(d.get("camara_config_id")) or f.camara
     return d

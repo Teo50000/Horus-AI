@@ -1,0 +1,40 @@
+.sidebar-button {
+  /* El truco: width 100% del padre, y se convierte en cuadrado con aspect-ratio */
+  width: 100%;
+  aspect-ratio: 1;
+  height: auto;  /* se ignora por aspect-ratio, pero es bueno para el fallback */
+
+  /* Evitar que flex-parent le imponga otra altura */
+  flex-shrink: 0;
+
+  background: transparent;
+  border-top: 2px solid #ff8427;
+  border-bottom: 2px solid #ff8427;
+  border-left: 2px solid transparent;
+  border-right: 2px solid transparent;
+  border-radius: 40%;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  cursor: pointer;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.sidebar-button img {
+  /* El ícono ocupa el máximo espacio posible dentro del botón */
+  width: 70%;
+  height: 70%;
+  object-fit: contain;
+  display: block;
+}
+.sidebar-button:hover{
+  background-color: color-mix(in srgb, rgba(255, 132, 39, 1), #090326)  ;
+
+}
+.sidebar-button.active {
+  background-color: rgba(255, 132, 39, 1);
+  box-shadow: 0 0 12px rgba(255, 132, 39, 0.35);
+}

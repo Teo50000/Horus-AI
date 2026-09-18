@@ -1,0 +1,49 @@
+.sector-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(26, 63, 142, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+/* ── Cabecera ── */
+.sector-item__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.sector-item__nombre {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  flex: 1;
+}
+
+.sector-item__input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #ff8427;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
+  padding: 0 2px;
+}
+
+.sector-item__acciones {
+  display: flex;
+  gap: 4px;
+}
+
+/* ── Lista de cámaras ── */
+.sector-item__camaras {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 4px;
+}

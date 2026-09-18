@@ -58,6 +58,11 @@ def entorno():
         ("fastapi", False, "el backend y su suite"),
         ("sqlmodel", False, "el backend y su suite"),
         ("uvicorn", False, "levantar el backend"),
+        # Este es el que no arrastra nadie y rompe callado: sin soporte de
+        # WebSocket, uvicorn no hace el upgrade, el pedido del panel cae en una
+        # ruta GET que contesta 200, y el panel se queda sin recibir UNA sola
+        # alerta sin mostrar un error. Medido el 18/09.
+        ("websockets", False, "que el PANEL RECIBA ALERTAS en vivo"),
         ("mediapipe", True, "caídas EN VIVO; la suite de caídas no lo necesita"),
         ("torchvision", False, "la cabeza de objetos"),
     ]
@@ -148,6 +153,12 @@ def veredicto(faltan_mod, listos):
         print(f"  {VERDE}sí {FIN}  {que:<45} {GRIS}{como}{FIN}")
     for que, como in no:
         print(f"  {ROJO}no {FIN}  {que:<45} {GRIS}{como}{FIN}")
+
+    if "websockets" in faltan_mod:
+        print(f"\n  {ROJO}Ojo con `websockets`{FIN}: sin ese paquete el backend arranca igual,")
+        print(f"  el panel abre, se ven las cámaras… y no llega NI UNA alerta, sin")
+        print(f"  ningún error a la vista. Se ve idéntico a una noche tranquila.")
+        print(f"  {GRIS}pip install websockets{FIN}")
 
     if faltan_mod:
         print(f"\n  Instalá lo que falta:  {GRIS}pip install {' '.join(faltan_mod)}{FIN}")

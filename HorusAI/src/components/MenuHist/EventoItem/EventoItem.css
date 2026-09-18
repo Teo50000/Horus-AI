@@ -1,0 +1,45 @@
+.evento-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "tipo   fecha"
+    "camara camara";
+  gap: 2px 8px;
+  align-items: baseline;
+
+  background: rgba(26, 63, 142, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  list-style: none;
+}
+
+/* Que paso: es lo que se busca al recorrer la lista, asi que va primero y
+   con el color mas fuerte. */
+.evento-item__tipo {
+  grid-area: tipo;
+  font-weight: 500;
+  color: #fff;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evento-item__fecha {
+  grid-area: fecha;
+  color: rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.evento-item__camara {
+  grid-area: camara;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

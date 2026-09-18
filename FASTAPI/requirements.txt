@@ -1,0 +1,13 @@
+# El backend de Horus. `pip install -r FASTAPI/requirements.txt`
+#
+# El que importa de verdad es `websockets`, y no lo arrastra nadie: sin el,
+# uvicorn no sabe hacer el upgrade, el panel no recibe UNA alerta y no se
+# queja. Ver la nota en src/main.py.
+
+fastapi
+uvicorn
+websockets          # el upgrade del WebSocket. Sin esto el panel queda sordo.
+sqlmodel
+pydantic
+python-multipart    # los formularios de las rutas de camara
+opencv-python       # video_rutas: preview y feed de las camaras

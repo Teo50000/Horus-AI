@@ -1,0 +1,101 @@
+.celda-camara {
+  position: relative;
+  background: #060d1c;
+  border: 1px solid rgba(80, 100, 255, 0.25);
+  border-radius: 3%;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.celda-camara--vacia {
+  width: 100%;
+  height: 95%;
+  background: transparent;
+  border: 1px solid rgba(80, 100, 255, 0.15);
+}
+
+/* ── Stream de video ── */
+.celda-camara__stream {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ── Nombre — superpuesto sobre el video ── */
+.celda-camara__nombre {
+  position: absolute;
+  bottom: 8px;
+  left: 10px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ── Tag del sector ── */
+.celda-camara__sector-tag {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  font-size: 10px;
+  color: #ff8427;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+  pointer-events: none;
+}
+
+/* ── Botón unpin — aparece en hover ── */
+.celda-camara__unpin {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.5);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.celda-camara:hover .celda-camara__unpin {
+  opacity: 1;
+}
+
+/* ── Flechas de navegación ── */
+.celda-camara__arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.celda-camara:hover .celda-camara__arrow {
+  opacity: 1;
+}
+
+.celda-camara__arrow:hover {
+  background: rgba(255, 132, 39, 0.5);
+}
+
+.celda-camara__arrow--left  { left: 8px; }
+.celda-camara__arrow--right { right: 8px; }

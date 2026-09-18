@@ -1,0 +1,70 @@
+.dashboard {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+body {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+.dashboard-main {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* --- estado de la conexion con el backend ------------------------------
+   Ver el comentario en Dashboard.jsx: cuando el websocket se cae, el panel
+   no tiene forma de distinguirse de uno donde simplemente no pasa nada. */
+.dashboard__conexion {
+  position: fixed;
+  top: 10px;
+  right: 14px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  user-select: none;
+}
+
+.dashboard__conexion-punto {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.dashboard__conexion--ok {
+  color: rgba(120, 220, 150, 0.55);
+  background: rgba(120, 220, 150, 0.08);
+}
+
+.dashboard__conexion--caida {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.12);
+  font-weight: 600;
+}
+
+/* Parpadea: si nadie esta mirando las alertas, que se note. */
+.dashboard__conexion--caida .dashboard__conexion-punto {
+  animation: dashboard-latido 1.1s ease-in-out infinite;
+}
+
+@keyframes dashboard-latido {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.15; }
+}

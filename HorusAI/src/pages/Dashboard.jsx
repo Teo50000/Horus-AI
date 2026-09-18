@@ -23,6 +23,7 @@ export default function Dashboard() {
   // de el (con las cajas dibujadas) en vez de salir del backend. Ver el
   // comentario en useServicioVideo.
   const servicio = useServicioVideo();
+  const nCamaras = Object.keys(servicio.camaras).length;
 
   const historial = useHistorial(eventos);
   const ajustes   = useAjustes();
@@ -67,27 +68,39 @@ export default function Dashboard() {
           Son dos procesos distintos: el backend sirve el video, el servicio
           corre los modelos. Sin este cartel, un panel con las camaras
           andando y los modelos apagados se ve igual que uno vigilando. */}
+      {/* Cuatro estados, no dos. "Analizando 0" era el peor de todos: verde,
+          tranquilizador, y queriendo decir que los modelos estan prendidos
+          mirando exactamente nada. Una camara de menos no puede verse igual
+          que todo en orden. */}
       <div
         className={`dashboard__modelos ${
           !servicio.activo
             ? "dashboard__modelos--no"
             : servicio.fase === "cargando"
               ? "dashboard__modelos--cargando"
-              : "dashboard__modelos--ok"
+              : nCamaras === 0
+                ? "dashboard__modelos--sin-camaras"
+                : "dashboard__modelos--ok"
         }`}
         role="status"
         title={!servicio.activo
           ? "El servicio de modelos no esta corriendo: nadie esta mirando el video"
           : servicio.fase === "cargando"
             ? "Subiendo los modelos a la placa. Tarda entre 15 y 40 segundos."
-            : `${Object.keys(servicio.camaras).length} camara(s) en analisis`}
+            : nCamaras === 0
+              ? "Los modelos estan cargados pero no les llega ninguna camara. " +
+                "Suele ser que el backend no esta corriendo, o que todavia no " +
+                "diste de alta ninguna camara."
+              : `${nCamaras} camara(s) en analisis`}
       >
         <span className="dashboard__conexion-punto" aria-hidden="true" />
         {!servicio.activo
           ? "MODELOS APAGADOS"
           : servicio.fase === "cargando"
             ? "Cargando modelos..."
-            : `Analizando ${Object.keys(servicio.camaras).length}`}
+            : nCamaras === 0
+              ? "MODELOS SIN CAMARAS"
+              : `Analizando ${nCamaras}`}
       </div>
 
       <Sidebar

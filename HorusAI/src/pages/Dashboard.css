@@ -110,3 +110,11 @@ body,
 .dashboard__modelos--cargando .dashboard__conexion-punto {
   animation: dashboard-latido 1.6s ease-in-out infinite;
 }
+
+/* Modelos cargados pero sin ninguna cámara llegándoles. No es verde: no
+   están mirando nada. Ver el comentario en Dashboard.jsx. */
+.dashboard__modelos--sin-camaras {
+  color: #ffa94d;
+  background: rgba(255, 169, 77, 0.12);
+  font-weight: 600;
+}

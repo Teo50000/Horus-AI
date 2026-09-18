@@ -39,6 +39,14 @@ def _backends():
 
 SERVICIO_URL = os.environ.get("HORUS_SERVICIO_URL", "http://127.0.0.1:8010")
 
+# Sin proxy, a propósito. El servicio corre en esta misma máquina, y un
+# HTTP_PROXY en el entorno —de una VPN, de un antivirus, del equipo de
+# sistemas— mandaría el pedido a un proxy que no sabe resolver 127.0.0.1. La
+# consecuencia sería silenciosa: el backend creería que el servicio no está,
+# abriría la cámara él, y le sacaría el video a los modelos. Es la misma
+# trampa que ya está documentada en horus/07_alerta/alerta.py.
+_SIN_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
 
 def servicio_tiene(config_id: int) -> Optional[str]:
     """Si el servicio de modelos ya tiene esta cámara abierta, su cam_id.
@@ -56,7 +64,7 @@ def servicio_tiene(config_id: int) -> Optional[str]:
     mano.
     """
     try:
-        with urllib.request.urlopen(f"{SERVICIO_URL}/estado", timeout=0.6) as r:
+        with _SIN_PROXY.open(f"{SERVICIO_URL}/estado", timeout=0.6) as r:
             estado = json.loads(r.read().decode("utf-8"))
     except Exception:                                    # noqa: BLE001
         return None                                      # no está: seguimos nosotros

@@ -67,6 +67,15 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 _AQUI = os.path.dirname(os.path.abspath(__file__))
+
+# Sin proxy, a propósito. El backend vive en esta misma máquina o en la LAN, y
+# un HTTP_PROXY en el entorno —de una VPN, de un antivirus, del equipo de
+# sistemas— mandaría el pedido a un proxy que no sabe resolver 127.0.0.1. La
+# falla sería muda: el servicio creería que el backend no está, no vería
+# ninguna cámara, y se quedaría cargado esperando para siempre. Es la misma
+# trampa que ya está documentada en horus/07_alerta/alerta.py, que sí la
+# esquivaba.
+_SIN_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 _RAIZ = os.path.dirname(_AQUI)
 for _p in (_AQUI,
            os.path.join(_RAIZ, "05_tracking"),
@@ -532,7 +541,7 @@ class Servicio:
             req = urllib.request.Request(c.url(c.ruta_camaras))
             if c.token:
                 req.add_header("Authorization", f"Bearer {c.token}")
-            with urllib.request.urlopen(req, timeout=4.0) as r:
+            with _SIN_PROXY.open(req, timeout=4.0) as r:
                 return json.loads(r.read().decode("utf-8"))
         except Exception as exc:
             # El backend puede no estar todavía. No es motivo para no analizar:

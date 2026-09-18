@@ -132,7 +132,16 @@ echo  Se abren varias ventanas. Ctrl+C en cada una para cortar.
 echo ==============================================================
 echo.
 
-start "Horus backend" cmd /k "chcp 65001 >nul && set PYTHONIOENCODING=utf-8 && cd /d "%~dp0FASTAPI" && python -m uvicorn src.main:app --host 127.0.0.1 --port 8000"
+rem Cada ventana deja su salida en logs\. Sin esto, cuando algo se cae de
+rem madrugada no queda ni rastro de por que: la ventana se cierra o el texto
+rem se va del buffer de la consola y no hay a donde volver a mirar.
+rem
+rem `python -u` es importante: sin el, python bufferea la salida y el archivo
+rem queda vacio justo cuando mas lo necesitas, que es cuando el proceso murio
+rem sin llegar a vaciar el buffer.
+if not exist "logs" mkdir "logs"
+
+start "Horus backend" cmd /k ""%~dp0bin\arrancar_backend.bat""
 
 echo  Esperando al backend...
 set /a ESPERA=0
@@ -150,7 +159,7 @@ goto esperar_backend
 
 if not "!FLAGS!"=="" (
   echo  Levantando los modelos. La primera carga tarda ^(~20 s con GPU^).
-  start "Horus modelos" cmd /k "chcp 65001 >nul && set PYTHONIOENCODING=utf-8 && cd /d "%~dp0horus\00_servicio" && python servicio.py!FLAGS!"
+  start "Horus modelos" cmd /k ""%~dp0bin\arrancar_modelos.bat"!FLAGS!"
 )
 
 start "Horus panel" cmd /k "cd /d "%~dp0HorusAI" && npm run dev"
@@ -177,6 +186,14 @@ echo  Listo. Esta ventana ya no hace falta.
 echo.
 echo  Arriba a la derecha del panel hay un cartel verde "En vivo".
 echo  Si esta rojo, el panel no esta recibiendo alertas.
+echo.
+echo  Si algo se cae, no hace falta que copies nada: queda escrito en
+echo     logs\backend.txt   y   logs\modelos.txt
+echo  y los ves con HORUS_herramientas.bat, opcion L.
+echo.
+echo  OJO con hacer clic adentro de las ventanas negras: Windows entra en
+echo  modo seleccion y CONGELA el programa hasta que apretes Esc. Se ve
+echo  igual que si se hubiera caido.
 echo.
 echo  Para mandar una alerta de prueba y verla llegar:
 echo     HORUS_herramientas.bat  ^(opcion 2^)

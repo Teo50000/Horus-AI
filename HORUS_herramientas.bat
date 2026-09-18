@@ -23,6 +23,7 @@ echo   6  Armar topologia.json ^(zonas: prende intrusion y merodeo^)
 echo   7  Adelgazar head_best_solo.pt  ^(93 MB -^> 33 MB^)
 echo   8  Subir los commits a GitHub
 echo   9  Solo el backend, sin panel ni modelos
+echo   L  Ver por que se cayo algo ^(los ultimos logs^)
 echo   V  Ver que camaras encuentra tu PC
 echo   C  Compactar el repositorio ^(.git ocupa 2,9 GB^)
 echo.
@@ -39,6 +40,7 @@ if "%OPCION%"=="6" goto topologia
 if "%OPCION%"=="7" goto adelgazar
 if "%OPCION%"=="8" goto subir
 if "%OPCION%"=="9" goto backend
+if /i "%OPCION%"=="L" goto logs
 if /i "%OPCION%"=="V" goto camaras
 if /i "%OPCION%"=="C" goto compactar
 if "%OPCION%"=="0" exit /b
@@ -232,6 +234,42 @@ echo.
 git push origin Models
 echo.
 git status --short --branch
+echo.
+pause
+goto menu
+
+rem ===============================================================
+:logs
+cls
+echo ==============================================================
+echo  Lo ultimo que dijeron el backend y los modelos
+echo ==============================================================
+echo.
+if not exist "logs\backend.txt" if not exist "logs\modelos.txt" (
+  echo  Todavia no hay logs. Se escriben cuando arrancas con HORUS.bat.
+  echo.
+  pause
+  goto menu
+)
+echo  --- BACKEND  ^(ultimas 25 lineas de logs\backend.txt^) ---------
+echo.
+if exist "logs\backend.txt" (
+  powershell -NoProfile -Command "Get-Content 'logsackend.txt' -Tail 25"
+) else (
+  echo  ^(no hay^)
+)
+echo.
+echo  --- MODELOS  ^(ultimas 25 lineas de logs\modelos.txt^) ---------
+echo.
+if exist "logs\modelos.txt" (
+  powershell -NoProfile -Command "Get-Content 'logs\modelos.txt' -Tail 25"
+) else (
+  echo  ^(no hay^)
+)
+echo.
+echo ==============================================================
+echo  Los archivos completos estan en la carpeta logs\
+echo ==============================================================
 echo.
 pause
 goto menu

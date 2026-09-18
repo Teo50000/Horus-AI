@@ -102,3 +102,7 @@ Claude outputs/
 # Datasets intermedios, el modelo viejo que no arranca y el backend
 # compilado. Nada de esto lo mira el codigo; ver _archivo/LEEME.txt.
 _archivo/
+
+# Lo que escriben las ventanas de HORUS.bat. Sirve para saber por que
+# se cayo algo, pero es de esta maquina y de este rato.
+logs/

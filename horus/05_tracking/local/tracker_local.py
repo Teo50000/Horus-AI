@@ -204,23 +204,38 @@ def config_motor_para_tracking() -> Dict[str, Any]:
         from objects_engine import EngineConfig
         cfg = EngineConfig(**config_motor_para_tracking(), pesos=...)
 
-    Tres cambios, los tres necesarios:
+    Dos cambios:
 
       score_thresh = 0.10   el tracker necesita ver lo que el umbral de campo
                             descarta, para la etapa 2. Los umbrales por clase
-                            no desaparecen: se aplican acá, como `score_alto`.
-      umbral_por_clase=None misma razón. Filtrar dos veces con la misma tabla
-                            deja a la etapa 2 sin insumo.
-      confirmar_frames = 0  la confirmación K-de-N del motor queda subsumida
-                            por el tracker, que la hace mejor (asocia por
-                            identidad en vez de por IoU contra cualquier caja
-                            previa de la misma clase). Dejar las dos puestas
-                            duplica la latencia de confirmación.
+                            no desaparecen: se aplican acá, como `score_alto`
+                            en `PARAMETROS_POR_CLASE`.
+      devolver_embedding    lo consume global_reid/.
+
+    18/09 — por qué esto era más largo y por qué rompía todo:
+
+    Devolvía además `umbral_por_clase=None` y `confirmar_frames=0`, dos
+    parámetros que `EngineConfig` NO tiene. `EngineConfig(**esto)` explotaba
+    con `TypeError: got an unexpected keyword argument 'umbral_por_clase'`, y
+    como esta función es la única puerta por la que el pipeline construye el
+    motor de objetos, el servicio moría al arrancar. Cada vez. Desde siempre.
+
+    Las diez suites daban verde porque ninguna pasaba por acá: el pipeline
+    acepta un `motor_objetos` ya armado y las pruebas le pasan uno de mentira,
+    que es justo lo que hace falta para probar la fusión sin GPU. La única
+    forma de tocar esta línea era arrancar el servicio de verdad, con pesos de
+    verdad, en una máquina de verdad.
+
+    Los dos parámetros pedían apagar cosas que el motor no hace: no tiene
+    tabla de umbrales por clase (eso vive en el tracker) ni confirmación
+    K-de-N (eso lo hace el tracker, mejor, asociando por identidad). O sea que
+    pedían apagar algo que ya estaba apagado, y de paso mataban el arranque.
+
+    `caso_la_config_del_motor_existe()` en probar_tracking.py verifica ahora
+    que cada clave de acá sea un campo real de EngineConfig.
     """
     return {
         "score_thresh": PISO_MOTOR,
-        "umbral_por_clase": None,
-        "confirmar_frames": 0,
         "devolver_embedding": True,      # lo consume global_reid/
     }
 

@@ -405,6 +405,45 @@ def t_duplicados() -> Tuple[bool, str]:
                         else "; ".join(fallan))
 
 
+def t_config_motor() -> Tuple[bool, str]:
+    """`EngineConfig(**config_motor_para_tracking())` tiene que construir.
+
+    Esta prueba existe por el 18/09. `config_motor_para_tracking()` devolvía
+    `umbral_por_clase` y `confirmar_frames`, dos parámetros que EngineConfig
+    no tiene, y esa llamada —la única puerta por la que el pipeline arma el
+    motor de objetos— explotaba con TypeError. El servicio moría al arrancar,
+    siempre, y el panel decía "MODELOS APAGADOS" sin más explicación.
+
+    Las diez suites daban verde porque ninguna pasa por esa línea: el
+    pipeline acepta un `motor_objetos` ya construido y las pruebas le pasan
+    uno de mentira, que es justo lo que permite probar la fusión sin GPU. La
+    única forma de tocarla era arrancar el servicio de verdad.
+
+    No hace falta ni GPU ni pesos para verificarlo: alcanza con preguntarle a
+    la dataclass si esos campos existen.
+    """
+    from dataclasses import fields
+    try:
+        from objects_engine import EngineConfig
+    except Exception as e:                               # noqa: BLE001
+        return True, f"sin objects_engine acá ({type(e).__name__}), se saltea"
+
+    reales = {f.name for f in fields(EngineConfig)}
+    pedidos = config_motor_para_tracking()
+    inventados = sorted(set(pedidos) - reales)
+    if inventados:
+        return False, (f"config_motor_para_tracking() pide campos que "
+                       f"EngineConfig no tiene: {', '.join(inventados)}")
+
+    # Y que construya de verdad, no solo que los nombres coincidan.
+    try:
+        cfg = EngineConfig(**pedidos)
+    except Exception as e:                               # noqa: BLE001
+        return False, f"{type(e).__name__}: {e}"
+    return True, (f"{len(pedidos)} overrides, todos reales · "
+                  f"score_thresh={cfg.score_thresh}")
+
+
 PRUEBAS = [
     ("húngaro vs scipy", t_hungaro),
     ("persona rápida", t_persona_rapida),
@@ -418,6 +457,7 @@ PRUEBAS = [
     ("ReID latencia", t_reid_latencia),
     ("ReID fusión manual", t_reid_fusionar),
     ("carga del tracking local", t_carga_local),
+    ("config del motor existe", t_config_motor),
 ]
 
 

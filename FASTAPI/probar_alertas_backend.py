@@ -492,6 +492,106 @@ def caso_los_filtros_saben_pluralizar() -> Tuple[bool, str]:
                        f"{'sin plural: ' + ', '.join(falta) if falta else 'todas'}")
 
 
+def caso_el_servidor_puede_hacer_websockets() -> Tuple[bool, str]:
+    """Hay una implementación de WebSocket instalada.
+
+    Medido el 18/09 contra el backend real y el panel compilado: sin
+    `websockets` ni `wsproto`, uvicorn no sabe hacer el upgrade y deja pasar el
+    pedido como HTTP. El GET a /alertas/ws cae en `/alertas/{evento_id}` con
+    evento_id="ws", contesta 200 con {"encontrado": false}, y el navegador
+    escribe "Unexpected response code: 200" en la consola. El panel abre, se
+    ven las cámaras, y no llega UNA alerta. Idéntico a una noche tranquila.
+
+    El resto de esta suite usa TestClient, que hace los websockets en proceso y
+    no necesita el paquete — o sea que todo da verde y en la máquina de verdad
+    el panel está sordo. Por eso esto se prueba aparte.
+    """
+    import importlib.util
+    hay = [m for m in ("websockets", "wsproto")
+           if importlib.util.find_spec(m) is not None]
+    return bool(hay), (f"implementación: {', '.join(hay)}" if hay else
+                       "NINGUNA · el panel no va a recibir alertas · "
+                       "pip install websockets")
+
+
+def caso_ws_no_se_confunde_con_un_evento() -> Tuple[bool, str]:
+    """Un GET a /alertas/ws no se hace pasar por un evento que no existe.
+
+    `/alertas/{evento_id}` matchea "ws" y contestaba 200. Ese 200 es lo que
+    convierte "el servidor no habla websocket" en un silencio.
+    """
+    r = cliente.get("/alertas/ws")
+    ok = r.status_code == 501
+    return ok, f"status={r.status_code} (se espera 501, no 200)"
+
+
+def caso_la_base_vieja_se_migra_sola() -> Tuple[bool, str]:
+    """Una base de una versión anterior gana las columnas nuevas y no pierde nada.
+
+    18/09, encontrado en el log del backend de Teo:
+
+        sqlite3.OperationalError: no such column: alerta.version
+
+    `SQLModel.metadata.create_all()` crea las TABLAS que faltan y nada más. Si
+    la tabla ya existe no le toca una columna, por más que el modelo haya
+    cambiado. Su `horus.db` era de antes del contrato de alertas: 21 columnas
+    donde el modelo pide 35. Cada lectura de /alertas devolvía 500, el
+    historial del panel quedaba vacío, y el error solo salía en una ventana
+    que nadie mira.
+
+    Lo importante de esta prueba no es que las columnas aparezcan: es que las
+    filas viejas sigan ahí. Borrar la base también hacía desaparecer el error,
+    y en un sistema de alertas la base ES el historial de lo que pasó.
+    """
+    import sqlite3
+    import sqlalchemy
+    from sqlmodel import SQLModel, create_engine
+
+    d = tempfile.mkdtemp()
+    ruta = os.path.join(d, "vieja.db")
+
+    # Una `alerta` como la de antes: las columnas que había entonces, y basta.
+    viejas = ["id INTEGER PRIMARY KEY", "evento_id TEXT", "secuencia INTEGER",
+              "tipo TEXT", "severidad TEXT", "severidad_num INTEGER",
+              "estado TEXT", "confianza FLOAT", "motivo TEXT", "camara TEXT",
+              "ts_recibido TEXT", "aportes_json TEXT", "payload_json TEXT"]
+    con = sqlite3.connect(ruta)
+    con.execute(f"CREATE TABLE alerta ({', '.join(viejas)})")
+    for i in range(3):
+        con.execute("INSERT INTO alerta (evento_id, tipo, camara) VALUES (?,?,?)",
+                    (f"E00000{i}", "incendio", "cam-vieja"))
+    con.commit()
+    antes = con.execute("SELECT count(*) FROM alerta").fetchone()[0]
+    con.close()
+
+    # Se migra con el mismo código que corre al arrancar el backend.
+    import src.database as db
+    motor_real = db.engine
+    db.engine = create_engine(f"sqlite:///{ruta}")
+    try:
+        agregadas = db.migrar()
+    finally:
+        db.engine = motor_real
+
+    con = sqlite3.connect(ruta)
+    cols = {r[1] for r in con.execute("PRAGMA table_info(alerta)")}
+    despues = con.execute("SELECT count(*) FROM alerta").fetchone()[0]
+    try:
+        con.execute("SELECT version, recibido_en, evidencia FROM alerta LIMIT 1")
+        lee = True
+    except sqlite3.OperationalError:
+        lee = False
+    # y las viejas siguen ahí: no se tira nada
+    conserva = {"ts_recibido", "aportes_json", "payload_json"} <= cols
+    con.close()
+
+    pide = {c.name for c in SQLModel.metadata.tables["alerta"].columns}
+    ok = (lee and despues == antes == 3 and pide <= cols and conserva
+          and len(agregadas) > 10)
+    return ok, (f"{len(agregadas)} columnas agregadas · {despues}/{antes} filas "
+                f"conservadas · las viejas siguen: {conserva}")
+
+
 CASOS: Dict[str, Callable[[], Tuple[bool, str]]] = {
     "alerta_real": caso_alerta_real,
     "forma_ws": caso_forma_del_websocket,
@@ -506,6 +606,7 @@ CASOS: Dict[str, Callable[[], Tuple[bool, str]]] = {
     "mail_desde_2": caso_mail_desde_alerta,
     "mail_no_tumba": caso_mail_no_tumba,
     "campo_nuevo": caso_campo_nuevo,
+    "base_vieja": caso_la_base_vieja_se_migra_sola,
     # --- la conexión con el panel ---
     "url_centralizada": caso_el_panel_no_tiene_la_url_a_mano,
     "ruta_ws_existe": caso_la_ruta_del_panel_existe,
@@ -513,6 +614,8 @@ CASOS: Dict[str, Callable[[], Tuple[bool, str]]] = {
     "mismo_nombre": caso_el_historial_dice_el_mismo_nombre,
     "historial_legible": caso_el_historial_se_puede_leer,
     "plurales": caso_los_filtros_saben_pluralizar,
+    "ws_instalado": caso_el_servidor_puede_hacer_websockets,
+    "ws_no_es_evento": caso_ws_no_se_confunde_con_un_evento,
 }
 
 

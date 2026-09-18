@@ -11,7 +11,7 @@ if errorlevel 1 (
   echo La salida va a logs\modelos.txt
   python -u servicio.py %* > "%RAIZ%\logs\modelos.txt" 2>&1
 ) else (
-  python -u servicio.py %* 2>&1 | powershell -NoProfile -Command "$input | Tee-Object -FilePath '%RAIZ%\logs\modelos.txt'"
+  python -u servicio.py %* 2>&1 | powershell -NoProfile -Command "$input | Tee-Object -FilePath '%RAIZ%\logs\modelos.txt' -Encoding utf8"
 )
 
 echo.

@@ -78,6 +78,7 @@ class Regla:
     tipo: str = "generico"
     requiere: FrozenSet[str] = frozenset({CABEZA_OBJETOS})
     requiere_alguna: FrozenSet[str] = frozenset()   # basta con UNA de estas
+    necesita_topologia: bool = False                # sin topologia.json, DUERME
 
     def __init__(self, **kw: Any) -> None:
         for k, v in kw.items():
@@ -93,7 +94,12 @@ class Regla:
         return True
 
     def evaluar(self, obs: ObservacionCamara, ctx: Contexto) -> List[Hallazgo]:
-        if not self.puede_correr(obs):
+        # La topología cuenta igual que una cabeza: una regla que la necesita y
+        # no la tiene está CIEGA, no tranquila. Antes `intrusion` devolvía lista
+        # vacía en silencio cuando faltaba topologia.json, o sea que el panel
+        # mostraba lo mismo que si de verdad no hubiera entrado nadie. Es
+        # exactamente la confusión que `reglas_dormidas()` existe para evitar.
+        if not self.puede_correr(obs) or (self.necesita_topologia and ctx.topo is None):
             self.veces_dormida += 1
             return []
         return self._evaluar(obs, ctx)
@@ -102,10 +108,13 @@ class Regla:
                  ctx: Contexto) -> List[Hallazgo]:      # pragma: no cover
         raise NotImplementedError
 
-    def faltantes(self, obs: ObservacionCamara) -> List[str]:
+    def faltantes(self, obs: ObservacionCamara,
+                  ctx: Optional[Contexto] = None) -> List[str]:
         falta = sorted(self.requiere - obs.cabezas)
         if self.requiere_alguna and not (self.requiere_alguna & obs.cabezas):
             falta.append("|".join(sorted(self.requiere_alguna)))
+        if self.necesita_topologia and (ctx is None or ctx.topo is None):
+            falta.append("topologia.json")
         return falta
 
 
@@ -308,6 +317,7 @@ class ReglaIntrusion(Regla):
 
     tipo = "intrusion"
     requiere = frozenset({CABEZA_OBJETOS})
+    necesita_topologia = True      # sin zonas no hay "restringida" que violar
 
     persistencia_s: float = 1.5            # una sombra cruzando no cuenta
 

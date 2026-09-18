@@ -114,7 +114,8 @@ def config():
     titulo("3 · CONFIG DE TU SITIO — qué reglas quedan dormidas sin esto")
     filas = [
         (HORUS/"06_fusion_decision/topologia.json",
-         "intrusion y merodeo", "zonas, horarios y cámaras vecinas"),
+         "intrusion (merodeo anda igual, con 25 s genéricos en vez de por zona)",
+         "zonas, horarios y cámaras vecinas"),
         (HORUS/"02_preproceso_roi/zonas.json",
          "nada (es opcional)", "qué píxeles ni se miran — privacidad y GPU"),
     ]

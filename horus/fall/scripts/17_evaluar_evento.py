@@ -266,6 +266,12 @@ if __name__ == "__main__":
     ap.add_argument("--tag", required=True, help="nombre de la corrida (archivo de resultados)")
     ap.add_argument("--umbral", type=float)
     ap.add_argument("--persistencia", type=float)
+    ap.add_argument("--tolerancia", type=float,
+                    help="seg sin deteccion antes de resetear el buffer (default 0.6)")
+    ap.add_argument("--factor-pico", type=float,
+                    help="cuantas veces el baseline de velocidad cuenta como pico (default 3.0)")
+    ap.add_argument("--sin-bypass", action="store_true",
+                    help="no aceptar picos sin historial de verticalidad (bypass_historial_corto=False)")
     ap.add_argument("--sin-pico", action="store_true", help="alarma solo con modelo + persistencia")
     ap.add_argument("--descarte-inicial", type=float, default=0.0,
                     help="ignora alarmas en los primeros N seg (regla_persistencia usaba 1.5; el despliegue no descarta)")
@@ -281,6 +287,12 @@ if __name__ == "__main__":
         cfg.umbral = args.umbral
     if args.persistencia is not None:
         cfg.persistencia = args.persistencia
+    if args.tolerancia is not None:
+        cfg.tolerancia_sin_deteccion_seg = args.tolerancia
+    if args.factor_pico is not None:
+        cfg.factor_pico_velocidad = args.factor_pico
+    if args.sin_bypass:
+        cfg.bypass_historial_corto = False
     if args.sin_pico:
         cfg.exigir_pico = False
 
@@ -354,6 +366,12 @@ if __name__ == "__main__":
         notas.append(f"descarte {args.descarte_inicial}s")
     if args.umbral is not None or args.persistencia is not None:
         notas.append(f"umbral={cfg.umbral} pers={cfg.persistencia}")
+    if args.tolerancia is not None:
+        notas.append(f"tolerancia={cfg.tolerancia_sin_deteccion_seg}")
+    if args.factor_pico is not None:
+        notas.append(f"factor_pico={cfg.factor_pico_velocidad}")
+    if args.sin_bypass:
+        notas.append("sin bypass")
     with open(readme, "a", encoding="utf-8") as f:
         f.write(f"| {args.tag} | {salida['git']} | {args.origen} | {args.fps} | "
                 f"{'LOSO' if args.loso else os.path.basename(args.checkpoint)} | "

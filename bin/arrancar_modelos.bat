@@ -1,5 +1,9 @@
 @echo off
 rem Lanzador del servicio de modelos. Ver la nota en arrancar_backend.bat.
+rem
+rem Los flags llegan por HORUS_FLAGS y no como argumentos: meterlos en la
+rem linea del `start ... cmd /k "..."` anida comillas, cmd las come mal, y la
+rem ventana ni se abre. `start` hereda el entorno, asi que esto no falla.
 chcp 65001 >nul
 set PYTHONIOENCODING=utf-8
 set RAIZ=%~dp0..
@@ -9,9 +13,9 @@ cd /d "%RAIZ%\horus\00_servicio"
 where powershell >nul 2>&1
 if errorlevel 1 (
   echo La salida va a logs\modelos.txt
-  python -u servicio.py %* > "%RAIZ%\logs\modelos.txt" 2>&1
+  python -u servicio.py %HORUS_FLAGS% > "%RAIZ%\logs\modelos.txt" 2>&1
 ) else (
-  python -u servicio.py %* 2>&1 | powershell -NoProfile -Command "$input | Tee-Object -FilePath '%RAIZ%\logs\modelos.txt' -Encoding utf8"
+  python -u servicio.py %HORUS_FLAGS% 2>&1 | powershell -NoProfile -Command "$input | Tee-Object -FilePath '%RAIZ%\logs\modelos.txt' -Encoding utf8"
 )
 
 echo.

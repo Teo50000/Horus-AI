@@ -23,6 +23,7 @@ echo   6  Armar topologia.json ^(zonas: prende intrusion y merodeo^)
 echo   7  Adelgazar head_best_solo.pt  ^(93 MB -^> 33 MB^)
 echo   8  Subir los commits a GitHub
 echo   9  Solo el backend, sin panel ni modelos
+echo   M  Arrancar SOLO los modelos, aca mismo
 echo   L  Ver por que se cayo algo ^(los ultimos logs^)
 echo   V  Ver que camaras encuentra tu PC
 echo   C  Compactar el repositorio ^(.git ocupa 2,9 GB^)
@@ -40,6 +41,7 @@ if "%OPCION%"=="6" goto topologia
 if "%OPCION%"=="7" goto adelgazar
 if "%OPCION%"=="8" goto subir
 if "%OPCION%"=="9" goto backend
+if /i "%OPCION%"=="M" goto modelos
 if /i "%OPCION%"=="L" goto logs
 if /i "%OPCION%"=="V" goto camaras
 if /i "%OPCION%"=="C" goto compactar
@@ -234,6 +236,56 @@ echo.
 git push origin Models
 echo.
 git status --short --branch
+echo.
+pause
+goto menu
+
+rem ===============================================================
+:modelos
+cls
+echo ==============================================================
+echo  El servicio de modelos, EN ESTA VENTANA
+echo ==============================================================
+echo.
+echo  Sin `start`, sin ventana aparte, sin nada en el medio: si algo
+echo  falla, el error aparece aca abajo y no se va a ningun lado.
+echo.
+echo  Tarda entre 15 y 40 segundos en cargar. Cuando diga
+echo  "modelos listos", el panel tiene que pasar a "Analizando N".
+echo.
+echo  Ctrl+C para cortar.
+echo ==============================================================
+echo.
+
+set FLAGS=
+if exist "horus\04_cabezas\objetos\modelos\head_best_solo.pt" (
+  set FLAGS=!FLAGS! --pesos ..\04_cabezas\objetos\modelos\head_best_solo.pt
+)
+if exist "horus\04_cabezas\segmentacion\checkpoints\head_v4_produccion.pt" (
+  set FLAGS=!FLAGS! --segmentacion
+)
+if exist "horus\fight\checkpoints\modelo_fight.pt" (
+  set FLAGS=!FLAGS! --agresion
+)
+if exist "horus\06_fusion_decision\topologia.json" (
+  set FLAGS=!FLAGS! --topologia ..\06_fusion_decision\topologia.json
+)
+if "!FLAGS!"=="" (
+  echo  No encontre ningun peso. Mira la opcion 3.
+  echo.
+  pause
+  goto menu
+)
+
+echo  python servicio.py!FLAGS!
+echo.
+pushd horus\00_servicio
+python -u servicio.py!FLAGS!
+popd
+echo.
+echo ==============================================================
+echo  El servicio termino. Si fue por un error, esta justo arriba.
+echo ==============================================================
 echo.
 pause
 goto menu

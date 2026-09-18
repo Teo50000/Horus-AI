@@ -141,7 +141,28 @@ rem queda vacio justo cuando mas lo necesitas, que es cuando el proceso murio
 rem sin llegar a vaciar el buffer.
 if not exist "logs" mkdir "logs"
 
-start "Horus backend" cmd /k ""%~dp0bin\arrancar_backend.bat""
+rem `cmd /k call "ruta"` y no `cmd /k ""ruta""`: la segunda forma anida
+rem comillas y cmd las come mal. Si los argumentos van adentro de esas
+rem comillas, la ventana ni llega a abrirse — y como no se abre, tampoco
+rem escribe en el log, asi que no queda ni rastro de que fallo.
+rem Los flags viajan por variable de entorno, que `start` hereda solo.
+rem ¿Ya hay un backend corriendo de antes?
+rem
+rem Si lo hay, arrancar otro no sirve: el segundo no puede tomar el puerto
+rem 8000, muere con "address already in use", y queda una ventana con un
+rem error que parece grave y no lo es. Peor: el backend viejo puede ser de
+rem una version anterior del codigo, que es exactamente lo que estuvo
+rem pasando hoy.
+curl -s -o nul --max-time 2 http://127.0.0.1:8000/ >nul 2>&1
+if not errorlevel 1 (
+  echo  Ya hay un backend escuchando en el 8000: uso ese.
+  echo  Si acabas de cambiar codigo del backend, cerra su ventana
+  echo  ^(la que dice "Horus backend"^) y volve a correr esto.
+  echo.
+  goto backend_listo
+)
+
+start "Horus backend" cmd /k call "%~dp0bin\arrancar_backend.bat"
 
 echo  Esperando al backend...
 set /a ESPERA=0
@@ -159,10 +180,11 @@ goto esperar_backend
 
 if not "!FLAGS!"=="" (
   echo  Levantando los modelos. La primera carga tarda ^(~20 s con GPU^).
-  start "Horus modelos" cmd /k ""%~dp0bin\arrancar_modelos.bat"!FLAGS!"
+  set "HORUS_FLAGS=!FLAGS!"
+  start "Horus modelos" cmd /k call "%~dp0bin\arrancar_modelos.bat"
 )
 
-start "Horus panel" cmd /k "cd /d "%~dp0HorusAI" && npm run dev"
+start "Horus panel" cmd /k call "%~dp0bin\arrancar_panel.bat"
 
 echo  Esperando al panel...
 set /a ESPERA=0
@@ -187,6 +209,48 @@ echo.
 echo  Arriba a la derecha del panel hay un cartel verde "En vivo".
 echo  Si esta rojo, el panel no esta recibiendo alertas.
 echo.
+rem ¿Arrancaron los modelos de verdad?
+rem
+rem Hasta hoy, si la ventana de modelos moria al segundo, HORUS.bat seguia
+rem como si nada y el unico sintoma era un cartel en el panel. Ahora se espera
+rem y, si no contesta, se dice aca mismo con el motivo.
+rem
+rem El bucle va FUERA de un bloque `if (...)`: una etiqueta adentro de
+rem parentesis no funciona en batch: el salto se lleva puesto el bloque.
+if "!FLAGS!"=="" goto sin_modelos
+
+echo  Esperando a que carguen los modelos ^(15 a 40 s en CPU^)...
+set /a ESPERA=0
+
+:esperar_modelos
+curl -s -o nul --max-time 1 http://127.0.0.1:8010/estado >nul 2>&1
+if not errorlevel 1 goto modelos_listos
+set /a ESPERA+=1
+if !ESPERA! GEQ 60 goto modelos_no_arrancaron
+timeout /t 1 /nobreak >nul
+goto esperar_modelos
+
+:modelos_no_arrancaron
+echo.
+echo ==============================================================
+echo  LOS MODELOS NO ARRANCARON.
+echo.
+echo  Lo ultimo que dijo su ventana:
+echo ==============================================================
+if exist "logs\modelos.txt" (
+  powershell -NoProfile -Command "Get-Content 'logs\modelos.txt' -Tail 15"
+) else (
+  echo  No se escribio logs\modelos.txt: la ventana ni llego a abrirse.
+)
+echo ==============================================================
+echo.
+goto fin
+
+:modelos_listos
+echo  Modelos arriba.
+
+:sin_modelos
+
 echo  Si algo se cae, no hace falta que copies nada: queda escrito en
 echo     logs\backend.txt   y   logs\modelos.txt
 echo  y los ves con HORUS_herramientas.bat, opcion L.

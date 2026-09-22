@@ -10,13 +10,10 @@ set RAIZ=%~dp0..
 if not exist "%RAIZ%\logs" mkdir "%RAIZ%\logs"
 cd /d "%RAIZ%\horus\00_servicio"
 
-where powershell >nul 2>&1
-if errorlevel 1 (
-  echo La salida va a logs\modelos.txt
-  python -u servicio.py %HORUS_FLAGS% > "%RAIZ%\logs\modelos.txt" 2>&1
-) else (
-  python -u servicio.py %HORUS_FLAGS% 2>&1 | powershell -NoProfile -Command "$input | Tee-Object -FilePath '%RAIZ%\logs\modelos.txt' -Encoding utf8"
-)
+rem `bin\tee.py` y no `Tee-Object`: PowerShell bufferea y el archivo
+rem quedaba minutos atrasado, a veces vacio hasta que el proceso moria.
+rem Un log que no se refresca no sirve para mirar por que algo no anda.
+python -u servicio.py %HORUS_FLAGS% 2>&1 | python -u "%RAIZ%\bin\tee.py" "%RAIZ%\logs\modelos.txt"
 
 echo.
 echo ==============================================================

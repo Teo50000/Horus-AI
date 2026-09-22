@@ -142,6 +142,8 @@ class PipelineHorus:
 
         self.frames = 0
         self.latencias: List[float] = []
+        self.ultimo_seg: Dict[str, Any] = {}
+        self.ultimas_detecciones: Dict[str, List[Any]] = {}
         if verboso:
             for aviso in self.fusion.verificar():
                 print(f"[pipeline] aviso: {aviso}")
@@ -235,6 +237,24 @@ class PipelineHorus:
                 for cam, r in zip(faltan, self.segmentacion.infer_batch(
                         [frames[c] for c in faltan], camera_ids=faltan, ts=ts)):
                     seg[cam] = r
+
+        # Lo último que vio cada cabeza, por cámara, para poder DIBUJARLO.
+        #
+        # 18/09: "no detecta el fuego". El video anotado dibujaba solo los
+        # tracks confirmados, asi que todo esto era invisible:
+        #   - el fuego de la cabeza de SEGMENTACION, que es la que mejor anda
+        #     (F1 99,1%) y que no produce cajas ni tracks, solo máscara;
+        #   - una llama detectada con score 0.30, por debajo del 0.35 que hace
+        #     falta para que nazca el track;
+        #   - un track todavía tentativo, que aún no llegó a los 0,40 s.
+        # O sea que "el modelo no ve nada" y "el modelo lo ve pero no llega al
+        # umbral" se veían exactamente igual: una pantalla sin cajas. Sin poder
+        # distinguirlos no hay forma de calibrar nada.
+        self.ultimo_seg = dict(seg)
+        self.ultimas_detecciones = {
+            cam: list(getattr(r, "detections", []) or [])
+            for cam, r in zip(cams, resultados) if r is not None
+        }
 
         por_cam: Dict[str, Any] = {}
         for cam, res in zip(cams, resultados):

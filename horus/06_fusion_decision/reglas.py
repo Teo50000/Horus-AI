@@ -494,6 +494,39 @@ class ReglaCaida(Regla):
     aspecto_tumbado: float = 1.00          # w/h de una caja de persona acostada
     permitir_heuristica_bbox: bool = False  # sin pose ni acción; ver abajo
 
+    def puede_correr(self, obs: ObservacionCamara) -> bool:
+        """`CABEZA_ACCION` sola NO alcanza para ver caídas.
+
+        18/09, medido con la configuración de Teo —cabeza de objetos y de
+        agresión prendidas, la de caídas apagada por falta de mediapipe:
+
+            caida       despierta      <-- mentira
+
+        El pipeline declara `CABEZA_ACCION` por tener la cabeza de agresión
+        INSTALADA, que está bien: un rato sin dos personas en cuadro no es un
+        rato sin cabeza. Pero esa cabeza es un MC3-18 entrenado en RWF-2000 y
+        lo único que emite es `pelea`. No sabe lo que es una caída y no la va a
+        emitir nunca.
+
+        O sea que la regla se declaraba capaz de ver caídas porque había
+        instalada una cabeza que no puede verlas. Es exactamente la confusión
+        que dice el comentario de `ObservacionCamara.cabezas`: "no hay caídas"
+        y "no hay cabeza de caídas" volvían a ser indistinguibles, y encima en
+        la regla escrita para que no lo fueran.
+
+        Ahora corre si:
+          - hay estimador de pose (`CABEZA_POSE`) — el detector de caídas lo
+            declara siempre, esté o no clasificando en este frame; o
+          - llega una acción `caida` de verdad en este frame, que es como se
+            ve un clasificador de acción que SÍ sabe de caídas.
+
+        Con la cabeza de agresión sola, ninguna de las dos: duerme, y lo dice.
+        """
+        if CABEZA_POSE in obs.cabezas:
+            return True
+        return any(getattr(a, "accion", None) == self.tipo
+                   for a in (obs.acciones or ()))
+
     def _evaluar(self, obs: ObservacionCamara, ctx: Contexto) -> List[Hallazgo]:
         personas = {t.track_id: t for t in obs.confirmados("persona")}
         mem = ctx.mem(self).setdefault("desde", {})

@@ -424,6 +424,7 @@ class Servicio:
         self.arranque = 0.0
         self.listo_en_s = 0.0
         self.fase = "arrancando"
+        self._ultimo_resumen = 0.0
 
     # ------------------------------------------------------------------ #
     def iniciar(self) -> None:
@@ -667,33 +668,160 @@ class Servicio:
                     _log(self.cfg, f"error en el pipeline: {exc}")
                 self.ticks += 1
 
+            # Cada 30 s, una linea con lo que esta viendo cada regla.
+            #
+            # Sin esto, mirar la consola y no ver alertas no distingue "no
+            # paso nada" de "la regla nunca pudo correr". Es exactamente lo
+            # que reglas_dormidas() existe para responder, y hasta hoy solo
+            # se imprimia al CERRAR el servicio — o sea, cuando ya no servia.
+            if time.time() - self._ultimo_resumen >= 30.0:
+                self._ultimo_resumen = time.time()
+                self._log_diagnostico()
+
             resto = periodo - (time.perf_counter() - t0)
             if resto > 0:
                 self._parar.wait(resto)
 
+    def _log_diagnostico(self) -> None:
+        reglas = self._diagnostico_reglas()
+        if not reglas:
+            return
+        dormidas = [r for r in reglas if not r["puede_correr"]]
+        vieron = [r for r in reglas if r["hallazgos"]]
+        cams = sum(1 for f in self.fuentes.values() if f.estado == "ok")
+
+        _log(self.cfg, f"— {self.ticks} ticks · {cams}/{len(self.fuentes)} "
+                       f"cámara(s) dando video · {self.eventos} evento(s)")
+        if vieron:
+            _log(self.cfg, "   vio: " + ", ".join(
+                f"{r['tipo']}×{r['hallazgos']}" for r in sorted(
+                    vieron, key=lambda x: -x["hallazgos"])))
+        else:
+            _log(self.cfg, "   no vio nada todavía")
+        if dormidas:
+            _log(self.cfg, "   NO PUEDEN CORRER: " + " · ".join(
+                f"{r['tipo']} (falta {', '.join(r['falta'])})" for r in dormidas))
+
+    # Qué color lleva cada clase de la segmentación en el video anotado.
+    # BGR, que es como los quiere cv2.
+    _COLOR_SEG = {
+        "fuego": (0, 80, 255),      # naranja fuerte
+        "llama": (0, 80, 255),
+        "humo":  (190, 190, 190),   # gris
+        "agua":  (255, 170, 0),     # celeste
+    }
+
     def _anotar(self, lote: Dict[str, np.ndarray]) -> None:
-        """Dibuja los tracks y guarda el JPEG para el stream."""
+        """Dibuja en el video TODO lo que las cabezas vieron, no solo lo que
+        llegó a alerta.
+
+        18/09 — por qué esto creció tanto. "No detecta el fuego, detecta
+        personas y paquetes." El dibujo mostraba únicamente los tracks
+        CONFIRMADOS, así que quedaban invisibles:
+
+          - el fuego de la cabeza de segmentación, que es la que mejor anda
+            (F1 99,1 %) y que no produce cajas ni tracks, solo máscara;
+          - una llama detectada con score 0,30, por debajo del 0,35 que hace
+            falta para que nazca el track;
+          - un track todavía tentativo, que no llegó a sus 0,40 s.
+
+        O sea: "el modelo no ve nada" y "el modelo lo ve pero no llega al
+        umbral" se veían igual — una pantalla sin cajas. Sin poder
+        distinguirlos no hay forma de calibrar, y tampoco de saber si el
+        problema es el modelo, el umbral o la escena.
+
+        Ahora se dibuja en tres capas, de más débil a más fuerte:
+          1. la máscara de segmentación, translúcida, con el % de área;
+          2. las detecciones crudas que no llegaron a track, punteadas;
+          3. los tracks, como siempre.
+        """
         try:
             import cv2
         except ImportError:
             return
+
+        pipe = self.pipe
+        clases_seg = list(getattr(getattr(pipe, "segmentacion", None),
+                                  "clases", ()) or ())
+
         for cam, frame in lote.items():
             img = frame.copy()
-            for t in self.pipe.tracking.tracker(cam).tracks:
-                if t.estado == "tentativo":
+            alto, ancho = img.shape[:2]
+
+            # --- 1. la máscara de segmentación ---------------------------
+            seg = getattr(pipe, "ultimo_seg", {}).get(cam)
+            linea_seg = ""
+            if seg is not None and clases_seg and getattr(seg, "mask", None) is not None:
+                try:
+                    m = seg.mask
+                    m = m.cpu().numpy() if hasattr(m, "cpu") else np.asarray(m)
+                    if m.shape[:2] != (alto, ancho):
+                        m = cv2.resize(m.astype(np.uint8), (ancho, alto),
+                                       interpolation=cv2.INTER_NEAREST)
+                    capa = np.zeros_like(img)
+                    partes = []
+                    for idx, nombre in enumerate(clases_seg):
+                        if nombre == "fondo":
+                            continue
+                        pix = (m == idx)
+                        n = int(pix.sum())
+                        if n == 0:
+                            continue
+                        capa[pix] = self._COLOR_SEG.get(nombre, (0, 255, 255))
+                        # El % se muestra SIEMPRE, aunque no llegue al umbral
+                        # de alerta: ver ahí un 0,08 % de fuego es la
+                        # diferencia entre "no lo ve" y "le falta poco".
+                        partes.append(f"{nombre} {100.0 * n / (alto * ancho):.2f}%")
+                    if partes:
+                        img = cv2.addWeighted(img, 1.0, capa, 0.35, 0)
+                        linea_seg = "seg: " + "  ".join(partes)
+                except Exception:                        # noqa: BLE001
+                    pass                                 # dibujar no puede tumbar el servicio
+
+            # --- 2. detecciones crudas que no llegaron a track ------------
+            tracks = pipe.tracking.tracker(cam).tracks
+            cajas_track = [tuple(int(v) for v in t.bbox_xyxy) for t in tracks]
+            for d in getattr(pipe, "ultimas_detecciones", {}).get(cam, []):
+                try:
+                    x1, y1, x2, y2 = (int(v) for v in d.bbox_xyxy)
+                except Exception:                        # noqa: BLE001
                     continue
-                x1, y1, x2, y2 = (int(v) for v in t.bbox_xyxy)
-                color = (60, 220, 60) if t.frames_sin_ver == 0 else (60, 160, 255)
-                cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-                cv2.putText(img, f"#{t.track_id} {t.clase} {t.score:.2f}",
-                            (x1, max(14, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX,
-                            0.45, color, 1, cv2.LINE_AA)
+                # Si ya hay un track encima, no se repite.
+                if any(abs(x1 - a) < 20 and abs(y1 - b) < 20 for a, b, _, _ in cajas_track):
+                    continue
+                cv2.rectangle(img, (x1, y1), (x2, y2), (120, 120, 120), 1)
+                cv2.putText(img, f"{d.clase} {d.score:.2f}", (x1, max(12, y1 - 4)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (160, 160, 160), 1,
+                            cv2.LINE_AA)
+
+            # --- 3. los tracks -------------------------------------------
+            for tr in tracks:
+                x1, y1, x2, y2 = (int(v) for v in tr.bbox_xyxy)
+                if tr.estado == "tentativo":
+                    color, grosor = (0, 200, 255), 1     # amarillo, fino
+                elif tr.frames_sin_ver == 0:
+                    color, grosor = (60, 220, 60), 2     # verde
+                else:
+                    color, grosor = (60, 160, 255), 2    # naranja: sin ver
+                cv2.rectangle(img, (x1, y1), (x2, y2), color, grosor)
+                etiqueta = f"#{tr.track_id} {tr.clase} {tr.score:.2f}"
+                if tr.estado == "tentativo":
+                    etiqueta = f"{tr.clase} {tr.score:.2f} (tentativo)"
+                cv2.putText(img, etiqueta, (x1, max(14, y1 - 5)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+
+            # --- 4. los textos de arriba ---------------------------------
             y = 20
-            for ev in self.pipe.fusion.abiertos[:4]:
+            if linea_seg:
+                cv2.putText(img, linea_seg, (8, y), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5, (0, 200, 255), 1, cv2.LINE_AA)
+                y += 20
+            for ev in pipe.fusion.abiertos[:4]:
                 cv2.putText(img, ev.linea()[:90], (8, y),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (60, 60, 255), 1,
                             cv2.LINE_AA)
                 y += 20
+
             ok, jpg = cv2.imencode(".jpg", img,
                                    [int(cv2.IMWRITE_JPEG_QUALITY), 70])
             if ok:
@@ -761,6 +889,61 @@ class Servicio:
                        f"http://127.0.0.1:{self.cfg.puerto_stream}/camaras/<id>/stream")
 
     # ------------------------------------------------------------------ #
+    def viendo(self) -> Dict[str, Any]:
+        """Qué está viendo cada cabeza AHORA, alerte o no.
+
+        18/09 — "no detecta el fuego, detecta personas y paquetes". Sin esto no
+        hay forma de contestar esa frase. Una alerta que no salta puede ser
+        cuatro cosas muy distintas:
+
+          1. la cabeza no ve nada;
+          2. la cabeza lo ve, pero por debajo del umbral;
+          3. lo ve y pasa el umbral, pero la regla pide algo más (persistencia,
+             dos personas, una zona) y eso no se cumple;
+          4. la regla no puede ni correr porque le falta una cabeza — y eso ya
+             lo dice `reglas_dormidas`.
+
+        Desde afuera las cuatro se ven igual: nada. Acá se separan.
+
+        Devuelve, por cámara, el mejor score de cada clase de objetos y el
+        porcentaje de área de cada clase de segmentación, sin filtrar por
+        umbral: la gracia es justamente ver lo que el umbral descarta.
+        """
+        if self.pipe is None:
+            return {}
+
+        out: Dict[str, Any] = {}
+        detec = getattr(self.pipe, "ultimas_detecciones", {}) or {}
+        segs = getattr(self.pipe, "ultimo_seg", {}) or {}
+        clases_seg = list(getattr(getattr(self.pipe, "segmentacion", None),
+                                  "clases", ()) or ())
+
+        for cam in set(detec) | set(segs):
+            mejor: Dict[str, float] = {}
+            for d in detec.get(cam, []):
+                clase = getattr(d, "clase", None) or getattr(d, "label", "?")
+                score = float(getattr(d, "score", 0.0))
+                if score > mejor.get(clase, 0.0):
+                    mejor[clase] = round(score, 3)
+
+            area: Dict[str, float] = {}
+            s = segs.get(cam)
+            fr = getattr(s, "fracciones", None) or getattr(s, "areas", None)
+            if isinstance(fr, dict):
+                area = {k: round(float(v) * 100, 3) for k, v in fr.items()}
+            elif fr is not None:
+                try:
+                    area = {clases_seg[i] if i < len(clases_seg) else str(i):
+                            round(float(v) * 100, 3) for i, v in enumerate(fr)}
+                except Exception:                        # noqa: BLE001
+                    area = {}
+
+            out[cam] = {
+                "objetos": dict(sorted(mejor.items(), key=lambda kv: -kv[1])),
+                "segmentacion_pct_area": area,
+            }
+        return out
+
     def estado(self) -> Dict[str, Any]:
         st = dict(self.emisor.stats) if self.emisor else {}
         if self.pipe is None:
@@ -793,6 +976,26 @@ class Servicio:
                        if getattr(self.pipe, "caidas", None) is not None
                        else None),
             "camaras": [f.resumen() for f in self.fuentes.values()],
+            # Por qué NO está alertando cada regla.
+            #
+            # 18/09: toda esta información existía desde siempre —
+            # `reglas_dormidas()`, `veces_dormida`, `faltantes()`, `stats`—
+            # y no salía de la consola del servicio. Si el sistema no avisaba
+            # de un incendio, el operador no tenía forma de distinguir "no
+            # hubo fuego" de "la regla de incendio nunca pudo correr porque le
+            # falta una cabeza". Justo la distinción por la que existe
+            # `reglas_dormidas()`.
+            "reglas": self._diagnostico_reglas(),
+            "cabezas": {
+                "objetos": self.pipe.objetos is not None,
+                "segmentacion": self.pipe.segmentacion is not None,
+                "agresion": self.pipe.agresion is not None,
+                "caidas": self.pipe.caidas is not None,
+                "topologia": self.pipe.topo is not None,
+            },
+            "viendo": self.viendo(),
+            "reglas_dormidas": (self.pipe.fusion.reglas_dormidas()
+                                if getattr(self.pipe, "fusion", None) else {}),
             # 18/09: esto leía `emisor.enviados`, `emisor.fallidos` y
             # `emisor.pendientes_en_spool()`, y NINGUNO de los tres existe.
             # Los dos primeros iban con getattr(..., 0), así que el resumen
@@ -807,6 +1010,46 @@ class Servicio:
                 "en_disco": st.get("spool", 0),
             },
         }
+
+    def _diagnostico_reglas(self) -> List[Dict[str, Any]]:
+        """Una línea por regla: si puede correr, qué le falta, y cuánto vio.
+
+        `hallazgos` cuenta las veces que la regla encontró algo (no eventos
+        emitidos: un incendio sostenido son muchos hallazgos y un evento).
+        `dormida` son las veces que ni siquiera pudo evaluarse.
+        """
+        motor = getattr(self.pipe, "fusion", None)
+        if motor is None:
+            return []
+
+        # Las cabezas que hay, para poder decir qué le falta a cada regla sin
+        # esperar a que pase un frame.
+        vivas = set()
+        if self.pipe.objetos is not None:
+            vivas.add("objetos")
+        if self.pipe.segmentacion is not None:
+            vivas.add("segmentacion")
+        if self.pipe.agresion is not None:
+            vivas.add("accion")
+        if self.pipe.caidas is not None:
+            vivas.add("pose")
+
+        out = []
+        for r in motor.reglas:
+            falta = sorted(set(getattr(r, "requiere", frozenset())) - vivas)
+            alguna = set(getattr(r, "requiere_alguna", frozenset()))
+            if alguna and not (alguna & vivas):
+                falta.append("|".join(sorted(alguna)))
+            if getattr(r, "necesita_topologia", False) and motor.topo is None:
+                falta.append("topologia.json")
+            out.append({
+                "tipo": r.tipo,
+                "puede_correr": not falta,
+                "falta": falta,
+                "dormida": int(getattr(r, "veces_dormida", 0)),
+                "hallazgos": int(motor.stats.get(r.tipo, 0)),
+            })
+        return out
 
     def parar(self) -> None:
         self._parar.set()

@@ -5,12 +5,10 @@ set RAIZ=%~dp0..
 if not exist "%RAIZ%\logs" mkdir "%RAIZ%\logs"
 cd /d "%RAIZ%\HorusAI"
 
-where powershell >nul 2>&1
-if errorlevel 1 (
-  call npm run dev > "%RAIZ%\logs\panel.txt" 2>&1
-) else (
-  call npm run dev 2>&1 | powershell -NoProfile -Command "$input | Tee-Object -FilePath '%RAIZ%\logs\panel.txt' -Encoding utf8"
-)
+rem `bin\tee.py` y no `Tee-Object`: PowerShell bufferea y el archivo
+rem quedaba minutos atrasado, a veces vacio hasta que el proceso moria.
+rem Un log que no se refresca no sirve para mirar por que algo no anda.
+call npm run dev 2>&1 | python -u "%RAIZ%\bin\tee.py" "%RAIZ%\logs\panel.txt"
 
 echo.
 echo ==============================================================

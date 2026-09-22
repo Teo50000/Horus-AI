@@ -503,7 +503,19 @@ def caso_integracion_fusion() -> Tuple[bool, str]:
         t = track(1, caja, ts, quieto=quieto,
                   quieto_s=(i - 64) * DT if quieto else 0.0)
         acs = det.procesar("cam-deposito", frame_con({1: caja}), [t], ts=ts)
-        cabezas = {CABEZA_OBJETOS, CABEZA_ACCION} | {a.fuente for a in acs}
+        # CABEZA_POSE va SIEMPRE, no solo en los frames donde el detector
+        # emitió algo. Es lo que hace el pipeline de verdad (ver la nota en
+        # pipeline.py: "instalada, no emitió"), y es lo que corresponde: un
+        # frame sin nadie en cuadro no es un frame sin cabeza de caídas.
+        #
+        # 18/09: acá se armaba `{a.fuente for a in acs}`, o sea que en los
+        # ~300 frames tranquilos la observación decía que no había cabeza de
+        # pose. Con la regla vieja daba igual —se declaraba capaz igual— pero
+        # al arreglar `ReglaCaida.puede_correr` esto paso a marcar `caida`
+        # como dormida en los ratos sin caída. El que estaba mal era este
+        # armado a mano, no la regla.
+        cabezas = ({CABEZA_OBJETOS, CABEZA_ACCION, CABEZA_POSE}
+                   | {a.fuente for a in acs})
         obs = ObservacionCamara(camera_id="cam-deposito", frame_idx=i, ts=ts,
                                 tracks=[t], acciones=acs,
                                 tam_frame=(ALTO, ANCHO),

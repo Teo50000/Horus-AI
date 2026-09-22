@@ -24,6 +24,7 @@ echo   7  Adelgazar head_best_solo.pt  ^(93 MB -^> 33 MB^)
 echo   8  Subir los commits a GitHub
 echo   9  Solo el backend, sin panel ni modelos
 echo   M  Arrancar SOLO los modelos, aca mismo
+echo   Q  Que esta viendo Horus ahora mismo ^(alerte o no^)
 echo   L  Ver por que se cayo algo ^(los ultimos logs^)
 echo   V  Ver que camaras encuentra tu PC
 echo   C  Compactar el repositorio ^(.git ocupa 2,9 GB^)
@@ -42,6 +43,7 @@ if "%OPCION%"=="7" goto adelgazar
 if "%OPCION%"=="8" goto subir
 if "%OPCION%"=="9" goto backend
 if /i "%OPCION%"=="M" goto modelos
+if /i "%OPCION%"=="Q" goto queve
 if /i "%OPCION%"=="L" goto logs
 if /i "%OPCION%"=="V" goto camaras
 if /i "%OPCION%"=="C" goto compactar
@@ -241,6 +243,16 @@ pause
 goto menu
 
 rem ===============================================================
+:queve
+cls
+echo  Tene los modelos corriendo ^(opcion M, o HORUS.bat^).
+echo.
+python bin\que_ve.py
+echo.
+pause
+goto menu
+
+rem ===============================================================
 :modelos
 cls
 echo ==============================================================
@@ -267,6 +279,14 @@ if exist "horus\04_cabezas\segmentacion\checkpoints\head_v4_produccion.pt" (
 if exist "horus\fight\checkpoints\modelo_fight.pt" (
   set FLAGS=!FLAGS! --agresion
 )
+if exist "horus\fall\checkpoints\modelo_stgcn.pt" (
+  python -c "import mediapipe" >nul 2>&1
+  if errorlevel 1 (
+    echo  [caidas apagada: falta mediapipe, opcion 5]
+  ) else (
+    set FLAGS=!FLAGS! --caidas --caidas-checkpoint ..\fall\checkpoints\modelo_stgcn.pt
+  )
+)
 if exist "horus\06_fusion_decision\topologia.json" (
   set FLAGS=!FLAGS! --topologia ..\06_fusion_decision\topologia.json
 )
@@ -279,8 +299,11 @@ if "!FLAGS!"=="" (
 
 echo  python servicio.py!FLAGS!
 echo.
+rem Tambien al log: si arrancas los modelos por aca, la opcion L tiene que
+rem mostrar ESTO y no lo de la corrida anterior. Un log viejo que parece
+rem nuevo es peor que no tener log.
 pushd horus\00_servicio
-python -u servicio.py!FLAGS!
+python -u servicio.py!FLAGS! 2>&1 | python -u "%~dp0bin\tee.py" "%~dp0logs\modelos.txt"
 popd
 echo.
 echo ==============================================================
@@ -303,6 +326,13 @@ if not exist "logs\backend.txt" if not exist "logs\modelos.txt" (
   pause
   goto menu
 )
+rem De cuando es cada archivo. Sin esto, mirar un log de hace tres horas
+rem creyendo que es de recien manda a buscar un problema que ya no existe —
+rem justo lo que paso hoy.
+for %%F in ("logs\backend.txt") do if exist "%%F" echo  backend.txt: %%~tF
+for %%F in ("logs\modelos.txt") do if exist "%%F" echo  modelos.txt: %%~tF
+echo  ahora:       %date% %time:~0,5%
+echo.
 echo  --- BACKEND  ^(ultimas 25 lineas de logs\backend.txt^) ---------
 echo.
 if exist "logs\backend.txt" (

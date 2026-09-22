@@ -35,10 +35,11 @@ from fastapi import (APIRouter, BackgroundTasks, Depends, HTTPException, Path,
                      Query, WebSocket, WebSocketDisconnect)
 from sqlmodel import Session, select
 
-from src.database import get_session
+from src.database import engine, get_session
 from src.models.alerta_model import Alerta, AlertaEntrante, RespuestaAlerta
 from src.models.camara_model import Camara, CamaraConfig, NumeroEmergencia
-from src.services.email_service import enviar_alerta_email
+from src.services.email_service import (MailApagado, enviar_alerta_email,
+                                        estado_mail)
 from src.services.websockets import manager
 
 alerta_router = APIRouter(tags=["Alertas"])
@@ -94,27 +95,80 @@ def _fila_compatibilidad(session: Session, msg: AlertaEntrante,
         return None
 
 
+def _anotar_mail(evento_id: str, secuencia: int, estado: str,
+                 detalle: str) -> None:
+    """Deja escrito en la fila qué pasó con el aviso.
+
+    22/09. Sin esto, una alerta que no le llegó a nadie se veía EXACTAMENTE
+    igual que una que sí: misma fila, mismo 200, misma tarjeta en el panel.
+    El único rastro era un `print` en una ventana que nadie mira. Para un
+    sistema que existe para avisar, eso es la falla que más caro sale.
+
+    Va en su propia sesión porque corre en `BackgroundTasks`, después de que
+    la del request ya se cerró. Y va envuelto: no poder ANOTAR el fallo no
+    puede ser, encima, otro motivo de caída.
+    """
+    try:
+        with Session(engine) as s:
+            fila = s.exec(select(Alerta)
+                          .where(Alerta.evento_id == evento_id)
+                          .where(Alerta.secuencia == secuencia)).first()
+            if fila is not None:
+                fila.mail_estado = estado
+                fila.mail_detalle = detalle[:300]
+                s.add(fila)
+                s.commit()
+    except Exception as e:
+        print(f"[alertas] no pude anotar el estado del mail: {e}")
+
+
 def _avisar_por_mail(event_type: str, nombre_camara: str, confidence: float,
-                     timestamp: str, destinos: List[str]) -> None:
-    """Envuelto entero: un SMTP mal configurado no puede romper nada."""
+                     timestamp: str, destinos: List[str],
+                     evento_id: str = "", secuencia: int = 0) -> None:
+    """Envuelto entero: un SMTP mal configurado no puede romper nada.
+
+    Pero "no rompe nada" no puede significar "no se entera nadie": el
+    resultado queda en la fila. Un mail apagado (sin credenciales) y un mail
+    que falló son dos cosas distintas y se guardan distinto — el primero se
+    configura una vez, el segundo se reintenta.
+    """
+    enviados, fallos, apagado = [], [], ""
     for destino in destinos:
         try:
             enviar_alerta_email(event_type, nombre_camara, confidence,
                                 timestamp, destino)
+            enviados.append(destino)
+        except MailApagado as e:
+            apagado = str(e)
+            print(f"[alertas] MAIL APAGADO, nadie fue avisado: {e}")
+            break                       # con el resto va a pasar lo mismo
         except Exception as e:
+            fallos.append(f"{destino}: {e}")
             print(f"[alertas] falló el mail a {destino}: {e}")
+
+    if apagado:
+        estado, detalle = "apagado", apagado
+    elif enviados and not fallos:
+        estado, detalle = "enviado", ", ".join(enviados)
+    elif enviados:
+        estado, detalle = "parcial", f"salió a {', '.join(enviados)}; " \
+                                     f"falló {'; '.join(fallos)}"
+    else:
+        estado, detalle = "fallo", "; ".join(fallos) or "sin resultado"
+
+    if evento_id:
+        _anotar_mail(evento_id, secuencia, estado, detalle)
 
 
 def _destinos(session: Session) -> List[str]:
-    """Contactos de emergencia con mail.
+    """Contactos de emergencia a los que se les puede mandar un mail.
 
-    `NumeroEmergencia` no tiene columna de email: guarda `telefono`. Se acepta
-    lo que parezca una dirección para no bloquear el aviso, pero la tabla
-    necesita su propia columna — está anotado como pendiente.
+    22/09: la columna `email` que faltaba ya existe. `direccion_mail()` mira
+    primero ahí y después en `telefono`, donde quedaron guardadas las
+    direcciones de los contactos que se cargaron antes.
     """
     contactos = session.exec(select(NumeroEmergencia)).all()
-    return [c.telefono for c in contactos
-            if c.telefono and "@" in str(c.telefono)]
+    return [d for d in (c.direccion_mail() for c in contactos) if d]
 
 
 # --------------------------------------------------------------------------- #
@@ -186,9 +240,22 @@ async def recibir_alerta(msg: AlertaEntrante, tareas: BackgroundTasks,
 
         if msg.severidad_num >= SEVERIDAD_MAIL:
             destinos = _destinos(session)
-            if destinos:
+            listo, motivo = estado_mail()
+            if not destinos:
+                # "No hay a quién avisarle" también es una forma de no avisar.
+                _anotar_mail(msg.id, msg.secuencia, "sin_destinos",
+                             "no hay contactos de emergencia con dirección "
+                             "de mail cargada")
+            elif not listo:
+                _anotar_mail(msg.id, msg.secuencia, "apagado", motivo)
+                print(f"[alertas] MAIL APAGADO, nadie fue avisado: {motivo}")
+            else:
                 tareas.add_task(_avisar_por_mail, msg.tipo, nombre,
-                                msg.confianza, msg.tiempo.inicio, destinos)
+                                msg.confianza, msg.tiempo.inicio, destinos,
+                                msg.id, msg.secuencia)
+        else:
+            _anotar_mail(msg.id, msg.secuencia, "no_corresponde",
+                         f"severidad {msg.severidad_num} < {SEVERIDAD_MAIL}")
 
     return RespuestaAlerta(
         recibido=True,

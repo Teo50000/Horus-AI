@@ -105,6 +105,13 @@ def main() -> int:
         else:
             print("\n  No salió al panel. Pasa cuando el evento ya existía y no")
             print("  subió de severidad: el panel no repite una tarjeta igual.")
+
+        # Y lo que el panel NO muestra: si el aviso salió de la casa.
+        #
+        # 22/09. Antes esta prueba terminaba acá y uno se quedaba pensando que
+        # había andado todo. La alerta se veía en el panel, sí, pero el mail a
+        # los contactos podía no haber salido nunca y no lo decía nadie.
+        _contar_mail(payload["id"])
         return 0
     except urllib.error.HTTPError as e:
         print(f"  HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:300]}")
@@ -113,6 +120,42 @@ def main() -> int:
         print(f"  no pude hablar con {URL}: {e.reason}")
         print("  ¿Está corriendo el backend? Arrancalo con HORUS.bat")
         return 1
+
+
+def _contar_mail(evento_id: str) -> None:
+    """Qué pasó con el aviso por mail de esta alerta."""
+    import time
+    time.sleep(0.8)                      # la tarea de fondo termina después
+    op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with op.open(f"{URL}/alertas/{evento_id}", timeout=10) as r:
+            h = json.loads(r.read().decode("utf-8"))
+        m = (h.get("mensajes") or [{}])[-1]
+        estado = m.get("mail_estado")
+        detalle = m.get("mail_detalle") or ""
+    except Exception as e:
+        print(f"\n  (no pude leer el estado del mail: {e})")
+        return
+
+    print()
+    if estado == "enviado":
+        print(f"  MAIL: salió a {detalle}")
+    elif estado == "apagado":
+        print("  MAIL: APAGADO. No le llegó a nadie.")
+        print(f"        {detalle}")
+        print("        Se arregla creando FASTAPI\\.env — ver .env.example")
+    elif estado == "sin_destinos":
+        print("  MAIL: no hay contactos con dirección cargada.")
+        print("        Agregalos en el panel, en Ajustes.")
+    elif estado == "no_corresponde":
+        print("  MAIL: no corresponde (severidad 1). Los avisos no despiertan")
+        print("        a nadie a propósito; desde 'alerta' sí.")
+    elif estado in ("fallo", "parcial"):
+        print(f"  MAIL: {estado.upper()} — {detalle}")
+    elif estado is None:
+        print("  MAIL: sin dato. Si el backend es viejo, no anota nada todavía.")
+    else:
+        print(f"  MAIL: {estado} — {detalle}")
 
 
 if __name__ == "__main__":

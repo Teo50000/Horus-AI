@@ -53,6 +53,34 @@ async def lifespan(app: FastAPI):
     else:
         print(f"[backend] websockets: {impl} · el panel puede recibir alertas")
 
+    # El mail, con el mismo criterio que el websocket de arriba.
+    #
+    # 22/09, medido en la base de Teo: 41 alertas de severidad 2 guardadas, 5
+    # eventos distintos, CERO mails. No había archivo .env, así que todos los
+    # envíos morían en el login, la excepción la comía un try y quedaba un
+    # print en una ventana que nadie mira. El panel mostraba la alerta igual.
+    # Un sistema de avisos que no avisa y no lo dice es peor que uno apagado.
+    from src.services.email_service import RUTA_ENV, estado_mail
+    listo_mail, motivo_mail = estado_mail()
+    if listo_mail:
+        print(f"[backend] mail: {motivo_mail}")
+    else:
+        print("=" * 70)
+        print("  ATENCION: el aviso por MAIL esta APAGADO.")
+        print(f"  {motivo_mail}")
+        print()
+        print("  Las alertas se van a guardar y se van a ver en el panel,")
+        print("  pero NO le va a llegar un mail a nadie. Cada alerta queda")
+        print('  marcada con mail_estado="apagado" para que se note.')
+        print()
+        print(f"  Se arregla creando {RUTA_ENV} con:")
+        print("      EMAIL_SENDER=el-gmail-de-horus@gmail.com")
+        print("      EMAIL_PASSWORD=la-clave-de-aplicacion-de-16-letras")
+        print()
+        print("  (es una 'contrasena de aplicacion' de Google, NO la clave")
+        print("   del mail. Ver FASTAPI/.env.example)")
+        print("=" * 70)
+
     # Buscar las cámaras ACÁ y no cuando el panel las pide.
     #
     # En Windows abrir un índice que no anda puede tardar 9 segundos, y son
@@ -94,6 +122,23 @@ app.add_middleware(
 #funcion encargada de devolver un mensaje al acceder a la ruta raíz del servidor
 def home():
     return "Hello world!!"
+
+
+@app.get("/estado", tags=["Home"])
+def estado():
+    """Lo que el panel necesita saber para no mentir.
+
+    El panel ya avisa cuando se cae el websocket y cuando los modelos están
+    apagados. Faltaba el tercer canal: el mail. Un tablero que dice "En vivo"
+    con el mail apagado está diciendo media verdad.
+    """
+    from src.services.email_service import estado_mail
+    listo, motivo = estado_mail()
+    impl = hay_websockets()
+    return {
+        "websocket": {"ok": impl is not None, "implementacion": impl},
+        "mail": {"ok": listo, "motivo": motivo},
+    }
 
 
 app.include_router(prefix='/camaras', router=camara_router)

@@ -73,6 +73,14 @@ class Alerta(SQLModel, table=True):
     camara_evento_id: Optional[int] = None   # la fila de compatibilidad
     recibido_en: str = ""
 
+    # Qué pasó con el aviso a los contactos. 22/09: antes no se guardaba nada,
+    # así que una alerta que no le llegó a nadie quedaba idéntica a una que sí.
+    # Valores: "enviado" · "apagado" (sin credenciales, nunca se intentó) ·
+    # "sin_destinos" (no hay contactos con dirección) · "fallo" (se intentó y
+    # no salió) · "no_corresponde" (severidad por debajo del umbral).
+    mail_estado: Optional[str] = Field(default=None, index=True)
+    mail_detalle: Optional[str] = None
+
 
 # --------------------------------------------------------------------------- #
 # Lo que entra por el POST

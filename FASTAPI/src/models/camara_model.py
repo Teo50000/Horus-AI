@@ -46,3 +46,20 @@ class NumeroEmergencia(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     telefono: Optional[str] = None
     nombre: Optional[str] = None  # ej: "Policía", "Bomberos", "Jefe"
+    # 22/09: la tabla nació sin esto y el aviso se manda por mail, así que el
+    # panel venía pidiendo "ingresa tu email" en el campo `telefono` y el
+    # backend filtraba por "tiene @". Funcionaba de casualidad: el día que
+    # alguien cargara un teléfono de verdad, ese contacto quedaba sin aviso y
+    # nadie se enteraba.
+    email: Optional[str] = None
+
+    def direccion_mail(self) -> Optional[str]:
+        """A dónde avisarle, venga de la columna nueva o de la vieja.
+
+        Los contactos ya cargados tienen la dirección en `telefono`. Exigirles
+        la columna nueva sería dejar sin aviso justo a los que ya existían.
+        """
+        for v in (self.email, self.telefono):
+            if v and "@" in str(v):
+                return str(v).strip()
+        return None

@@ -9,6 +9,7 @@ import { useAjustes } from "../components/MenuAjustes/useAjustes";
 import { useGrid } from "../components/CamaraGrid/useGrid";
 import { useWebSocketEventos } from "../hooks/useWebSocketEventos";
 import { useServicioVideo } from "../hooks/useServicioVideo";
+import { useEstadoBackend } from "../hooks/useEstadoBackend";
 import { WS_ALERTAS } from "../config";
 import "./Dashboard.css";
 
@@ -23,6 +24,7 @@ export default function Dashboard() {
   // de el (con las cajas dibujadas) en vez de salir del backend. Ver el
   // comentario en useServicioVideo.
   const servicio = useServicioVideo();
+  const { mail } = useEstadoBackend();
   const nCamaras = Object.keys(servicio.camaras).length;
 
   const historial = useHistorial(eventos);
@@ -102,6 +104,31 @@ export default function Dashboard() {
               ? "MODELOS SIN CAMARAS"
               : `Analizando ${nCamaras}`}
       </div>
+
+      {/* El tercer canal. Los dos carteles de arriba dicen si el panel esta
+          escuchando y si los modelos estan mirando; este dice si el aviso
+          sale de la casa. Un tablero que dice "En vivo" con el mail apagado
+          esta diciendo media verdad.
+
+          Solo aparece cuando el mail NO esta confirmado andando. Que no haya
+          cartel significa que se pregunto y la respuesta fue que si: el
+          silencio tiene que ser informacion, no ausencia de informacion. */}
+      {mail?.ok !== true && (
+        <div
+          className={`dashboard__mail ${
+            mail === null ? "dashboard__mail--nose" : "dashboard__mail--no"
+          }`}
+          role="status"
+          aria-live="polite"
+          title={mail === null
+            ? "Todavia no pude preguntarle al backend si el mail puede salir"
+            : `Las alertas se guardan y se ven aca, pero NO le llega un mail a ` +
+              `nadie. ${mail.motivo}`}
+        >
+          <span className="dashboard__conexion-punto" aria-hidden="true" />
+          {mail === null ? "MAIL: SIN DATO" : "ALERTAS SIN MAIL"}
+        </div>
+      )}
 
       <Sidebar
         activeSection={activeSection}

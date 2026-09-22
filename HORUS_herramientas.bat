@@ -25,6 +25,7 @@ echo   8  Subir los commits a GitHub
 echo   9  Solo el backend, sin panel ni modelos
 echo   M  Arrancar SOLO los modelos, aca mismo
 echo   Q  Que esta viendo Horus ahora mismo ^(alerte o no^)
+echo   A  Revisar el aviso por MAIL ^(si pasa algo, le llega a alguien?^)
 echo   L  Ver por que se cayo algo ^(los ultimos logs^)
 echo   V  Ver que camaras encuentra tu PC
 echo   C  Compactar el repositorio ^(.git ocupa 2,9 GB^)
@@ -44,6 +45,7 @@ if "%OPCION%"=="8" goto subir
 if "%OPCION%"=="9" goto backend
 if /i "%OPCION%"=="M" goto modelos
 if /i "%OPCION%"=="Q" goto queve
+if /i "%OPCION%"=="A" goto mail
 if /i "%OPCION%"=="L" goto logs
 if /i "%OPCION%"=="V" goto camaras
 if /i "%OPCION%"=="C" goto compactar
@@ -232,6 +234,27 @@ echo.
 python bin\dibujar_zona.py
 if errorlevel 2 echo.
 if errorlevel 2 echo  Quedo a medias: la zona esta escrita pero no alerta. Mira arriba.
+echo.
+pause
+goto menu
+
+rem ===============================================================
+:mail
+cls
+echo  EL AVISO POR MAIL
+echo.
+echo  Que la alerta se vea en el panel no quiere decir que le haya
+echo  llegado a alguien. Son dos caminos distintos y fallan aparte.
+echo.
+echo  El 22/09, medido en tu base: 41 alertas de severidad 2 guardadas,
+echo  5 eventos, CERO mails. Faltaba el archivo .env con las
+echo  credenciales y no lo decia nadie.
+echo.
+python bin\probar_mail.py
+echo.
+echo  --------------------------------------------------------------
+echo  Para mandar uno de prueba de verdad:
+echo     python bin\probar_mail.py --mandar
 echo.
 pause
 goto menu

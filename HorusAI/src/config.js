@@ -24,6 +24,12 @@ export const API_CAMARAS = `${API_URL}/camaras`;
 export const API_VIDEO   = `${API_URL}/video`;
 export const API_ALERTAS = `${API_URL}/alertas`;
 
+// Que canales de aviso estan vivos del lado del backend: websocket y mail.
+// 22/09: el mail estaba apagado (no habia .env con las credenciales) y no lo
+// decia nadie. El panel mostraba la alerta, la fila se guardaba, y el mail que
+// tenia que despertar a alguien no salia nunca.
+export const API_ESTADO  = `${API_URL}/estado`;
+
 // El websocket por el que salen las alertas hacia el panel.
 //
 // Ojo con esto: el Dashboard se conectaba a /camaras/ws, que NO es el de las

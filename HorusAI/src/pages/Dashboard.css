@@ -118,3 +118,35 @@ body,
   background: rgba(255, 169, 77, 0.12);
   font-weight: 600;
 }
+
+/* El aviso por mail. Tercer canal, mismo criterio que los otros dos: un canal
+   apagado tiene que decir que esta apagado. Se ubica debajo del de modelos. */
+.dashboard__mail {
+  position: fixed;
+  top: 66px;
+  right: 14px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Naranja y no rojo: las alertas SI se estan guardando y viendo. Lo que no
+   sale es el mail. */
+.dashboard__mail--no {
+  color: #ffa94d;
+  background: rgba(255, 169, 77, 0.12);
+  font-weight: 600;
+}
+
+/* Todavia no se sabe. No es verde: no preguntamos todavia. */
+.dashboard__mail--nose {
+  color: rgba(160, 160, 170, 0.75);
+  background: rgba(160, 160, 170, 0.10);
+}

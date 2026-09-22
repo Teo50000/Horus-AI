@@ -2,3 +2,7 @@
 **/__pycache__/
 *.pyc
 *.env
+
+# Copias que hace la migracion antes de reconstruir una tabla. Son la base
+# entera: no van al repo, pero no se borran solas a proposito.
+*.respaldo-*

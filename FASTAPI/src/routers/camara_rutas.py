@@ -1,12 +1,31 @@
 from typing import List
 import json
-from fastapi import Query, Path, APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import (APIRouter, BackgroundTasks, Path, Query, WebSocket,
+                     WebSocketDisconnect)
 from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 from src.database import engine
 from src.models.camara_model import Camara, CamaraConfig, NumeroEmergencia
 from src.services.websockets import manager
-from src.services.email_service import enviar_alerta_email
+from src.services.email_service import (MailApagado, enviar_alerta_email,
+                                        estado_mail)
+
+
+def _mail_en_fondo(event_type, nombre_camara, confidence, timestamp, destinos):
+    """Nunca levanta. Un canal de aviso roto no puede tumbar el aviso."""
+    listo, motivo = estado_mail()
+    if not listo:
+        print(f"[camaras] MAIL APAGADO, nadie fue avisado: {motivo}")
+        return
+    for destino in destinos:
+        try:
+            enviar_alerta_email(event_type, nombre_camara, confidence,
+                                timestamp, destino)
+        except MailApagado as e:
+            print(f"[camaras] MAIL APAGADO: {e}")
+            return
+        except Exception as e:
+            print(f"[camaras] falló el mail a {destino}: {e}")
 from fastapi import WebSocket, WebSocketDisconnect
 camara_router = APIRouter()
 import cv2
@@ -110,7 +129,7 @@ def añadir_camara(nueva_camara: Camara) -> List[Camara]:
 
 #metodo post pero guardandolo en la base de datos
 @camara_router.post("/prediccion", tags=["Camaras"])
-async def recibir_prediccion(camara: Camara):
+async def recibir_prediccion(camara: Camara, tareas: BackgroundTasks):
     with Session(engine) as session:
         session.add(camara)
         session.commit()
@@ -126,17 +145,26 @@ async def recibir_prediccion(camara: Camara):
         if camara.camara_config_id is not None:
             await manager.broadcast(json.dumps(mensaje))
             
-         # Email a TODOS los contactos registrados
-        contactos = session.exec(select(NumeroEmergencia)).all()
-        for contacto in contactos:
-            if contacto.telefono:  # por si hay alguno sin email
-                enviar_alerta_email(
-                    email_receiver=contacto.telefono,
-                    event_type=camara.event_type,
-                    nombre_camara=camara.camara_config_nombre,
-                    confidence=camara.confidence,
-                    timestamp=camara.timestamp
-                )
+        # Mail a los contactos registrados.
+        #
+        # 22/09. Esto estaba EN LINEA y sin envolver, que es justo lo que
+        # `alerta_rutas` documenta como arreglado (decisión 4) y acá seguía
+        # vivo. Dos consecuencias, las dos medidas: con el SMTP inalcanzable
+        # cada contacto se comía los 10 s de timeout con el request abierto,
+        # y si fallaba, este endpoint contestaba 500 con la fila YA guardada
+        # — o sea que el que mandó la predicción la reintentaba y se duplicaba.
+        #
+        # Va en una tarea de fondo y envuelto. El mail puede fallar; la
+        # alerta, no.
+        destinos = [c.direccion_mail() for c in session.exec(select(NumeroEmergencia)).all()]
+        destinos = [d for d in destinos if d]
+        if destinos:
+            tareas.add_task(_mail_en_fondo, camara.event_type,
+                            camara.camara_config_nombre, camara.confidence,
+                            camara.timestamp, destinos)
+        else:
+            print("[camaras] predicción guardada pero NO hay contactos con "
+                  "dirección de mail: no se avisó a nadie")
         return camara
     
 @camara_router.post("/config", tags=["Camaras"])

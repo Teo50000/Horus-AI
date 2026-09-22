@@ -21,8 +21,13 @@ import tempfile
 import time
 from typing import Any, Callable, Dict, List, Tuple
 
-os.environ.setdefault("EMAIL_SENDER", "")
-os.environ.setdefault("EMAIL_PASSWORD", "")
+# Credenciales de mentira pero COMPLETAS. Iban vacías, y desde que el envío
+# se niega a intentar sin configuración eso dejaba el mail apagado: la suite
+# habría probado el camino "apagado" creyendo que probaba el de envío. El
+# envío en sí se intercepta más abajo; acá lo único que importa es que el
+# backend se considere configurado.
+os.environ["EMAIL_SENDER"] = "horus-pruebas@example.test"
+os.environ["EMAIL_PASSWORD"] = "clave-de-mentira"
 
 _AQUI = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(_AQUI)
@@ -327,12 +332,245 @@ def caso_mail_desde_alerta() -> Tuple[bool, str]:
     return ok, f"aviso -> {sin_mail} mail(s) · crítico -> {len(MAILS)} mail(s)"
 
 
+def _fila(evento_id: str):
+    with Session(engine) as s:
+        return s.exec(select(Alerta).where(Alerta.evento_id == evento_id)).first()
+
+
+def _payload_alerta(sev: int = 2):
+    ev = [e for e in eventos("incendio") if e.tipo == "incendio"][0]
+    p = armar_payload(ev, 1)
+    if sev != p.get("severidad_num"):
+        p.update(severidad={1: "aviso", 2: "alerta", 3: "critico"}[sev],
+                 severidad_num=sev)
+    return p
+
+
+def caso_mail_enviado_se_anota() -> Tuple[bool, str]:
+    """Cuando el mail sale, la fila lo dice.
+
+    Sin esto no hay forma de contestar "¿le llegó a alguien?" mirando la
+    base, que es la única pregunta que importa a la mañana siguiente."""
+    limpiar()
+    p = _payload_alerta(2)
+    postear(p)
+    time.sleep(0.2)
+    f = _fila(p["id"])
+    ok = f is not None and f.mail_estado == "enviado" and "@" in (f.mail_detalle or "")
+    return ok, f"mail_estado={getattr(f, 'mail_estado', None)!r} · {getattr(f, 'mail_detalle', None)!r}"
+
+
+def caso_mail_apagado_se_anota() -> Tuple[bool, str]:
+    """Sin credenciales NO se intenta, y la fila queda marcada "apagado".
+
+    Este es el caso real que tenía Teo: no existía el .env, todos los envíos
+    morían en el login, la excepción la comía un try y quedaba un print en
+    una ventana que nadie mira. 41 alertas de severidad 2 guardadas, cero
+    mails, y la fila indistinguible de una avisada."""
+    limpiar()
+    import src.services.email_service as es
+    guardado = (es.EMAIL_SENDER, es.EMAIL_PASSWORD)
+    es.EMAIL_SENDER, es.EMAIL_PASSWORD = None, None
+    try:
+        p = _payload_alerta(2)
+        r = postear(p)
+        f = _fila(p["id"])
+    finally:
+        es.EMAIL_SENDER, es.EMAIL_PASSWORD = guardado
+    ok = (r["recibido"] and f is not None and f.mail_estado == "apagado"
+          and not MAILS)
+    return ok, (f"200 igual · mail_estado={getattr(f, 'mail_estado', None)!r} · "
+                f"intentos={len(MAILS)}")
+
+
+def caso_mail_sin_destinos_se_anota() -> Tuple[bool, str]:
+    """Sin contactos con dirección tampoco avisa nadie, y también se anota."""
+    limpiar()
+    with Session(engine) as s:
+        contactos = s.exec(select(NumeroEmergencia)).all()
+        copia = [(c.telefono, c.nombre, getattr(c, "email", None)) for c in contactos]
+        for c in contactos:
+            s.delete(c)
+        s.commit()
+    try:
+        p = _payload_alerta(2)
+        postear(p)
+        f = _fila(p["id"])
+    finally:
+        with Session(engine) as s:
+            for tel, nom, mail in copia:
+                s.add(NumeroEmergencia(telefono=tel, nombre=nom, email=mail))
+            s.commit()
+    ok = f is not None and f.mail_estado == "sin_destinos"
+    return ok, f"mail_estado={getattr(f, 'mail_estado', None)!r}"
+
+
+def caso_mail_no_corresponde() -> Tuple[bool, str]:
+    """Un aviso (severidad 1) no manda mail, y eso NO es una falla.
+
+    Se anota distinto justamente para no confundirlo con un mail que falló."""
+    limpiar()
+    p = _payload_alerta(1)
+    postear(p)
+    f = _fila(p["id"])
+    ok = f is not None and f.mail_estado == "no_corresponde" and not MAILS
+    return ok, f"mail_estado={getattr(f, 'mail_estado', None)!r}"
+
+
+def caso_contacto_con_telefono() -> Tuple[bool, str]:
+    """Un contacto cargado con un teléfono de verdad no se usa como mail.
+
+    La tabla se llama `NumeroEmergencia` y el panel pedía el mail en el campo
+    `telefono`: funcionaba de casualidad. Ahora hay columna `email`, y un
+    teléfono tiene que quedar afuera de los destinatarios en vez de hacer que
+    el envío explote."""
+    limpiar()
+    with Session(engine) as s:
+        c = NumeroEmergencia(telefono="1122334455", nombre="Policía")
+        s.add(c)
+        s.commit()
+        idc = c.id
+    try:
+        p = _payload_alerta(2)
+        postear(p)
+        time.sleep(0.2)
+        destinos = [a[-1] for a in MAILS]
+    finally:
+        with Session(engine) as s:
+            s.delete(s.get(NumeroEmergencia, idc))
+            s.commit()
+    ok = "1122334455" not in destinos and any("@" in str(d) for d in destinos)
+    return ok, f"destinatarios: {destinos}"
+
+
+def caso_base_vieja_se_destraba() -> Tuple[bool, str]:
+    """Una base con el esquema viejo acepta alertas nuevas sin perder filas.
+
+    El caso real: `alerta` traía `ts_recibido`, `aportes_json` y
+    `payload_json` declaradas NOT NULL de un esquema anterior. `ADD COLUMN`
+    agregó lo que faltaba pero no puede sacar un NOT NULL, así que CADA
+    INSERT nuevo moría con IntegrityError y el POST contestaba 500. En la
+    base de Teo la última fila guardada era del 27/08: un mes entero de
+    alertas rechazadas con el panel viéndose tranquilo."""
+    import sqlite3
+    from sqlalchemy import create_engine as _ce
+    from src.database import crear_tablas as _crear
+
+    d = tempfile.mkdtemp()
+    ruta = os.path.join(d, "vieja.db")
+    con = sqlite3.connect(ruta)
+    con.execute("""CREATE TABLE alerta (
+        id INTEGER NOT NULL PRIMARY KEY, evento_id VARCHAR NOT NULL,
+        secuencia INTEGER NOT NULL, tipo VARCHAR NOT NULL,
+        severidad VARCHAR NOT NULL, severidad_num INTEGER NOT NULL,
+        estado VARCHAR NOT NULL, confianza FLOAT NOT NULL,
+        motivo VARCHAR NOT NULL, camara VARCHAR NOT NULL,
+        ts_inicio VARCHAR NOT NULL, ts_ultimo VARCHAR NOT NULL,
+        ts_recibido VARCHAR NOT NULL, duracion_s FLOAT NOT NULL,
+        necesita_vlm BOOLEAN NOT NULL, modelos VARCHAR NOT NULL,
+        aportes_json VARCHAR NOT NULL, payload_json VARCHAR NOT NULL)""")
+    con.execute("INSERT INTO alerta VALUES (1,'viejo-1',1,'incendio','alerta',2,"
+                "'abierto',0.9,'humo','cam-1','t0','t1','t-recibido',3.0,0,"
+                "'[\"objetos\"]','[]','{\"a\":1}')")
+    con.commit()
+    con.close()
+
+    motor = _ce("sqlite:///%s" % ruta)
+    _crear(motor)
+
+    with motor.begin() as c:
+        c.execute(__import__("sqlalchemy").text(
+            'INSERT INTO alerta (evento_id, secuencia, version, tipo, severidad,'
+            ' severidad_num, estado, confianza, motivo, camara, ts_inicio,'
+            ' ts_ultimo, ts_emitido, epoch_inicio, duracion_s, camaras, tracks,'
+            ' aportes, modelos, necesita_vlm, verificacion_estado,'
+            ' confirmaciones, evidencia, recibido_en)'
+            " VALUES ('nuevo-1',1,1,'incendio','alerta',2,'abierto',0.9,'x',"
+            "'cam-1','a','b','c',0.0,1.0,'[]','[]','[]','[]',0,'no_requiere',"
+            "0,'{}','hoy')"))
+    con = sqlite3.connect(ruta)
+    n = con.execute("select count(*) from alerta").fetchone()[0]
+    viejo_intacto = con.execute(
+        "select payload_json, recibido_en from alerta where evento_id='viejo-1'").fetchone()
+    con.close()
+    ok = n == 2 and viejo_intacto[0] == '{"a":1}' and viejo_intacto[1] == "t-recibido"
+    return ok, (f"{n} filas (1 vieja + 1 nueva) · payload_json conservado · "
+                f"recibido_en={viejo_intacto[1]!r}")
+
+
+def caso_estado_dice_del_mail() -> Tuple[bool, str]:
+    """GET /estado contesta si el mail puede salir, para que el panel avise.
+
+    El panel ya tiene cartel para el websocket caído y para los modelos
+    apagados. El mail era el canal que faltaba."""
+    from src.main import app as app_real
+    import src.services.email_service as es
+    guardado = (es.EMAIL_SENDER, es.EMAIL_PASSWORD)
+    es.EMAIL_SENDER, es.EMAIL_PASSWORD = None, None
+    try:
+        with TestClient(app_real) as c:
+            apagado = c.get("/estado").json()
+        es.EMAIL_SENDER, es.EMAIL_PASSWORD = guardado
+        with TestClient(app_real) as c:
+            prendido = c.get("/estado").json()
+    finally:
+        es.EMAIL_SENDER, es.EMAIL_PASSWORD = guardado
+    ok = (apagado["mail"]["ok"] is False and prendido["mail"]["ok"] is True
+          and "EMAIL_SENDER" in apagado["mail"]["motivo"])
+    return ok, f"apagado -> {apagado['mail']['ok']} · configurado -> {prendido['mail']['ok']}"
+
+
+def _claves_repetidas() -> List[str]:
+    """Una clave repetida en CASOS pisa a la otra y la prueba no corre nunca.
+
+    Pasó acá: se registró `base_vieja` dos veces, el diccionario se quedó con
+    la última y la primera desapareció sin una sola línea de error. Una prueba
+    que no corre se ve igual que una que pasa — el mismo problema que esta
+    suite existe para evitar, adentro de la suite.
+    """
+    import collections
+    import re
+
+    texto = Path(__file__).read_text(encoding="utf-8")
+    # Anclado a principio de línea: si no, el primer "CASOS: Dict" que
+    # encuentra es el de ESTA misma función y la guardia se revisa a sí misma.
+    m = re.search(r"^CASOS: Dict", texto, re.M)
+    if m is None:
+        return []
+    bloque = texto[m.start():]
+    bloque = bloque[:bloque.index("}\n")]
+    claves = re.findall(r'^\s*"([a-z_0-9]+)":', bloque, re.M)
+    return [k for k, n in collections.Counter(claves).items() if n > 1]
+
+
 def _texto_js(*partes: str) -> str:
     return (_RAIZ_REPO / "HorusAI" / "src" / Path(*partes)).read_text(encoding="utf-8")
 
 
 def _hay_front() -> bool:
     return (_RAIZ_REPO / "HorusAI" / "src" / "config.js").exists()
+
+
+def caso_panel_distingue_mail_sin_dato() -> Tuple[bool, str]:
+    """El cartel del mail trata "no sé" distinto de "anda".
+
+    Es la trampa de siempre con otra ropa: si el panel dibujara el cartel solo
+    cuando `mail.ok === false`, entonces con el backend caído —donde no hay
+    respuesta y `mail` queda en null— el cartel desaparecería, y no tener
+    cartel significa "el mail anda". Justo al revés de la verdad.
+
+    Por eso la condición es `mail?.ok !== true`: el cartel se va ÚNICAMENTE
+    cuando alguien contestó que sí.
+    """
+    if not _hay_front():
+        return True, "sin HorusAI en esta rama, se saltea"
+    txt = _texto_js("pages", "Dashboard.jsx")
+    bien = "mail?.ok !== true" in txt
+    mal = "mail?.ok === false" in txt or "mail.ok === false" in txt
+    tiene_estado_sin_dato = "SIN DATO" in txt
+    ok = bien and not mal and tiene_estado_sin_dato
+    return ok, (f"condicion correcta={bien} · condicion peligrosa={mal} · "
+                f"estado 'sin dato'={tiene_estado_sin_dato}")
 
 
 def caso_el_panel_no_tiene_la_url_a_mano() -> Tuple[bool, str]:
@@ -605,10 +843,18 @@ CASOS: Dict[str, Callable[[], Tuple[bool, str]]] = {
     "historial": caso_historial,
     "mail_desde_2": caso_mail_desde_alerta,
     "mail_no_tumba": caso_mail_no_tumba,
+    "mail_enviado": caso_mail_enviado_se_anota,
+    "mail_apagado": caso_mail_apagado_se_anota,
+    "mail_sin_destinos": caso_mail_sin_destinos_se_anota,
+    "mail_no_corresponde": caso_mail_no_corresponde,
+    "contacto_telefono": caso_contacto_con_telefono,
+    "base_destrabada": caso_base_vieja_se_destraba,
+    "estado_mail": caso_estado_dice_del_mail,
     "campo_nuevo": caso_campo_nuevo,
     "base_vieja": caso_la_base_vieja_se_migra_sola,
     # --- la conexión con el panel ---
     "url_centralizada": caso_el_panel_no_tiene_la_url_a_mano,
+    "cartel_mail": caso_panel_distingue_mail_sin_dato,
     "ruta_ws_existe": caso_la_ruta_del_panel_existe,
     "ws_de_verdad": caso_websocket_de_verdad,
     "mismo_nombre": caso_el_historial_dice_el_mismo_nombre,
@@ -624,6 +870,12 @@ def main() -> int:
     print("HORUS · endpoint de alertas — punta a punta (fusión -> FastAPI -> SQLite)")
     print("=" * 78)
     fallas = 0
+    repetidas = _claves_repetidas()
+    if repetidas:
+        print("ALTO: hay casos registrados dos veces y uno de los dos NO se "
+              "corre: %s" % ", ".join(repetidas))
+        return 2
+
     for nombre, f in CASOS.items():
         t0 = time.perf_counter()
         try:

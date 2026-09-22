@@ -53,7 +53,7 @@ set HAY_VISION=0
 set M_OBJ=horus\04_cabezas\objetos\modelos\head_best_solo.pt
 set M_SEG=horus\04_cabezas\segmentacion\checkpoints\head_v4_produccion.pt
 set M_FIGHT=horus\fight\checkpoints\modelo_fight.pt
-set M_FALL=horus\fall\checkpoints\modelo_stgcn.pt
+set M_FALL=horus\fall\checkpoints\modelo_demo_todo.pt
 set M_TOPO=horus\06_fusion_decision\topologia.json
 
 echo  Cabezas:
@@ -86,7 +86,11 @@ if exist "%M_FALL%" (
     echo    [NO] caidas         falta mediapipe: HORUS_herramientas.bat, opcion 5
   ) else (
     echo    [SI] caidas         desmayos y caidas
-    set FLAGS=!FLAGS! --caidas --caidas-checkpoint ..\fall\checkpoints\modelo_stgcn.pt
+    rem Sin --caidas-checkpoint: el default de ConfigCaidas es
+    rem modelo_demo_todo.pt, que es EL de despliegue ("entrenado con
+    rem todo"). Aca decia modelo_stgcn.pt, que es otro archivo y no
+    rem figura como opcion de despliegue en ningun lado.
+    set FLAGS=!FLAGS! --caidas
   )
 ) else (
   echo    [NO] caidas         falta %M_FALL%

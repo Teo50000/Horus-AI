@@ -18,7 +18,7 @@ echo   1  Correr las 11 suites de pruebas
 echo   2  Mandar una alerta de prueba al panel
 echo   3  Ver que esta instalado y que falta
 echo   4  Pasar el detector por una carpeta de fotos tuyas
-echo   5  Instalar mediapipe  ^(hace falta para la cabeza de caidas^)
+echo   5  Dejar lista la cabeza de CAIDAS
 echo   6  Armar topologia.json ^(zonas: prende intrusion y merodeo^)
 echo   7  Adelgazar head_best_solo.pt  ^(93 MB -^> 33 MB^)
 echo   8  Subir los commits a GitHub
@@ -178,10 +178,23 @@ goto menu
 rem ===============================================================
 :mediapipe
 cls
-echo  mediapipe saca los 33 puntos del cuerpo. Es lo que necesita la
-echo  cabeza de caidas para correr EN VIVO (la suite no lo necesita).
+echo ==============================================================
+echo  Dejar lista la cabeza de caidas
+echo ==============================================================
 echo.
-python -m pip install mediapipe
+echo  Le faltan dos cosas, no una:
+echo.
+echo    mediapipe             el paquete de python
+echo    pose_landmarker.task  el modelo de pose de Google
+echo.
+echo  Lo segundo sorprende: MediaPipe 0.10 SACO la API vieja, que traia
+echo  el modelo adentro del paquete. Con la nueva hay que bajarlo
+echo  aparte, y el error no lo dice. Por eso `pip install mediapipe`
+echo  solo no alcanzaba.
+echo.
+echo  Esto hace las dos, y despues prueba que carguen de verdad.
+echo.
+python bin\instalar_caidas.py
 echo.
 pause
 goto menu
@@ -284,7 +297,11 @@ if exist "horus\fall\checkpoints\modelo_stgcn.pt" (
   if errorlevel 1 (
     echo  [caidas apagada: falta mediapipe, opcion 5]
   ) else (
-    set FLAGS=!FLAGS! --caidas --caidas-checkpoint ..\fall\checkpoints\modelo_stgcn.pt
+    rem Sin --caidas-checkpoint: el default de ConfigCaidas es
+    rem modelo_demo_todo.pt, que es EL de despliegue ("entrenado con
+    rem todo"). Aca decia modelo_stgcn.pt, que es otro archivo y no
+    rem figura como opcion de despliegue en ningun lado.
+    set FLAGS=!FLAGS! --caidas
   )
 )
 if exist "horus\06_fusion_decision\topologia.json" (

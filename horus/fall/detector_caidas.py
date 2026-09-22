@@ -247,8 +247,18 @@ class BackendPoseMediaPipe:
 
         if not os.path.exists(modelo_pose):
             raise FileNotFoundError(
-                f"no encuentro {modelo_pose}. Es el pose_landmarker.task de "
-                f"MediaPipe; sin él esta cabeza no puede correr.")
+                f"no encuentro {modelo_pose}.\n"
+                f"\n"
+                f"Es el modelo de pose de MediaPipe, y hay que bajarlo aparte.\n"
+                f"Sorprende porque `pip install mediapipe` no alcanza: la 0.10\n"
+                f"SACÓ la API vieja (`mp.solutions.pose`), que traía el modelo\n"
+                f"adentro del paquete. La de Tasks, que es la única que queda,\n"
+                f"pide este archivo.\n"
+                f"\n"
+                f"    HORUS_herramientas.bat -> opción 5\n"
+                f"\n"
+                f"o a mano:\n"
+                f"    python bin/instalar_caidas.py")
 
         self._cv2 = cv2
         self._mp = mp

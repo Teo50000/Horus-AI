@@ -1,0 +1,42 @@
+{
+  "_ojo": "GENERADO por crear_topologia.py. La zona 'todo-el-cuadro' es un punto de partida, no tu sitio. Para que INTRUSION despierte tenés que agregar una zona 'restringida' con su horario permitido, dibujada sobre el piso real. Mirá topologia.example.json, que tiene todos los campos explicados.",
+  "simetrica": true,
+  "camaras": {
+    "cam-1": {
+      "nombre": "cam-1",
+      "fps": 10.0,
+      "tam_frame": [
+        1080,
+        1920
+      ],
+      "solapa": [],
+      "vecinos": [],
+      "zonas": [
+        {
+          "nombre": "todo-el-cuadro",
+          "tipo": "transito",
+          "prioridad": 0,
+          "merodeo_s": 25.0,
+          "puntos": [
+            [
+              0,
+              0
+            ],
+            [
+              1920,
+              0
+            ],
+            [
+              1920,
+              1080
+            ],
+            [
+              0,
+              1080
+            ]
+          ]
+        }
+      ]
+    }
+  }
+}

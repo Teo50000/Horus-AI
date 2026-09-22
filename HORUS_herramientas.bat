@@ -19,7 +19,7 @@ echo   2  Mandar una alerta de prueba al panel
 echo   3  Ver que esta instalado y que falta
 echo   4  Pasar el detector por una carpeta de fotos tuyas
 echo   5  Dejar lista la cabeza de CAIDAS
-echo   6  Armar topologia.json ^(zonas: prende intrusion y merodeo^)
+echo   6  Dibujar la zona restringida ^(prende INTRUSION^)
 echo   7  Adelgazar head_best_solo.pt  ^(93 MB -^> 33 MB^)
 echo   8  Subir los commits a GitHub
 echo   9  Solo el backend, sin panel ni modelos
@@ -202,12 +202,36 @@ goto menu
 rem ===============================================================
 :topologia
 cls
-echo  Sin topologia.json, intrusion y merodeo se declaran DORMIDAS:
-echo  no dicen "no paso nada", dicen "no puedo mirar esto".
+echo  ZONAS
 echo.
-pushd horus\06_fusion_decision
-python crear_topologia.py
-popd
+echo  Mientras topologia.json no tenga una zona 'restringida', la regla
+echo  de INTRUSION se declara DORMIDA: no dice "no entro nadie", dice
+echo  "no puedo mirar esto". Merodeo no depende de esto, anda igual.
+echo.
+echo  Una zona restringida es "aca no se puede estar a esta hora", y eso
+echo  no lo puede adivinar el programa: lo tenes que marcar vos sobre tu
+echo  propio piso. Por eso este paso existe.
+echo.
+if not exist "horus\06_fusion_decision\topologia.json" (
+  echo  Primero el archivo base, con el tamano de tu cuadro.
+  echo.
+  pushd horus\06_fusion_decision
+  python crear_topologia.py
+  popd
+  echo.
+)
+echo  Ahora la zona. Se abre tu camara, haces clic en las esquinas del
+echo  area prohibida y elegis el horario en que SI se puede estar.
+echo.
+echo  OJO: en Windows la camara es de un proceso por vez. Cerra el panel
+echo  y los modelos antes, o la camara no va a abrir.
+echo.
+set /p DIBUJAR=  Dibujarla ahora? [S/n]: 
+if /i "%DIBUJAR%"=="n" goto menu
+echo.
+python bin\dibujar_zona.py
+if errorlevel 2 echo.
+if errorlevel 2 echo  Quedo a medias: la zona esta escrita pero no alerta. Mira arriba.
 echo.
 pause
 goto menu

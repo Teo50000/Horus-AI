@@ -676,11 +676,34 @@ def caso_agresion_mirando() -> Tuple[bool, str, List[Any]]:
                 f"{sorted(dormidas) if dormidas else 'ninguna'}"), ev
 
 
+def caso_topologia_sin_restringida() -> Tuple[bool, str, List[Any]]:
+    """Una topología sin zona restringida avisa que intrusion queda dormida.
+
+    `verificar()` avisaba de vecinos inexistentes y de polígonos rotos, pero
+    no de lo único que apaga una regla entera: que ninguna zona sea
+    'restringida'. El archivo se veía completo y `intrusion` no iba a saltar
+    nunca. Es el mismo error de siempre con otra ropa — un sistema que no
+    mira no puede verse igual que un sistema tranquilo.
+    """
+    solo_transito = Topologia.desde_dict({"camaras": {"cam-1": {
+        "nombre": "cam-1", "tam_frame": [1080, 1920],
+        "zonas": [{"nombre": "todo-el-cuadro", "tipo": "transito",
+                   "puntos": [[0, 0], [1920, 0], [1920, 1080], [0, 1080]],
+                   "merodeo_s": 25.0}]}}})
+    avisa = any("restringida" in a and "DORMIDA" in a
+                for a in solo_transito.verificar())
+    # ...y se calla cuando sí hay una: un aviso que suena siempre no se lee.
+    calla = not any("DORMIDA" in a for a in TOPO.verificar())
+    return (avisa and calla), ("avisa=%s, se calla con zona restringida=%s"
+                               % (avisa, calla)), []
+
+
 CASOS: Dict[str, Callable[[], Tuple[bool, str, List[Any]]]] = {
     "incendio": caso_incendio_confirmado,
     "humo_solo": caso_humo_solo,
     "incendio_crece": caso_incendio_crece,
     "intrusion": caso_intrusion_nocturna,
+    "topo_sin_restringida": caso_topologia_sin_restringida,
     "horario_laboral": caso_horario_laboral,
     "robo": caso_robo_correlacionado,
     "arma": caso_arma_sin_zona,

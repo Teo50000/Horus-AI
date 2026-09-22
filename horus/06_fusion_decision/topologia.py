@@ -362,6 +362,15 @@ class Topologia:
                         f"{cid}/{z.nombre}: restringida sin horario permitido, "
                         "va a alertar las 24 h. Correcto para una bóveda; si "
                         "no lo es, falta el horario.")
+        # El aviso que faltaba. Una topología puede estar impecable y no
+        # despertar nunca a `intrusion`: alcanza con que ninguna zona sea
+        # 'restringida'. `verificar()` no decía nada y el archivo parecía
+        # completo, que es la confusión de siempre — "no entró nadie" y
+        # "nadie estaba mirando" no pueden verse igual.
+        if not any(z.restringida for c in self.camaras.values() for z in c.zonas):
+            avisos.append("ninguna zona 'restringida': la regla de intrusión "
+                          "queda DORMIDA. Dibujala con  python bin/dibujar_zona.py")
+
         if len(self.camaras) > 1 and not any(c.vecinos for c in self.camaras.values()):
             avisos.append("ninguna cámara declara vecinos: el tracking global "
                           "no va a poder podar por física")

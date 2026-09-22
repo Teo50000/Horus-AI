@@ -339,17 +339,21 @@ if exist "horus\04_cabezas\segmentacion\checkpoints\head_v4_produccion.pt" (
 if exist "horus\fight\checkpoints\modelo_fight.pt" (
   set FLAGS=!FLAGS! --agresion
 )
-if exist "horus\fall\checkpoints\modelo_stgcn.pt" (
-  python -c "import mediapipe" >nul 2>&1
-  if errorlevel 1 (
-    echo  [caidas apagada: falta mediapipe, opcion 5]
-  ) else (
-    rem Sin --caidas-checkpoint: el default de ConfigCaidas es
-    rem modelo_demo_todo.pt, que es EL de despliegue ("entrenado con
-    rem todo"). Aca decia modelo_stgcn.pt, que es otro archivo y no
-    rem figura como opcion de despliegue en ningun lado.
-    set FLAGS=!FLAGS! --caidas
-  )
+rem 22/09, dos cosas mal en cuatro lineas:
+rem   - miraba modelo_stgcn.pt, que NO es el de despliegue. El comentario de
+rem     abajo ya lo decia. Andaba de casualidad porque los dos archivos estan.
+rem   - no miraba pose_landmarker.task: con mediapipe instalado y sin el
+rem     .task, prendia --caidas sobre una cabeza que no puede cargar.
+set FALTA_CAIDAS=
+if not exist "horus\fall\checkpoints\modelo_demo_todo.pt" set FALTA_CAIDAS=modelo_demo_todo.pt
+if not defined FALTA_CAIDAS if not exist "horus\fall\pose_landmarker.task" set FALTA_CAIDAS=pose_landmarker.task
+if not defined FALTA_CAIDAS python -c "import mediapipe" >nul 2>&1 || set FALTA_CAIDAS=mediapipe
+if defined FALTA_CAIDAS (
+  echo  [caidas apagada: falta !FALTA_CAIDAS! - opcion 5]
+) else (
+  rem Sin --caidas-checkpoint: el default de ConfigCaidas es
+  rem modelo_demo_todo.pt, que es EL de despliegue ("entrenado con todo").
+  set FLAGS=!FLAGS! --caidas
 )
 if exist "horus\06_fusion_decision\topologia.json" (
   set FLAGS=!FLAGS! --topologia ..\06_fusion_decision\topologia.json

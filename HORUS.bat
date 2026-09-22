@@ -54,6 +54,10 @@ set M_OBJ=horus\04_cabezas\objetos\modelos\head_best_solo.pt
 set M_SEG=horus\04_cabezas\segmentacion\checkpoints\head_v4_produccion.pt
 set M_FIGHT=horus\fight\checkpoints\modelo_fight.pt
 set M_FALL=horus\fall\checkpoints\modelo_demo_todo.pt
+rem 22/09: faltaba mirar ESTE. Con mediapipe instalado pero sin el
+rem .task, el lanzador decia [SI] caidas y le pasaba --caidas al
+rem servicio: la cabeza no cargaba y el cartel ya habia dicho que si.
+set M_POSE=horus\fall\pose_landmarker.task
 set M_TOPO=horus\06_fusion_decision\topologia.json
 
 echo  Cabezas:
@@ -80,27 +84,33 @@ if exist "%M_FIGHT%" (
   echo    [NO] agresion       falta %M_FIGHT%
 )
 
-if exist "%M_FALL%" (
-  python -c "import mediapipe" >nul 2>&1
-  if errorlevel 1 (
-    echo    [NO] caidas         falta mediapipe: HORUS_herramientas.bat, opcion 5
-  ) else (
-    echo    [SI] caidas         desmayos y caidas
-    rem Sin --caidas-checkpoint: el default de ConfigCaidas es
-    rem modelo_demo_todo.pt, que es EL de despliegue ("entrenado con
-    rem todo"). Aca decia modelo_stgcn.pt, que es otro archivo y no
-    rem figura como opcion de despliegue en ningun lado.
-    set FLAGS=!FLAGS! --caidas
-  )
+rem Caidas necesita TRES cosas y hasta hoy se miraban dos. Con mediapipe
+rem instalado pero sin el .task, esto decia [SI] caidas y le pasaba --caidas
+rem al servicio: la cabeza no cargaba y el cartel ya habia dicho que si.
+rem
+rem Van como ifs sueltos y no anidados a proposito: cmd se equivoca feo con
+rem tres niveles de parentesis y un `set` adentro, y un lanzador que no abre
+rem es peor que uno que avisa mal.
+set FALTA_CAIDAS=
+if not exist "%M_FALL%" set FALTA_CAIDAS=%M_FALL%
+if not defined FALTA_CAIDAS if not exist "%M_POSE%" set FALTA_CAIDAS=pose_landmarker.task - opcion 5
+if not defined FALTA_CAIDAS python -c "import mediapipe" >nul 2>&1 || set FALTA_CAIDAS=mediapipe - opcion 5
+if defined FALTA_CAIDAS (
+  echo    [NO] caidas         falta !FALTA_CAIDAS!
 ) else (
-  echo    [NO] caidas         falta %M_FALL%
+  echo    [SI] caidas         desmayos y caidas
+  rem Sin --caidas-checkpoint: el default de ConfigCaidas es
+  rem modelo_demo_todo.pt, que es EL de despliegue ("entrenado con
+  rem todo"). Aca decia modelo_stgcn.pt, que es otro archivo y no
+  rem figura como opcion de despliegue en ningun lado.
+  set FLAGS=!FLAGS! --caidas
 )
 
 if exist "%M_TOPO%" (
   echo    [SI] topologia      zonas y horarios
   set FLAGS=!FLAGS! --topologia ..\06_fusion_decision\topologia.json
 ) else (
-  echo    [NO] topologia      sin zonas: intrusion y merodeo quedan DORMIDAS
+  echo    [NO] topologia      sin zonas: intrusion queda DORMIDA
   echo                        se arma con HORUS_herramientas.bat, opcion 6
 )
 echo.

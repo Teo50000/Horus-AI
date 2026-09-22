@@ -50,10 +50,22 @@ VARIANTES = {
 }
 
 
+def urls_de(variante: str) -> list:
+    """Las dos formas que usa Google para la misma cosa.
+
+    El catálogo publica los modelos como `.../float16/latest/...` y también
+    con el número de versión `.../float16/1/...`. Cuál anda cambia con el
+    tiempo y sin aviso. Probar las dos cuesta un pedido y evita que todo esto
+    se trabe por una URL movida.
+    """
+    base = ("https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
+            f"pose_landmarker_{variante}/float16")
+    return [f"{base}/latest/pose_landmarker_{variante}.task",
+            f"{base}/1/pose_landmarker_{variante}.task"]
+
+
 def url_de(variante: str) -> str:
-    return (f"https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-            f"pose_landmarker_{variante}/float16/latest/"
-            f"pose_landmarker_{variante}.task")
+    return urls_de(variante)[0]
 
 
 def paso(n: int, texto: str) -> None:
@@ -96,27 +108,37 @@ def bajar_task(variante: str) -> bool:
             return True
         print(f"     el que hay mide {tam} bytes: no es un modelo. Lo rehago.")
 
-    url = url_de(variante)
-    print(f"     bajando {variante} de storage.googleapis.com ...")
     tmp = _TASK + ".parcial"
-    try:
-        # Sin proxy: si hay un HTTP_PROXY de una VPN o un antivirus, este
-        # pedido se va a un proxy que probablemente no lo deje pasar.
-        abrir = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with abrir.open(url, timeout=90) as r, open(tmp, "wb") as fh:
-            while True:
-                trozo = r.read(1 << 16)
-                if not trozo:
-                    break
-                fh.write(trozo)
-    except Exception as e:                               # noqa: BLE001
-        if os.path.exists(tmp):
-            os.remove(tmp)
-        print(f"     no se pudo bajar: {type(e).__name__}: {str(e)[:140]}")
+    url = None
+    ultimo_error = None
+    for candidata in urls_de(variante):
+        print(f"     bajando {variante} de storage.googleapis.com ...")
+        try:
+            # Sin proxy: si hay un HTTP_PROXY de una VPN o un antivirus, este
+            # pedido se va a un proxy que probablemente no lo deje pasar.
+            abrir = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with abrir.open(candidata, timeout=90) as r, open(tmp, "wb") as fh:
+                while True:
+                    trozo = r.read(1 << 16)
+                    if not trozo:
+                        break
+                    fh.write(trozo)
+            url = candidata
+            break
+        except Exception as e:                           # noqa: BLE001
+            ultimo_error = e
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            print(f"       no salio por ahi: {type(e).__name__}: {str(e)[:90]}")
+
+    if url is None:
+        print(f"     no se pudo bajar: {type(ultimo_error).__name__}: "
+              f"{str(ultimo_error)[:140]}")
         print()
-        print(f"     Bajalo a mano de:")
-        print(f"       {url}")
-        print(f"     y guardalo como:")
+        print("     Bajalo a mano de cualquiera de estas dos:")
+        for c in urls_de(variante):
+            print(f"       {c}")
+        print("     y guardalo como:")
         print(f"       {_TASK}")
         return False
 

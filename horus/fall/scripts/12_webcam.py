@@ -125,8 +125,8 @@ if __name__ == "__main__":
             alarmas.append(t_seg)
             print(f"  ALARMA a los {t_seg:.1f}s")
 
-        if estado.n_buffer < cfg.ventana:
-            texto, color = f"cargando buffer {estado.n_buffer}/{cfg.ventana}", (180, 180, 180)
+        if not estado.listo:
+            texto, color = f"cargando buffer {estado.cobertura:.0%}", (180, 180, 180)
         elif estado.alarma_activa:
             texto, color = "CAIDA DETECTADA", (0, 0, 255)
         else:

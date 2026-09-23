@@ -28,3 +28,8 @@ Una fila por corrida. Detalle completo en `evento_{tag}.json`.
 | C3_nobypass_f2.5_tol1.5_10fps | 5c438f7 | le2i | 10 | LOSO | 69/130 | 53.1% | 2.85 | 3.44 | 7.49 | 0.85 | tolerancia=1.5, factor_pico=2.5, sin bypass |
 | C3_nobypass_f2.5_tol2.0_10fps | 5c438f7 | le2i | 10 | LOSO | 77/130 | 59.2% | 2.83 | 3.44 | 10.49 | 0.85 | tolerancia=2.0, factor_pico=2.5, sin bypass |
 | fase4a_defaults_loso_nativo | 5c438f7 | le2i | nativo | LOSO | 93/130 | 71.5% | 2.20 | 2.78 | 19.48 | 0.86 |  |
+| fase4b_remuestreo_nativo | 8fdb460 | le2i | nativo | LOSO | 96/130 | 73.8% | 2.12 | 2.69 | 29.97 | 0.86 |  |
+| fase4b_remuestreo_10 | 8fdb460 | le2i | 10 | LOSO | 89/130 | 68.5% | 2.15 | 2.65 | 31.47 | 0.85 |  |
+| fase4c_final_nativo | 8fdb460 | le2i | nativo | LOSO | 85/130 | 65.4% | 2.20 | 2.81 | 14.98 | 0.86 |  |
+| fase4c_final_10 | 8fdb460 | le2i | 10 | LOSO | 81/130 | 62.3% | 2.26 | 2.76 | 10.49 | 0.85 |  |
+| fase4c_final_8 | 8fdb460 | le2i | 8 | LOSO | 68/130 | 52.3% | 2.33 | 2.93 | 13.49 | 0.85 |  |

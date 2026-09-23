@@ -19,8 +19,17 @@ from preproceso import IDX_CI, IDX_CD, IDX_HI, IDX_HD
 @dataclass
 class ConfigDetector:
     ventana: int = 32               # frames por clip que espera el ST-GCN
-    paso: int = 4                   # clasifico cada `paso` llamadas, no cada frame
-    umbral: float = 0.5             # punto de operacion elegido en el barrido
+    # El modelo entreno con ventanas de 32 frames consecutivos a ~25 fps (1.24s de
+    # movimiento) y velocidades = diferencia entre frames a esa tasa. Si le doy un
+    # frame de camara por muestra, a 10 fps la ventana cubre 3.2s y las velocidades
+    # son 2.5x mas grandes: fuera de distribucion en las dos features. Por eso el
+    # buffer guarda (t, pose) y se REMUESTREA a esta tasa antes de clasificar.
+    fps_canonica: float = 25.0
+    paso_clasif_seg: float = 0.16   # cada cuanto clasifico (por reloj, no cada N frames)
+    # punto de operacion elegido con 19_barrer_alarma.py sobre LOSO Le2i, comparando
+    # a IGUAL tasa de falsas contra la linea base. OJO: el barrido se hizo sobre los
+    # mismos videos que se reportan, no es CV anidada.
+    umbral: float = 0.7
     persistencia: float = 1.0       # segundos que la prob debe sostenerse para disparar
     # cuanto tolero sin deteccion antes de resetear el buffer. MediaPipe pierde a la
     # persona con frecuencia cuando esta en el piso (37% de las caidas de Le2i s0
@@ -78,10 +87,12 @@ class Estado:
     prob: float                 # ultima P(fall) calculada (0.0 si el buffer no esta lleno o hubo reset)
     alarma_nueva: bool          # True solo en la llamada en que la alarma pasa de apagada a activa
     alarma_activa: bool
-    n_buffer: int               # cuantos frames hay en el buffer (hasta `ventana`)
+    n_buffer: int               # muestras acumuladas en el buffer
     pico_reciente: bool         # hubo un pico de velocidad valido dentro de ventana_post_pico_seg
     verticalidad: float | None  # ultima verticalidad del torso medida en una deteccion real
     clasifico: bool = False     # True si en esta llamada corrio el modelo (prob es fresca)
+    listo: bool = False          # el buffer ya cubre la ventana temporal completa
+    cobertura: float = 0.0       # fraccion de la ventana temporal cubierta, 0..1 (para mostrar progreso)
 
 
 class DetectorCaidas:
@@ -91,11 +102,16 @@ class DetectorCaidas:
         self.cfg = cfg or ConfigDetector()
         self.reiniciar()
 
+    @property
+    def ventana_seg(self):
+        """Duracion de la ventana que ve el modelo: 32 muestras a 25 fps = 31 intervalos."""
+        return (self.cfg.ventana - 1) / self.cfg.fps_canonica
+
     def reiniciar(self):
         c = self.cfg
-        self.buffer = deque(maxlen=c.ventana)   # ultimos `ventana` frames procesados (x,y,vx,vy)
+        self.buffer = deque()                   # (t, pose (33,2)) crudos, se remuestrean al clasificar
         self.ultimo_norm = None                 # ultimo frame valido, para rellenar huecos sin mirar al futuro
-        self.anterior_norm = None               # frame previo, para la velocidad
+        self.ultima_clasif_ts = None            # reloj de la ultima clasificacion
         self.ultima_deteccion_ts = None         # reloj de la ultima deteccion confiable (None = todavia ninguna)
         self.prob_actual = 0.0
         self.inicio_racha = None
@@ -118,7 +134,7 @@ class DetectorCaidas:
         # tiene nada que ver con lo que paso al reaparecer.
         self.buffer.clear()
         self.ultimo_norm = None
-        self.anterior_norm = None
+        self.ultima_clasif_ts = None
         self.inicio_racha = None
         self.alarma_activa = False
         self.prob_actual = 0.0
@@ -192,6 +208,30 @@ class DetectorCaidas:
         return (self.ultimo_pico_ts is not None
                 and (t - self.ultimo_pico_ts) <= self.cfg.ventana_post_pico_seg)
 
+    def _armar_clip(self, t):
+        """Remuestrea el buffer a `ventana` muestras equiespaciadas a fps_canonica,
+        terminando en t, y le calcula las velocidades. Asi el clip que ve el modelo
+        es identico en duracion y escala de velocidad al que vio entrenando, corra
+        la camara a 25 o a 8 fps.
+
+        Interpolacion lineal entre muestras. Los huecos de deteccion ya entraron al
+        buffer como la ultima pose repetida, asi que interpolar entre dos valores
+        iguales da una meseta: el hueco no se "rellena" inventando movimiento."""
+        c = self.cfg
+        ts = np.fromiter((x[0] for x in self.buffer), float, len(self.buffer))
+        poses = np.stack([x[1] for x in self.buffer])          # (n, 33, 2)
+        objetivo = np.linspace(t - self.ventana_seg, t, c.ventana)
+
+        j = np.clip(np.searchsorted(ts, objetivo, side="right") - 1, 0, len(ts) - 2)
+        dt = ts[j + 1] - ts[j]
+        w = np.where(dt > 1e-9, (objetivo - ts[j]) / np.where(dt > 1e-9, dt, 1.0), 0.0)
+        w = np.clip(w, 0.0, 1.0)[:, None, None]
+        xy = poses[j] * (1 - w) + poses[j + 1] * w             # (ventana, 33, 2)
+
+        vel = np.zeros_like(xy)
+        vel[1:] = xy[1:] - xy[:-1]
+        return np.concatenate([xy, vel], axis=2)               # (ventana, 33, 4)
+
     def actualizar(self, kp_norm, t) -> Estado:
         c = self.cfg
 
@@ -209,22 +249,38 @@ class DetectorCaidas:
                 kp_norm = self.ultimo_norm
 
             if kp_norm is not None:
+                # la velocidad para la heuristica se mide contra la ultima muestra
+                # del buffer (el pico se calcula sobre el stream crudo, a proposito:
+                # interpolar difumina un golpe de un frame)
+                anterior = self.buffer[-1][1] if self.buffer else None
+                vel = kp_norm - anterior if anterior is not None else np.zeros_like(kp_norm)
+
                 self.ultimo_norm = kp_norm
-                vel = kp_norm - self.anterior_norm if self.anterior_norm is not None else np.zeros_like(kp_norm)
-                self.anterior_norm = kp_norm
-                self.buffer.append(np.concatenate([kp_norm, vel], axis=1))
+                self.buffer.append((t, kp_norm))
+                # me guardo un poco mas que la ventana para tener el punto de apoyo
+                # anterior al borde izquierdo al interpolar
+                while len(self.buffer) > 2 and self.buffer[1][0] < t - self.ventana_seg:
+                    self.buffer.popleft()
 
                 # detecto picos de movimiento solo con detecciones reales: un
                 # frame repetido (fallback) tiene vel=0 y ensuciaria el baseline.
                 if deteccion_real_este_frame:
                     self._actualizar_pico(kp_norm, vel, t)
 
-        # clasificacion: solo con el buffer lleno y cada `paso` llamadas
+        # clasificacion: con la ventana temporal cubierta y cada paso_clasif_seg
+        cobertura = 0.0
+        if len(self.buffer) >= 2:
+            cobertura = min((self.buffer[-1][0] - self.buffer[0][0]) / self.ventana_seg, 1.0)
+        listo = cobertura >= 1.0
+
         alarma_nueva = False
         clasifico = False
-        if len(self.buffer) == c.ventana and self.n_llamadas % c.paso == 0:
+        toca_clasificar = (self.ultima_clasif_ts is None
+                           or (t - self.ultima_clasif_ts) >= c.paso_clasif_seg)
+        if listo and toca_clasificar:
             clasifico = True
-            clip = torch.tensor(np.array(self.buffer), dtype=torch.float32).unsqueeze(0).to(self.device)
+            self.ultima_clasif_ts = t
+            clip = torch.tensor(self._armar_clip(t), dtype=torch.float32).unsqueeze(0).to(self.device)
             with torch.no_grad():
                 self.prob_actual = torch.softmax(self.modelo(clip), 1)[0, 1].item()
 
@@ -244,6 +300,8 @@ class DetectorCaidas:
 
         self.n_llamadas += 1
         return Estado(
+            listo=listo,
+            cobertura=cobertura,
             prob=self.prob_actual,
             alarma_nueva=alarma_nueva,
             alarma_activa=self.alarma_activa,

@@ -251,8 +251,8 @@ if __name__ == "__main__":
         tiempos["modelo_fight"].append(time.perf_counter() - t0)
 
         # ---------- dibujo ----------
-        if estado_fall.n_buffer < cfg_fall.ventana:
-            texto_fall, color_fall = f"caida: cargando {estado_fall.n_buffer}/{cfg_fall.ventana}", (180, 180, 180)
+        if not estado_fall.listo:
+            texto_fall, color_fall = f"caida: cargando {estado_fall.cobertura:.0%}", (180, 180, 180)
         elif estado_fall.alarma_activa:
             texto_fall, color_fall = "CAIDA DETECTADA", (0, 0, 255)
         else:

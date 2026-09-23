@@ -1,0 +1,35 @@
+{
+  "_ojo": "Generado por bin/manifiesto_modelos.py. Los pesos no estan en git (son mas de 100 MB); esto es para verificar que la copia que llego a otra maquina es la correcta.",
+  "pesos": {
+    "objetos": {
+      "ruta": "horus/04_cabezas/objetos/modelos/head_best_solo.pt",
+      "bytes": 92954449,
+      "sha256": "e03ba76b9de4c13ca428e6a0b90e03bc5fe920a7199a5d2b245e63efdd699fb4",
+      "para": "personas, armas, fuego, humo, paquetes"
+    },
+    "segmentacion": {
+      "ruta": "horus/04_cabezas/segmentacion/checkpoints/head_v4_produccion.pt",
+      "bytes": 18931930,
+      "sha256": "ddd887e9a28141947f11278e7d8b904934924a1d0334566a2208f2e3b10a5c18",
+      "para": "fuego y humo por pixel, la que mejor anda"
+    },
+    "backbone": {
+      "ruta": "horus/04_cabezas/segmentacion/checkpoints/backbone.pt",
+      "bytes": 108006710,
+      "sha256": "7bb2b25ceca6d6acabfe144e1d3ae49312067c163ec03729edf43cb031016eea",
+      "para": "el tronco compartido; sin esto no carga ninguna cabeza"
+    },
+    "agresion": {
+      "ruta": "horus/fight/checkpoints/modelo_fight.pt",
+      "bytes": 46046004,
+      "sha256": "cd1d1b0e848b1aebd3289169cf0a19e547ee9a9aacfa2e9c5ca61eacf6d13506",
+      "para": "peleas"
+    },
+    "caidas": {
+      "ruta": "horus/fall/checkpoints/modelo_demo_todo.pt",
+      "bytes": 459617,
+      "sha256": "fafa30d2773b06cfd8c0ba560ab1641d536cb2c12c34086b22e8028b9cab460a",
+      "para": "desmayos y caidas (el ST-GCN)"
+    }
+  }
+}

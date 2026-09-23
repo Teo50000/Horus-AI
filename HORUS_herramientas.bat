@@ -14,7 +14,7 @@ echo.
 echo   Para usar el sistema no hace falta nada de esto:
 echo   con HORUS.bat alcanza. Esto es lo de vez en cuando.
 echo.
-echo   1  Correr las 12 suites de pruebas
+echo   1  Correr las 13 suites de pruebas
 echo   2  Mandar una alerta de prueba al panel
 echo   3  Ver que esta instalado y que falta
 echo   4  Pasar el detector por una carpeta de fotos tuyas
@@ -26,6 +26,7 @@ echo   9  Solo el backend, sin panel ni modelos
 echo   M  Arrancar SOLO los modelos, aca mismo
 echo   Q  Que esta viendo Horus ahora mismo ^(alerte o no^)
 echo   A  Revisar el aviso por MAIL ^(si pasa algo, le llega a alguien?^)
+echo   P  Que le falta a esta PC ^(para correrlo en otra maquina^)
 echo   L  Ver por que se cayo algo ^(los ultimos logs^)
 echo   V  Ver que camaras encuentra tu PC
 echo   C  Compactar el repositorio ^(.git ocupa 2,9 GB^)
@@ -46,6 +47,7 @@ if "%OPCION%"=="9" goto backend
 if /i "%OPCION%"=="M" goto modelos
 if /i "%OPCION%"=="Q" goto queve
 if /i "%OPCION%"=="A" goto mail
+if /i "%OPCION%"=="P" goto preparar
 if /i "%OPCION%"=="L" goto logs
 if /i "%OPCION%"=="V" goto camaras
 if /i "%OPCION%"=="C" goto compactar
@@ -56,7 +58,7 @@ rem ===============================================================
 :pruebas
 cls
 echo ==============================================================
-echo  HORUS - las 12 suites
+echo  HORUS - las 13 suites
 echo ==============================================================
 echo.
 set FALLAS=0
@@ -73,6 +75,7 @@ call :suite "horus\fall"                    probar_detector_caidas.py
 call :suite "horus\00_servicio"            probar_servicio.py
 call :suite "FASTAPI"                       probar_alertas_backend.py
 call :suite "bin"                           probar_configurar_mail.py
+call :suite "bin"                           probar_manifiesto.py
 
 rem La del panel es javascript, asi que va con node y aparte.
 pushd HorusAI
@@ -273,6 +276,25 @@ if not exist "FASTAPI\.env" (
   echo  Para mandar uno de prueba de verdad:
   echo     python bin\probar_mail.py --mandar
 )
+echo.
+pause
+goto menu
+
+rem ===============================================================
+:preparar
+cls
+echo  QUE LE FALTA A ESTA PC
+echo.
+echo  Pensado para cuando lo llevas a otra maquina. Clonar el repo NO
+echo  te trae los modelos: .gitignore excluye los .pt a proposito
+echo  porque backbone.pt son 103 MB y GitHub rechaza todo lo que pase
+echo  de 100 MB. Un clon limpio trae el codigo y cero pesos.
+echo.
+echo  Y ojo con torch: `pip install torch` en Windows baja la version
+echo  de CPU. El sistema arranca, no tira ningun error, y corre todo
+echo  por procesador aunque tengas la placa al lado.
+echo.
+python bin\preparar_pc.py
 echo.
 pause
 goto menu

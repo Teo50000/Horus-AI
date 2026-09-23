@@ -1,3 +1,13 @@
+# OJO con torch: `pip install torch` en Windows baja la build de CPU.
+# El sistema arranca igual, no tira un solo error, y corre TODO por
+# procesador aunque tengas una placa de 24 GB. Para la de GPU:
+#
+#     pip install torch torchvision --index-url \
+#         https://download.pytorch.org/whl/cu124
+#
+# El cu124 depende del driver; el selector de pytorch.org/get-started
+# da el comando exacto. `python bin/preparar_pc.py` te dice cual tenes.
+
 torch>=2.0
 torchvision
 numpy

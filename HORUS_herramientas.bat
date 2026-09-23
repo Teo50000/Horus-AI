@@ -14,7 +14,7 @@ echo.
 echo   Para usar el sistema no hace falta nada de esto:
 echo   con HORUS.bat alcanza. Esto es lo de vez en cuando.
 echo.
-echo   1  Correr las 11 suites de pruebas
+echo   1  Correr las 12 suites de pruebas
 echo   2  Mandar una alerta de prueba al panel
 echo   3  Ver que esta instalado y que falta
 echo   4  Pasar el detector por una carpeta de fotos tuyas
@@ -56,7 +56,7 @@ rem ===============================================================
 :pruebas
 cls
 echo ==============================================================
-echo  HORUS - las 11 suites
+echo  HORUS - las 12 suites
 echo ==============================================================
 echo.
 set FALLAS=0
@@ -72,6 +72,7 @@ call :suite "horus\fight"                   probar_detector_agresion.py
 call :suite "horus\fall"                    probar_detector_caidas.py
 call :suite "horus\00_servicio"            probar_servicio.py
 call :suite "FASTAPI"                       probar_alertas_backend.py
+call :suite "bin"                           probar_configurar_mail.py
 
 rem La del panel es javascript, asi que va con node y aparte.
 pushd HorusAI
@@ -253,8 +254,25 @@ echo.
 python bin\probar_mail.py
 echo.
 echo  --------------------------------------------------------------
-echo  Para mandar uno de prueba de verdad:
-echo     python bin\probar_mail.py --mandar
+if not exist "FASTAPI\.env" (
+  echo  Falta el archivo con las credenciales. Lo arma este asistente:
+  echo  te pide el Gmail y la clave de aplicacion, escribe el .env con
+  echo  el nombre bien puesto ^(el Bloc de notas le mete .txt sin avisar^)
+  echo  y prueba el login contra Gmail antes de darlo por bueno.
+  echo.
+  echo  La clave se pide sin que se vea, no se imprime en ningun lado y
+  echo  no sale de tu maquina salvo hacia Gmail.
+  echo.
+  set CONF=
+  set /p CONF=  Lo configuramos ahora? [S/n]: 
+  if /i not "!CONF!"=="n" (
+    echo.
+    python bin\configurar_mail.py
+  )
+) else (
+  echo  Para mandar uno de prueba de verdad:
+  echo     python bin\probar_mail.py --mandar
+)
 echo.
 pause
 goto menu

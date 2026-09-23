@@ -12,11 +12,13 @@ no enganchaba ni una cámara.
     python probar_alertas_backend.py
 """
 
+import contextlib
 import json
 import os
 import re
 from pathlib import Path
 import sys
+import shutil
 import tempfile
 import time
 from typing import Any, Callable, Dict, List, Tuple
@@ -551,6 +553,180 @@ def _hay_front() -> bool:
     return (_RAIZ_REPO / "HorusAI" / "src" / "config.js").exists()
 
 
+CLAVE_FALSA = "abcdefghijklmnop"
+
+
+class _ServidorDeMentira:
+    """El unico servidor SMTP que toca esta suite."""
+    acepta = True
+
+    def __init__(self, *a, **k):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def login(self, usuario, clave):
+        import smtplib as _s
+        if not _ServidorDeMentira.acepta:
+            raise _s.SMTPAuthenticationError(535, b"nope")
+        if clave != CLAVE_FALSA:
+            raise AssertionError("la clave llegó sin limpiar: %r" % clave)
+
+
+@contextlib.contextmanager
+def _config_aislada(acepta=True):
+    """Un .env en carpeta temporal. El de verdad NO se toca ni por accidente."""
+    import smtplib
+    import src.services.email_service as es
+    d = tempfile.mkdtemp(prefix="horus_cfg_")
+    viejo_ruta, viejo_smtp = es.RUTA_ENV, smtplib.SMTP_SSL
+    viejo_cred = (es.EMAIL_SENDER, es.EMAIL_PASSWORD)
+    es.RUTA_ENV = os.path.join(d, ".env")
+    smtplib.SMTP_SSL = _ServidorDeMentira
+    _ServidorDeMentira.acepta = acepta
+    try:
+        yield es
+    finally:
+        es.RUTA_ENV, smtplib.SMTP_SSL = viejo_ruta, viejo_smtp
+        es.EMAIL_SENDER, es.EMAIL_PASSWORD = viejo_cred
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def _cliente_config():
+    from fastapi import FastAPI as _F
+    from src.routers.config_rutas import config_router
+    app_cfg = _F()
+    app_cfg.include_router(prefix="/config", router=config_router)
+    return TestClient(app_cfg)
+
+
+def caso_config_no_devuelve_la_clave() -> Tuple[bool, str]:
+    """GET /config/mail nunca devuelve la contraseña.
+
+    Es el endpoint que consulta el panel cada vez que abris Ajustes. Que
+    conteste el estado esta bien; que conteste la credencial la pondria en
+    cualquier log, cualquier cache y cualquier captura de pantalla.
+    """
+    with _config_aislada() as es:
+        c = _cliente_config()
+        r = c.post("/config/mail", json={"remitente": "horus@gmail.com",
+                                         "clave": CLAVE_FALSA})
+        g = c.get("/config/mail")
+        crudo = g.text + r.text
+    ok = (CLAVE_FALSA not in crudo and "clave" not in g.json()
+          and "password" not in crudo.lower())
+    return ok, ("la clave no aparece en ninguna de las dos respuestas"
+                if ok else "APARECE la clave en la respuesta")
+
+
+def caso_config_clave_rechazada_no_guarda() -> Tuple[bool, str]:
+    """Si el servidor rechaza la clave, no queda nada escrito.
+
+    Un .env con una clave invalida es peor que no tener .env: apaga el cartel
+    de "ALERTAS SIN MAIL" del panel y deja el sistema igual de mudo, pero ya
+    sin nadie mirandolo.
+    """
+    with _config_aislada(acepta=False) as es:
+        # Se arranca de cero: la suite deja credenciales de mentira cargadas
+        # en el modulo y sin esto `estado_mail()` diria que si por un .env
+        # que no es el de este caso.
+        es.EMAIL_SENDER = es.EMAIL_PASSWORD = None
+        c = _cliente_config()
+        r = c.post("/config/mail", json={"remitente": "horus@gmail.com",
+                                         "clave": CLAVE_FALSA}).json()
+        escrito = os.path.exists(es.RUTA_ENV)
+        listo, _ = es.estado_mail()
+    ok = r["ok"] is False and not escrito and not listo
+    return ok, (f"ok={r['ok']} · archivo escrito={escrito} · "
+                f"motivo={r['motivo'][:48]!r}")
+
+
+def caso_config_guarda_y_recarga_en_caliente() -> Tuple[bool, str]:
+    """Guardar desde el panel alcanza: no hay que reiniciar el backend.
+
+    Las credenciales se leian una sola vez, al importar el modulo. Sin
+    recargar, guardar la clave y seguir viendo "ALERTAS SIN MAIL" eran
+    compatibles, y el que la guardo se iba convencido de que no anduvo.
+    """
+    with _config_aislada() as es:
+        es.EMAIL_SENDER = es.EMAIL_PASSWORD = None
+        antes, _ = es.estado_mail()
+        c = _cliente_config()
+        r = c.post("/config/mail", json={"remitente": "horus@gmail.com",
+                                         "clave": CLAVE_FALSA}).json()
+        despues, motivo = es.estado_mail()
+        escrito = os.path.exists(es.RUTA_ENV)
+    ok = antes is False and r["ok"] and despues and escrito
+    return ok, f"antes={antes} · despues={despues} · {motivo[:40]}"
+
+
+def caso_config_saca_los_espacios() -> Tuple[bool, str]:
+    """La clave pegada como la muestra Google entra igual.
+
+    Google la muestra en cuatro grupos de cuatro. Copiarla tal cual es el
+    error mas comun, y el servidor contesta un 535 que no distingue "clave
+    equivocada" de "clave bien, con espacios".
+    """
+    with _config_aislada() as es:
+        c = _cliente_config()
+        r = c.post("/config/mail", json={"remitente": "horus@gmail.com",
+                                         "clave": "abcd efgh ijkl mnop"}).json()
+        guardado = ""
+        if os.path.exists(es.RUTA_ENV):
+            for l in open(es.RUTA_ENV, encoding="utf-8"):
+                if l.startswith("EMAIL_PASSWORD="):
+                    guardado = l.split("=", 1)[1].strip()
+    ok = r["ok"] and guardado == CLAVE_FALSA
+    return ok, f"ok={r['ok']} · guardada con {len(guardado)} caracteres"
+
+
+def caso_panel_configura_el_mail() -> Tuple[bool, str]:
+    """La pantalla de Ajustes tiene donde poner la cuenta que manda.
+
+    Todo el camino del mail estaba escrito y aun asi no salia uno solo,
+    porque la credencial habia que ponerla en un archivo afuera de la app.
+    Con los contactos cargados y la pantalla completa, eso es indistinguible
+    de un sistema roto.
+    """
+    if not _hay_front():
+        return True, "sin HorusAI en esta rama, se saltea"
+    cfg = _texto_js("components", "MenuAjustes", "MailConfig", "MailConfig.jsx")
+    panel = _texto_js("components", "MenuAjustes", "AjustesPanel.jsx")
+    hook = _texto_js("components", "MenuAjustes", "useAjustes.js")
+    usa_config = "API_CONFIG" in hook and "/mail" in hook
+    montado = "MailConfig" in panel
+    tres_estados = 'mail === null' in cfg
+    tipo_password = 'type="password"' in cfg
+    ok = usa_config and montado and tres_estados and tipo_password
+    return ok, (f"montado={montado} · usa /config/mail={usa_config} · "
+                f"distingue 'no se'={tres_estados} · campo oculto={tipo_password}")
+
+
+def caso_toggles_de_ia_no_mienten() -> Tuple[bool, str]:
+    """Los toggles que no apagan nada no se pueden tocar.
+
+    Los tres de "Optimizacion de la IA" movian un estado de React y hacian un
+    console.log. Que modelos corren se decide con los flags del arranque, asi
+    que apagar "incendios" dejaba el sistema detectando incendios igual y al
+    que lo apago convencido de que no. Un control que miente es peor que uno
+    que no esta.
+    """
+    if not _hay_front():
+        return True, "sin HorusAI en esta rama, se saltea"
+    hook = _texto_js("components", "MenuAjustes", "useAjustes.js")
+    panel = _texto_js("components", "MenuAjustes", "AjustesPanel.jsx")
+    sin_log = 'console.log("Config IA' not in hook
+    hay_bandera = "IA_CONECTADA" in hook and "IA_CONECTADA" in panel
+    avisa = "todavia no apagan nada" in panel
+    ok = sin_log and hay_bandera and avisa
+    return ok, (f"sin console.log={sin_log} · deshabilitados={hay_bandera} · "
+                f"lo dice en pantalla={avisa}")
+
+
 def caso_panel_distingue_mail_sin_dato() -> Tuple[bool, str]:
     """El cartel del mail trata "no sé" distinto de "anda".
 
@@ -855,6 +1031,12 @@ CASOS: Dict[str, Callable[[], Tuple[bool, str]]] = {
     # --- la conexión con el panel ---
     "url_centralizada": caso_el_panel_no_tiene_la_url_a_mano,
     "cartel_mail": caso_panel_distingue_mail_sin_dato,
+    "config_sin_clave": caso_config_no_devuelve_la_clave,
+    "config_rechazada": caso_config_clave_rechazada_no_guarda,
+    "config_en_caliente": caso_config_guarda_y_recarga_en_caliente,
+    "config_espacios": caso_config_saca_los_espacios,
+    "panel_configura": caso_panel_configura_el_mail,
+    "toggles_honestos": caso_toggles_de_ia_no_mienten,
     "ruta_ws_existe": caso_la_ruta_del_panel_existe,
     "ws_de_verdad": caso_websocket_de_verdad,
     "mismo_nombre": caso_el_historial_dice_el_mismo_nombre,

@@ -1,0 +1,130 @@
+/* Mismo criterio de color que los carteles del Dashboard: naranja cuando el
+   canal esta apagado (las alertas se guardan igual), gris cuando todavia no
+   se sabe, verde apagado cuando anda. */
+
+.mailcfg__estado {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  margin-bottom: 8px;
+}
+
+.mailcfg__punto {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.mailcfg__estado--ok   { color: rgba(120, 220, 150, 0.9); background: rgba(120, 220, 150, 0.08); }
+.mailcfg__estado--no   { color: #ffa94d; background: rgba(255, 169, 77, 0.12); font-weight: 600; }
+.mailcfg__estado--nose { color: rgba(160, 160, 170, 0.85); background: rgba(160, 160, 170, 0.10); }
+
+.mailcfg__motivo {
+  font-size: 11px;
+  line-height: 1.45;
+  opacity: 0.75;
+  margin: 0 0 10px;
+}
+
+.mailcfg__abrir,
+.mailcfg__guardar,
+.mailcfg__cancelar {
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.mailcfg__abrir,
+.mailcfg__guardar {
+  background: rgba(120, 170, 240, 0.18);
+  color: rgba(190, 215, 255, 0.95);
+}
+
+.mailcfg__abrir:hover,
+.mailcfg__guardar:hover:not(:disabled) { background: rgba(120, 170, 240, 0.28); }
+
+.mailcfg__cancelar {
+  background: transparent;
+  color: rgba(200, 200, 210, 0.6);
+}
+
+.mailcfg__guardar:disabled { opacity: 0.45; cursor: default; }
+
+.mailcfg__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.mailcfg__label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.mailcfg__input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: inherit;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.mailcfg__input:focus {
+  outline: none;
+  border-color: rgba(120, 170, 240, 0.55);
+}
+
+.mailcfg__ayuda {
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: 0.65;
+  margin: 0;
+}
+
+.mailcfg__url {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  opacity: 0.9;
+}
+
+.mailcfg__acciones {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.mailcfg__resultado {
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+}
+
+.mailcfg__resultado--ok { color: rgba(120, 220, 150, 0.95); background: rgba(120, 220, 150, 0.10); }
+.mailcfg__resultado--no { color: #ffa94d; background: rgba(255, 169, 77, 0.12); }
+
+/* Los toggles que todavia no apagan nada. Ver el comentario en useAjustes. */
+.ajustes-toggle-row--muerto { opacity: 0.45; }
+
+.ajustes-nota-honesta {
+  font-size: 11px;
+  line-height: 1.45;
+  color: #ffa94d;
+  opacity: 0.85;
+  margin: 2px 0 0;
+}

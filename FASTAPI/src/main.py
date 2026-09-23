@@ -12,6 +12,7 @@ from src.database import crear_tablas
 from src.models import camara_model # IMPORTANTE para que SQLModel reconozca la tabla antes de crearla
 from src.routers.video_rutas import video_router
 from src.routers.alerta_rutas import alerta_router
+from src.routers.config_rutas import config_router
 from src.models import alerta_model # IMPORTANTE: registra la tabla antes de crearla
 
 def hay_websockets() -> Optional[str]:
@@ -73,12 +74,14 @@ async def lifespan(app: FastAPI):
         print("  pero NO le va a llegar un mail a nadie. Cada alerta queda")
         print('  marcada con mail_estado="apagado" para que se note.')
         print()
-        print(f"  Se arregla creando {RUTA_ENV} con:")
+        print("  Se configura DESDE EL PANEL: Ajustes -> Aviso por mail.")
+        print("  Pide la cuenta y una 'contrasena de aplicacion' de Google")
+        print("  (16 letras, NO la clave del mail), prueba el login contra el")
+        print("  servidor y recien ahi la guarda. No hace falta reiniciar.")
+        print()
+        print(f"  Si preferis el archivo a mano: {RUTA_ENV}")
         print("      EMAIL_SENDER=el-gmail-de-horus@gmail.com")
         print("      EMAIL_PASSWORD=la-clave-de-aplicacion-de-16-letras")
-        print()
-        print("  (es una 'contrasena de aplicacion' de Google, NO la clave")
-        print("   del mail. Ver FASTAPI/.env.example)")
         print("=" * 70)
 
     # Buscar las cámaras ACÁ y no cuando el panel las pide.
@@ -144,6 +147,7 @@ def estado():
 app.include_router(prefix='/camaras', router=camara_router)
 app.include_router(prefix='/video', router=video_router)
 app.include_router(prefix='/alertas', router=alerta_router)
+app.include_router(prefix='/config', router=config_router)
 
 if __name__ == "__main__":
     uvicorn.run(

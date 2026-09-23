@@ -88,7 +88,8 @@ def main() -> int:
     else:
         print("  APAGADO - %s" % motivo)
         print()
-        print("  Copia FASTAPI\\.env.example a FASTAPI\\.env y completalo.")
+        print("  Se configura desde el panel: Ajustes -> Aviso por mail.")
+        print("  (o con  python bin\\configurar_mail.py  si estas en consola)")
         print("  EMAIL_PASSWORD no es la clave de tu Gmail: es una")
         print("  'contrasena de aplicacion' de 16 letras que genera Google en")
         print("  https://myaccount.google.com/apppasswords")

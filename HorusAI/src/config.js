@@ -29,6 +29,7 @@ export const API_ALERTAS = `${API_URL}/alertas`;
 // decia nadie. El panel mostraba la alerta, la fila se guardaba, y el mail que
 // tenia que despertar a alguien no salia nunca.
 export const API_ESTADO  = `${API_URL}/estado`;
+export const API_CONFIG  = `${API_URL}/config`;
 
 // El websocket por el que salen las alertas hacia el panel.
 //

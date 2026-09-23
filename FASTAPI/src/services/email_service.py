@@ -46,6 +46,93 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
 SMTP_TIMEOUT = float(os.getenv("SMTP_TIMEOUT", "10"))
 
 
+def recargar() -> None:
+    """Volver a leer el .env sin reiniciar el backend.
+
+    22/09. Las credenciales se leen una vez, al importar el módulo. Con la
+    configuración metida en el panel eso alcanzaba para que guardar la clave
+    y seguir viendo "ALERTAS SIN MAIL" fueran compatibles: el archivo estaba
+    bien y el proceso tenía los valores viejos en memoria. El usuario habría
+    quedado convencido de que no le funcionó.
+    """
+    global EMAIL_SENDER, EMAIL_PASSWORD, SMTP_HOST, SMTP_PORT, SMTP_TIMEOUT
+    load_dotenv(RUTA_ENV, override=True)
+    EMAIL_SENDER = os.getenv("EMAIL_SENDER")
+    EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+    SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
+    SMTP_TIMEOUT = float(os.getenv("SMTP_TIMEOUT", "10"))
+
+
+def probar_credenciales(remitente: str, clave: str) -> Tuple[bool, str]:
+    """Autenticar contra el servidor SIN mandar nada y SIN guardar nada.
+
+    Se usa antes de escribir el .env. Guardar una clave que el servidor
+    rechaza dejaría un archivo que parece configurado, apagaría el cartel del
+    panel, y el sistema seguiría sin avisar — con la diferencia de que ahora
+    nadie lo estaría mirando.
+
+    Nunca devuelve ni registra la clave, solo el veredicto.
+    """
+    import socket
+    if not remitente or "@" not in remitente:
+        return False, "la dirección del remitente no parece un mail"
+    if not clave:
+        return False, "falta la contraseña de aplicación"
+    try:
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=SMTP_TIMEOUT) as s:
+            s.login(remitente, clave)
+        return True, "el servidor aceptó la clave"
+    except smtplib.SMTPAuthenticationError:
+        return False, ("el servidor rechazó la clave. Acordate de que Gmail "
+                       "no acepta la contraseña normal de la cuenta: tiene "
+                       "que ser una contraseña de aplicación de 16 letras")
+    except (socket.timeout, TimeoutError):
+        return False, (f"{SMTP_HOST}:{SMTP_PORT} no contestó a tiempo. Suele "
+                       "ser el firewall o la red bloqueando ese puerto")
+    except OSError as e:
+        return False, f"no pude conectarme a {SMTP_HOST}:{SMTP_PORT}: {e}"
+    except Exception as e:                                   # noqa: BLE001
+        return False, f"{type(e).__name__}: {str(e)[:120]}"
+
+
+def guardar_credenciales(remitente: str, clave: str) -> Tuple[bool, str]:
+    """Probar y, solo si anda, escribir el .env y recargar.
+
+    Los espacios se sacan acá: Google muestra la clave en cuatro grupos de
+    cuatro y copiarla tal cual es el error más común.
+    """
+    remitente = (remitente or "").strip()
+    clave = (clave or "").replace(" ", "").replace("\t", "").strip()
+
+    ok, motivo = probar_credenciales(remitente, clave)
+    if not ok:
+        return False, motivo
+
+    contenido = (
+        "# Generado desde el panel de Horus (Ajustes -> Aviso por mail).\n"
+        "# No se sube al repositorio: esta en .gitignore.\n"
+        "# Si alguna vez se filtra, se revoca desde la cuenta de Google y se\n"
+        "# genera otra, sin tocar la contrasena de la cuenta.\n"
+        f"EMAIL_SENDER={remitente}\n"
+        f"EMAIL_PASSWORD={clave}\n")
+    tmp = RUTA_ENV + ".parcial"
+    try:
+        os.makedirs(os.path.dirname(RUTA_ENV), exist_ok=True)
+        with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(contenido)
+        os.replace(tmp, RUTA_ENV)
+        try:
+            os.chmod(RUTA_ENV, 0o600)
+        except OSError:
+            pass
+    except OSError as e:
+        return False, f"no pude escribir {RUTA_ENV}: {e}"
+
+    recargar()
+    return True, "listo"
+
+
 class MailApagado(RuntimeError):
     """No hay credenciales: el mail no se intentó siquiera.
 

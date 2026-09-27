@@ -16,9 +16,9 @@ Lo primero que hay que entender, porque es lo que mas tiempo hace perder:
 un clon limpio trae todo el codigo, todas las pruebas, y cero pesos. El
 lanzador va a decir [NO] en cada cabeza y va a tener razon.
 
-Los pesos viajan aparte (OneDrive, un pendrive, Releases de GitHub) y
-`bin/manifiesto_modelos.py` confirma que lo que llego es lo que tenia que
-llegar.
+Los pesos viajan aparte, en un release de GitHub: `bin/bajar_modelos.py` los
+baja a su carpeta y `bin/manifiesto_modelos.py` confirma que lo que llego es
+lo que tenia que llegar.
 
 Lo segundo, que importa justo cuando la maquina es mas potente:
 
@@ -82,7 +82,7 @@ def revisar_python() -> None:
 def revisar_pesos() -> None:
     bloque("2. Los pesos de los modelos")
     print("  (clonar el repo NO los trae: son mas de 100 MB y GitHub no los")
-    print("   acepta. Vienen por OneDrive, pendrive o Releases.)")
+    print("   acepta. Estan en un release: python bin\\bajar_modelos.py)")
     print()
     sys.path.insert(0, os.path.join(RAIZ, "bin"))
     try:
@@ -101,7 +101,7 @@ def revisar_pesos() -> None:
     codigo = mm.verificar()
     if codigo != 0:
         anotar("pesos incompletos o equivocados",
-               "python bin\\manifiesto_modelos.py   (para ver cuales)")
+               "python bin\\bajar_modelos.py   (baja los que falten o esten mal)")
 
 
 def revisar_torch() -> None:

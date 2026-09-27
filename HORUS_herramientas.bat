@@ -27,6 +27,7 @@ echo   9  Solo el backend, sin panel ni modelos
 echo   M  Arrancar SOLO los modelos, aca mismo
 echo   Q  Que esta viendo Horus ahora mismo ^(alerte o no^)
 echo   A  Revisar el aviso por MAIL ^(si pasa algo, le llega a alguien?^)
+echo   B  Bajar los pesos de los modelos ^(de GitHub, unos 270 MB^)
 echo   P  Que le falta a esta PC ^(para correrlo en otra maquina^)
 echo   L  Ver por que se cayo algo ^(los ultimos logs^)
 echo   V  Ver que camaras encuentra tu PC
@@ -49,6 +50,7 @@ if "%OPCION%"=="9" goto backend
 if /i "%OPCION%"=="M" goto modelos
 if /i "%OPCION%"=="Q" goto queve
 if /i "%OPCION%"=="A" goto mail
+if /i "%OPCION%"=="B" goto bajar
 if /i "%OPCION%"=="P" goto preparar
 if /i "%OPCION%"=="L" goto logs
 if /i "%OPCION%"=="V" goto camaras
@@ -319,6 +321,23 @@ if not exist "FASTAPI\.env" (
   echo  Para mandar uno de prueba de verdad:
   echo     python bin\probar_mail.py --mandar
 )
+echo.
+pause
+goto menu
+
+rem ===============================================================
+:bajar
+cls
+echo ==============================================================
+echo  Bajar los pesos de los modelos
+echo ==============================================================
+echo.
+echo  Clonar el repo no los trae. Estan en el release modelos-2026-09
+echo  de GitHub, unos 270 MB en total. Cada uno se verifica contra
+echo  modelos.sha256.json antes de quedar instalado, y los que ya
+echo  tengas bien se saltean.
+echo.
+python bin\bajar_modelos.py
 echo.
 pause
 goto menu

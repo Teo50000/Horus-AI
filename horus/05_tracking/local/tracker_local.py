@@ -123,6 +123,14 @@ class ParametrosClase:
     dedup_contencion: float = 0.85
     nacer_iou_max: float = 0.60         # no nace un track encima de otro
     nacer_contencion_max: float = 0.85
+    # Entre TRACKS (ver `_fusionar_tracks`) se puede ser más agresivo que
+    # entre detecciones, porque dos tracks firmes solo se fusionan si siguen
+    # encimados ~1 s: dos personas que se cruzan no llegan. Lo que sí llega
+    # es lo que el usuario vio el 26/09, la persona "subdividida": cuerpo,
+    # torso y piernas como tres tracks que se acompañan todo el recorrido.
+    fusion_iou: float = 0.50
+    fusion_contencion: float = 0.75
+    fusion_margen_pie: float = 0.02     # fracción del alto, igual que la dedup
     # Para las clases que se apoyan en el piso (personas): una caja contenida
     # que pisa MÁS ABAJO que la que la contiene no es una parte de ella, es
     # otro objeto parado más cerca de la cámara. Ver `_pisa_mas_abajo`.
@@ -338,7 +346,7 @@ class _Track:
                  "media", "cov", "hits", "edad", "sin_ver", "estado",
                  "ts_nac", "frame_nac", "centros", "recorrido", "quieto_desde",
                  "needs_vlm", "ultimo_ts", "ultimo_frame", "global_id",
-                 "embedding")
+                 "embedding", "solape_ticks")
 
     def __init__(self, clase: str, class_id: int, caja: Sequence[float],
                  score: float, p: ParametrosClase, kf: Optional[FiltroKalman],
@@ -370,6 +378,9 @@ class _Track:
         self.needs_vlm = False
         self.global_id: Optional[int] = None
         self.embedding: Optional[np.ndarray] = None
+        # Ticks seguidos encima de otro track más firme de su clase. Ver
+        # `TrackerLocal._fusionar_tracks`.
+        self.solape_ticks = 0
 
     # -------------------------------------------------------------- #
     def predecir(self) -> np.ndarray:
@@ -498,6 +509,10 @@ class TrackerLocal:
         self.suprimidas_duplicadas = 0     # por solape con otra deteccion
         self.suprimidas_entre_clases = 0   # misma region, dos clases
         self.nacimientos_bloqueados = 0    # querian nacer encima de un track
+        self.tracks_fusionados = 0         # dos tracks sobre la misma cosa
+        # Ritmo REAL al que llegan los frames. Ver `_medir_fps`.
+        self._ts_prev: Optional[float] = None
+        self._fps_medido: Optional[float] = None
 
     # -------------------------------------------------------------- #
     def actualizar(self, detecciones: Iterable[Any],
@@ -510,6 +525,7 @@ class TrackerLocal:
         if frame_idx is None:
             frame_idx = self._frame
         self._frame = frame_idx + 1
+        self._medir_fps(ts)
 
         por_clase: Dict[str, List[Any]] = {}
         for d in detecciones or ():
@@ -643,7 +659,7 @@ class TrackerLocal:
         #    track y sobra una parcial que igual lo pisa.
         sueltas_altas = self._filtrar_nacimientos(tracks, sueltas_altas, p)
 
-        max_c = c.frames(p.ventana_s)
+        max_c = self._frames(p.ventana_s)
         for d in sueltas_altas:
             if len(tracks) >= c.max_tracks_por_clase:
                 self._descartados_por_techo += 1
@@ -653,11 +669,11 @@ class TrackerLocal:
                 score=_score(d), p=p,
                 kf=self._kf if p.kalman else None,
                 ts=ts, frame_idx=frame_idx,
-                max_centros=c.frames(c.historia_s)))
+                max_centros=self._frames(c.historia_s)))
 
         # 8. Promociones y bajas.
-        min_hits = max(2, c.frames(p.confirmar_s))
-        tol_tentativo = c.frames(p.tentativo_s)
+        min_hits = max(2, self._frames(p.confirmar_s))
+        tol_tentativo = self._frames(p.tentativo_s)
         vivos: List[_Track] = []
         for t in tracks:
             if t.estado == "tentativo":
@@ -672,11 +688,168 @@ class TrackerLocal:
                     t.estado = "confirmado"
             t.needs_vlm = _needs_vlm(t)
             vivos.append(t)
+        vivos = self._fusionar_tracks(vivos, p)
         self._tracks[clase] = vivos
 
         emitir = c.emitir_no_confirmados
         return [t.salida(self.camera_id, frame_idx, ts, c.quieto_s)
                 for t in vivos if emitir or t.estado != "tentativo"]
+
+    # -------------------------------------------------------------- #
+    def _medir_fps(self, ts: float) -> None:
+        """Estima a qué ritmo llegan de verdad los frames.
+
+        26/09 — "se superponen muchos cuadrados cuando aparezco". Todas las
+        ventanas del tracker están en SEGUNDOS, pero se convierten a frames
+        con `cfg.fps`, que vale 10 por defecto. En la PC de casa, con las
+        cuatro cabezas en CPU, el servicio da ~2,3 ticks por segundo (medido
+        en logs/modelos.txt: 70 ticks cada 30 s). Resultado: todo duraba 4,3
+        veces más de lo pensado. Un track perdido sobrevivía 6,5 s en vez de
+        1,5 s, parado donde la persona ya no estaba; un fantasma tentativo,
+        casi 1 s en vez de 0,2 s. Cada vez que alguien se movía más rápido de
+        lo que el tracker podía seguir, nacía un track nuevo y el viejo se
+        quedaba ahí: los cuadrados apilados.
+
+        Se mide con un promedio móvil del intervalo entre frames. `cfg.fps`
+        queda como techo: el servicio nunca pide más que eso, y así una
+        ráfaga (o un autotest que pasa ts a mano) no puede acortar las
+        ventanas por debajo de lo configurado.
+        """
+        prev, self._ts_prev = self._ts_prev, ts
+        if prev is None:
+            return
+        dt = ts - prev
+        if not (0.0 < dt < 5.0):          # reloj que salta o pausa larga
+            return
+        inst = 1.0 / dt
+        if self._fps_medido is None:
+            self._fps_medido = inst
+        else:
+            self._fps_medido += 0.2 * (inst - self._fps_medido)
+
+    @property
+    def fps_efectivo(self) -> float:
+        techo = max(self.cfg.fps, 1e-3)
+        if self._fps_medido is None:
+            return techo
+        return float(min(max(self._fps_medido, 0.5), techo))
+
+    def _frames(self, segundos: float, minimo: int = 1) -> int:
+        return max(minimo, int(round(segundos * self.fps_efectivo)))
+
+    def _fusionar_tracks(self, tracks: List[_Track],
+                         p: ParametrosClase) -> List[_Track]:
+        """Dos tracks de la misma clase sobre la misma cosa quedan en uno.
+
+        La dedup y el portero de nacimientos trabajan sobre DETECCIONES del
+        frame actual. Ninguno mira tracks contra tracks, y hay dos maneras de
+        que queden dos encimados:
+
+          - la persona se mueve más de lo que el Kalman predice (a 2 ticks/s
+            pasa seguido), su track se pierde, nace otro donde está ahora y
+            el viejo, que sigue prediciendo, se le cruza por encima;
+          - una caja parcial (torso, piernas) que un frame no chocó con nada
+            y nació; después la caja entera la tapa y ya nadie la saca.
+
+        Mismos criterios que la dedup (IoU o contención, con la excepción del
+        pie para las clases que se apoyan en el piso), pero con sus propios
+        umbrales, `fusion_*`, algo más bajos. De cada
+        par se queda el más firme: el que se vio en este frame, después el
+        confirmado, después el de más hits.
+
+        Si el que muere era más viejo y ya estaba confirmado, el que queda
+        HEREDA su identidad (id, nacimiento, id global). Es la misma cosa, y
+        merodeo o paquete abandonado cuentan el tiempo desde el nacimiento:
+        cortarlo cada vez que el tracker se atrasa reiniciaría el reloj.
+
+        Un tentativo encimado se resuelve en el momento, y también un perdido
+        que tiene encima a uno nacido después de perderse (es él mismo,
+        renacido). Dos tracks que ya se confirmaron y convivían pueden ser dos
+        personas que se cruzan: solo se fusionan si siguen encimados ~1 s.
+        """
+        n = len(tracks)
+        if n < 2 or (p.fusion_iou >= 1.0 and p.fusion_contencion >= 1.0):
+            for t in tracks:
+                t.solape_ticks = 0
+            return tracks
+
+        cajas = np.asarray([t.caja for t in tracks], dtype=np.float64)
+        iou = iou_matriz(cajas, cajas)
+        cont = contencion_matriz(cajas, cajas)      # cont[i, j]: i dentro de j
+        y2 = cajas[:, 3]
+        altos = np.maximum(cajas[:, 3] - cajas[:, 1], 1.0)
+
+        orden = sorted(range(n), key=lambda k: (tracks[k].sin_ver == 0,
+                                                tracks[k].estado == "confirmado",
+                                                tracks[k].hits),
+                       reverse=True)
+        persistencia = self._frames(1.0, minimo=2)
+        muerto = [False] * n
+        solapado = [False] * n
+
+        for pos, i in enumerate(orden):
+            if muerto[i]:
+                continue
+            for j in orden[pos + 1:]:
+                if muerto[j]:
+                    continue
+                dentro = float(cont[j, i])          # el más débil adentro
+                afuera = float(cont[i, j])          # el más firme adentro
+                if p.respetar_pie:
+                    # Entre tracks se perdona en los dos sentidos: el que
+                    # está adentro y pisa más abajo es otro, parado delante.
+                    # Se probó un margen de 8 % para atrapar también las
+                    # piernas sueltas (suelen bajar un poco más que la caja
+                    # del cuerpo) y rompió "persona chica adelante" del
+                    # autotest: un chico delante de un adulto pisa apenas un
+                    # 2 % más abajo. Ese caso manda.
+                    m = p.fusion_margen_pie
+                    if y2[j] > y2[i] + max(2.0, m * altos[i]):
+                        dentro = 0.0
+                    if y2[i] > y2[j] + max(2.0, m * altos[j]):
+                        afuera = 0.0
+                if not (iou[i, j] >= p.fusion_iou
+                        or max(dentro, afuera) >= p.fusion_contencion):
+                    continue
+                a, b = tracks[i], tracks[j]
+                # Se marca a LOS DOS. Si solo contara el más débil, el par
+                # que se turna quién se vio en el frame (cuerpo un tick,
+                # torso el siguiente) reiniciaría el contador cada vez y
+                # nunca llegaría a fusionarse.
+                solapado[i] = solapado[j] = True
+                # Un tentativo encimado se va en el momento: es un fantasma o
+                # una parte. Uno que ya se confirmó alguna vez, aunque ahora
+                # esté perdido, espera: en un cruce la dedup de detecciones
+                # le saca la caja al de atrás justo mientras se tapan, y
+                # fusionarlo ahí es regalarle su identidad al otro (lo
+                # atrapó "cruce sin intercambio" del autotest).
+                # La excepción: si el que está perdido se perdió ANTES de que
+                # naciera el otro, el otro es él mismo renacido (se movió más
+                # de lo que el Kalman esperaba). En un cruce es al revés: el
+                # que tapa ya existía cuando el de atrás dejó de verse.
+                renacido = b.sin_ver > 0 and a.ts_nac >= b.ultimo_ts
+                if (b.estado != "tentativo" and not renacido
+                        and b.solape_ticks + 1 < persistencia):
+                    continue
+                muerto[j] = True
+                self.tracks_fusionados += 1
+                if b.ts_nac < a.ts_nac and b.estado != "tentativo":
+                    a.id, a.ts_nac, a.frame_nac = b.id, b.ts_nac, b.frame_nac
+                    if a.global_id is None:
+                        a.global_id = b.global_id
+                    if a.embedding is None:
+                        a.embedding = b.embedding
+                    a.hits = max(a.hits, b.hits)
+                    if a.estado == "tentativo":
+                        a.estado = "confirmado"
+
+        vivos = []
+        for k, t in enumerate(tracks):
+            if muerto[k]:
+                continue
+            t.solape_ticks = t.solape_ticks + 1 if solapado[k] else 0
+            vivos.append(t)
+        return vivos
 
     # -------------------------------------------------------------- #
     @staticmethod

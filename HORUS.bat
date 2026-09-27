@@ -69,6 +69,22 @@ if exist "%M_OBJ%" (
   echo    [NO] objetos        falta %M_OBJ%
 )
 
+rem 26/09: YOLO11 preentrenado para personas, cuchillos y celulares. Con la
+rem cabeza propia sola el sistema veia personas en la silla con ropa. El
+rem servicio lo usa solo si estan los pesos; si falta el paquete, se instala
+rem una vez. Ifs de una linea a proposito (ver el comentario de caidas).
+set M_YOLO=horus\04_cabezas\objetos\modelos\yolo11n_416.onnx
+set HAY_YOLO=0
+if exist "%M_YOLO%" set HAY_YOLO=1
+if "!HAY_YOLO!"=="1" python -c "import ultralytics, onnxruntime" >nul 2>&1 || set HAY_YOLO=2
+if "!HAY_YOLO!"=="2" echo  Instalando YOLO11 y onnxruntime, una sola vez...
+if "!HAY_YOLO!"=="2" python -m pip install -q ultralytics onnxruntime
+if "!HAY_YOLO!"=="2" python -c "import ultralytics, onnxruntime" >nul 2>&1 && set HAY_YOLO=1
+if "!HAY_YOLO!"=="1" echo    [SI] yolo11         personas, cuchillos y celulares, preentrenado
+if "!HAY_YOLO!"=="1" set HAY_VISION=1
+if "!HAY_YOLO!"=="0" echo    [NO] yolo11         falta %M_YOLO%
+if "!HAY_YOLO!"=="2" echo    [NO] yolo11         no se pudo instalar: pip install ultralytics onnxruntime
+
 if exist "%M_SEG%" (
   echo    [SI] segmentacion   fuego y humo, la que mejor anda
   set FLAGS=!FLAGS! --segmentacion

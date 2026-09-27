@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // Los tipos que emite de verdad la capa de fusión (horus/06_fusion_decision).
 // 18/09: este mapa conocía 5 claves —fire, assault, faint, desmayo, incendio—
@@ -101,6 +101,9 @@ export function eventoDelSocket(raw) {
     fechaIso:   raw.timestamp,
     confidence: raw.confidence,
     severidad:  raw.alerta?.severidad ?? null,
+    // 26/09: la captura y el clip de la alerta (rutas del backend).
+    capturaUrl: raw.captura_url ?? null,
+    clipUrl:    raw.clip_url ?? null,
     envivo:     true,
   };
 }
@@ -116,6 +119,9 @@ export function eventoDeLaBase(fila) {
     fechaIso:   fila.ts_inicio,
     confidence: fila.confianza,
     severidad:  fila.severidad ?? null,
+    capturaUrl: fila.captura_url ?? null,
+    clipUrl:    fila.clip_url ?? null,
+    revision:   fila.revision ?? null,
     envivo:     false,
   };
 }
@@ -187,5 +193,8 @@ export function useWebSocketEventos(url) {
     };
   }, [url]);
 
-  return { eventos, conectado };
+  // Para "Limpiar historial": lo que llegó en vivo también se va.
+  const limpiar = useCallback(() => setEventos([]), []);
+
+  return { eventos, conectado, limpiar };
 }

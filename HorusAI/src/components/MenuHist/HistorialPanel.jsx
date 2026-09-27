@@ -1,6 +1,8 @@
+import { useState } from "react";
 import SearchBar from "./SearchBar/SearchBar";
 import FilterButtons from "./FilterButtons/FilterButtons";
 import EventoItem from "./EventoItem/EventoItem";
+import VisorEvidencia from "./VisorEvidencia/VisorEvidencia";
 import CloseButton from "../CloseButton/CloseButton";
 import { TIPOS_EVENTO } from "./useHistorial";
 import "./HistorialPanel.css";
@@ -16,6 +18,9 @@ export default function HistorialPanel({
   cargando = false,
   errorCarga = null,
   recargar,
+  borrarHistorial,
+  borrando = false,
+  revisarAlerta,
 }) {
   // Un historial vacio puede significar tres cosas MUY distintas: que todavia
   // no llego la respuesta, que el backend no contesta, o que de verdad no paso
@@ -23,6 +28,10 @@ export default function HistorialPanel({
   // una regla que se calla cuando no puede correr: el panel dice "todo
   // tranquilo" cuando en realidad no sabe.
   const hayFiltro = filtroActivo !== null || query.trim() !== "";
+  const [viendo, setViendo] = useState(null);
+  // Dos pasos en vez de un confirm(): el primer clic pregunta, el segundo
+  // borra. Un historial no se vacia de un solo clic distraido.
+  const [preguntando, setPreguntando] = useState(false);
   return (
     <div className="historial-panel" role="region" aria-label="Historial">
 
@@ -48,6 +57,10 @@ export default function HistorialPanel({
               camara={ev.camara}
               tipo={ev.tipo}
               fecha={ev.fecha}
+              capturaUrl={ev.capturaUrl}
+              clipUrl={ev.clipUrl}
+              revision={ev.revision}
+              onVer={() => setViendo(ev)}
             />
           ))}
         </ul>
@@ -73,6 +86,38 @@ export default function HistorialPanel({
         <p className="historial-panel__empty">Sin resultados para esta busqueda.</p>
       ) : (
         <p className="historial-panel__empty">Todavia no se registro ningun evento.</p>
+      )}
+
+      {borrarHistorial && eventosFiltrados.length > 0 && (
+        <div className="historial-panel__limpiar">
+          {!preguntando ? (
+            <button type="button" className="historial-panel__reintentar"
+                    onClick={() => setPreguntando(true)}>
+              Limpiar historial
+            </button>
+          ) : (
+            <>
+              <span>¿Borrar todo el historial? Queda una copia.</span>
+              <button type="button" className="historial-panel__reintentar"
+                      disabled={borrando}
+                      onClick={async () => { await borrarHistorial(); setPreguntando(false); }}>
+                {borrando ? "Borrando..." : "Si, borrar"}
+              </button>
+              <button type="button" className="historial-panel__reintentar"
+                      onClick={() => setPreguntando(false)}>
+                No
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {viendo && (
+        <VisorEvidencia
+          evento={eventosFiltrados.find((e) => e.id === viendo.id) ?? viendo}
+          onClose={() => setViendo(null)}
+          onRevisar={revisarAlerta ? (v) => revisarAlerta(viendo.id, v) : null}
+        />
       )}
 
     </div>

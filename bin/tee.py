@@ -29,7 +29,14 @@ def main() -> int:
     salida = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8",
                               errors="replace", newline="")
 
-    with io.open(destino, "w", encoding="utf-8", errors="replace",
+    # Se vacía al arrancar (cada corrida empieza su log de cero) y después se
+    # escribe en modo APPEND. 26/09: con "w" a secas, vaciar el log con el
+    # programa andando dejaba el archivo con un bloque de ceros al principio:
+    # el proceso seguía escribiendo en su posición vieja. En append cada línea
+    # va al final real del archivo, así que se puede limpiar en cualquier
+    # momento sin cerrar nada.
+    io.open(destino, "w", encoding="utf-8").close()
+    with io.open(destino, "a", encoding="utf-8", errors="replace",
                  newline="") as fh:
         for linea in entrada:
             salida.write(linea)

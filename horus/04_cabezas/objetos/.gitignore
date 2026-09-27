@@ -32,3 +32,7 @@ __pycache__/
 # Si algun dia lo adelgazas a 33 MB (HORUS_herramientas.bat, opcion 7), sacale
 # el "!" de abajo y entra.
 modelos/head_best_solo.pt
+# Lo mismo para las versiones guardadas aparte (v3_17sep, v5_26sep, ...):
+# 89 MB cada una. Sin esta linea el "!modelos/*.pt" de arriba las dejaba
+# entrar y un commit de todo subia casi 280 MB de pesos.
+modelos/head_best_solo*.pt

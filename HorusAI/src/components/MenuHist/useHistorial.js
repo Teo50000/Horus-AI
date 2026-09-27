@@ -21,7 +21,7 @@ import { TIPOS_EN_ESPANOL, eventoDeLaBase } from "../../hooks/useWebSocketEvento
 // mapearTipo, asi que no se puede desincronizar.
 export const TIPOS_EVENTO = TIPOS_EN_ESPANOL;
 
-export function useHistorial(eventos = []) {
+export function useHistorial(eventos = [], limpiarEnVivo = null) {
   // -- Estado del panel ------------------------------------------
   const [isOpen, setIsOpen] = useState(false);
 
@@ -64,6 +64,46 @@ export function useHistorial(eventos = []) {
     return () => ac.abort();
   }, [recargar]);
 
+  // -- Revisar una alerta (capa 12) --------------------------------
+  // 26/09. "Fue real" / "Falsa alarma" desde el visor. El backend lo anota y
+  // copia el cuadro crudo y el clip a FASTAPI/revision/: de ahi sale el dato
+  // de esta casa para el proximo reentreno. Se guarda aparte del evento para
+  // que valga tambien para los que llegaron en vivo.
+  const [revisiones, setRevisiones] = useState({});
+  const revisarAlerta = useCallback(async (eventoId, veredicto) => {
+    const r = await fetch(`${API_ALERTAS}/${encodeURIComponent(eventoId)}/revision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ veredicto }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    setRevisiones((prev) => ({ ...prev, [eventoId]: d.revision }));
+    return d;
+  }, []);
+
+  // -- Vaciar el historial ---------------------------------------
+  // 26/09. El backend guarda una copia de la base y de las imagenes antes de
+  // borrar (FASTAPI/respaldos/historial-<fecha>/), asi que no se pierde nada:
+  // solo deja de verse aca. Las camaras y los contactos no se tocan.
+  const [borrando, setBorrando] = useState(false);
+  const borrarHistorial = useCallback(async () => {
+    setBorrando(true);
+    try {
+      const r = await fetch(`${API_ALERTAS}?confirmar=true`, { method: "DELETE" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      limpiarEnVivo?.();
+      setGuardados([]);
+      setErrorCarga(null);
+      return await r.json();
+    } catch (err) {
+      setErrorCarga(`no se pudo limpiar: ${err.message}`);
+      return null;
+    } finally {
+      setBorrando(false);
+    }
+  }, [limpiarEnVivo]);
+
   // -- Estado de busqueda ----------------------------------------
   // El usuario puede escribir el nombre de una camara ("Camara 3")
   // o una fecha ("12/06/25"). La busqueda es case-insensitive.
@@ -88,13 +128,16 @@ export function useHistorial(eventos = []) {
   const todos = useMemo(() => {
     const porId = new Map();
     for (const ev of guardados) porId.set(ev.id, ev);
-    for (const ev of eventos)   porId.set(ev.id, ev);
+    for (const ev of eventos)   porId.set(ev.id, { ...porId.get(ev.id), ...ev });
+    for (const [id, rev] of Object.entries(revisiones)) {
+      if (porId.has(id)) porId.set(id, { ...porId.get(id), revision: rev });
+    }
     // Se ordena por la fecha ISO, no por la corta: "24/08/26" no se ordena
     // bien como texto (el dia queda adelante del anio).
     return [...porId.values()].sort((a, b) =>
       String(b.fechaIso ?? "").localeCompare(String(a.fechaIso ?? ""))
     );
-  }, [eventos, guardados]);
+  }, [eventos, guardados, revisiones]);
 
   // -- Lista filtrada --------------------------------------------
   // useMemo evita recalcular en cada render si no cambiaron las dependencias
@@ -144,5 +187,12 @@ export function useHistorial(eventos = []) {
     cargando,
     errorCarga,
     recargar,
+
+    // Vaciarlo
+    borrarHistorial,
+    borrando,
+
+    // Revisar
+    revisarAlerta,
   };
 }

@@ -81,12 +81,42 @@ class Alerta(SQLModel, table=True):
     mail_estado: Optional[str] = Field(default=None, index=True)
     mail_detalle: Optional[str] = None
 
+    # La evidencia: qué se veía cuando saltó la alerta. 26/09.
+    #
+    # Rutas relativas al backend (`/evidencia/capturas/...jpg`), que es como
+    # las pidió el diseño de la fila `Camara` (`snapshot_url`, `clip_url`, "para
+    # otro sprint"). La captura es el cuadro con las cajas dibujadas; el clip,
+    # los segundos ANTERIORES a la alerta, que es lo que explica por qué saltó.
+    # Si un mensaje llega sin adjuntos (los re-avisos cada 20 s no los traen),
+    # hereda los del mensaje anterior del mismo evento.
+    captura_url: Optional[str] = None
+    clip_url: Optional[str] = None
+    # El cuadro SIN dibujar (sin cajas ni textos). No se muestra: es para
+    # reentrenar, y un cuadro con cajas pintadas no sirve como dato.
+    cruda_url: Optional[str] = None
+
+    # La revisión de una persona (capa 12). 26/09: "correcta" o "falsa". Cada
+    # falsa alarma marcada queda copiada en FASTAPI/revision/ con su cuadro
+    # crudo y su clip: es el dato que falta para que el próximo reentreno
+    # aprenda de ESTA casa y no de fotos de internet.
+    revision: Optional[str] = Field(default=None, index=True)
+    revision_nota: Optional[str] = None
+    revisado_en: Optional[str] = None
+
 
 # --------------------------------------------------------------------------- #
 # Lo que entra por el POST
 # --------------------------------------------------------------------------- #
 class _Sitio(BaseModel):
+    # 26/09: sin `extra="allow"` pydantic tiraba en silencio todo campo que no
+    # estuviera declarado, y el servicio manda `camara_config_id` acá adentro.
+    # Se perdía el único dato que dice CUÁL cámara registrada es: desde el
+    # 15/09 todas las alertas quedaban como "cam-1" en vez del nombre que el
+    # usuario le puso a su cámara. Ver `_config_de` en alerta_rutas.
+    model_config = ConfigDict(extra="allow")
+
     camara: str
+    camara_config_id: Optional[int] = None
     camaras: List[str] = PField(default_factory=list)
     zona: Optional[str] = None
     instalacion: Optional[str] = None

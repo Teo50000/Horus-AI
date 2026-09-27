@@ -3,8 +3,8 @@
   "pesos": {
     "objetos": {
       "ruta": "horus/04_cabezas/objetos/modelos/head_best_solo.pt",
-      "bytes": 92954449,
-      "sha256": "e03ba76b9de4c13ca428e6a0b90e03bc5fe920a7199a5d2b245e63efdd699fb4",
+      "bytes": 92954577,
+      "sha256": "661eaee9d5684219e298638184b2e8a3734fce5a90b15982acf221a29ef77b91",
       "para": "personas, armas, fuego, humo, paquetes"
     },
     "segmentacion": {

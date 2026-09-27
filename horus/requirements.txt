@@ -12,3 +12,9 @@ torch>=2.0
 torchvision
 numpy
 opencv-python
+
+# 26/09: detector preentrenado (04_cabezas/objetos/motor_yolo.py). YOLO11 es
+# AGPL-3.0: sirve para un proyecto abierto; para venderlo cerrado hace falta la
+# licencia comercial de Ultralytics. onnxruntime lo hace ~1,8x mas rapido en CPU.
+ultralytics
+onnxruntime

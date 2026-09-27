@@ -88,6 +88,7 @@ for _p in (_AQUI,
         sys.path.insert(0, _p)
 
 from alerta import ConfigAlerta, EmisorAlertas, TransporteHTTP  # noqa: E402
+from evidencia import Grabadora  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -147,6 +148,21 @@ class ConfigServicio:
     puerto_stream: int = 8010              # 0 = no levantar el servidor MJPEG
     dibujar: bool = True
 
+    # --- detector preentrenado (04_cabezas/objetos/motor_yolo.py) --------
+    # 26/09: YOLO11 de COCO para persona, cuchillo y celular. La cabeza propia
+    # queda solo para pistola, humo, llama y paquete. "auto" = se usa si están
+    # los pesos en modelos/ y ultralytics instalado; si no, se sigue como antes
+    # y se dice fuerte. "no" = solo la cabeza propia. Otra cosa = ruta.
+    yolo: str = "auto"
+    yolo_tam: int = 416
+    yolo_bolsos: bool = False
+
+    # --- evidencia (07_alerta/evidencia.py) ------------------------------
+    # 26/09: cada alerta que abre o sube de severidad lleva la captura del
+    # momento y un clip de los `clip_s` segundos anteriores.
+    evidencia: bool = True
+    clip_s: float = 8.0
+
     # --- respaldo y pruebas ----------------------------------------------
     camaras_json: Optional[str] = None     # lista local si el backend no está
     simular: bool = False
@@ -159,6 +175,23 @@ class ConfigServicio:
 def _log(cfg: ConfigServicio, *a: Any) -> None:
     if cfg.verboso:
         print(f"[{time.strftime('%H:%M:%S')}]", *a, flush=True)
+
+
+def _hay_pesos_yolo() -> bool:
+    try:
+        from motor_yolo import pesos_por_defecto
+        return pesos_por_defecto() is not None
+    except Exception:                                    # noqa: BLE001
+        return False
+
+
+def _ascii(texto: str) -> str:
+    """cv2.putText solo sabe ASCII: "CRÍTICO · cam-1" salía "CR??TICO ?? cam-1".
+    Antes se veía solo en el panel; desde el 26/09 va en la captura que llega
+    por mail, así que se escribe sin tildes."""
+    import unicodedata
+    t = str(texto).replace("·", "|").replace("—", "-").replace("–", "-")
+    return unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode("ascii")
 
 
 # --------------------------------------------------------------------------- #
@@ -383,7 +416,8 @@ class TransporteBackend:
     nombre = "backend"
 
     def __init__(self, cfg_alerta: ConfigAlerta,
-                 mapa: Dict[str, Optional[int]]) -> None:
+                 mapa: Dict[str, Optional[int]],
+                 grabadora: Optional[Grabadora] = None) -> None:
         # 18/09, MEDIDO: acá decía `TransporteHTTP(cfg_alerta)`, pasándole el
         # objeto de configuración entero donde va la URL. El primer parámetro
         # de TransporteHTTP es `url: str`, así que self.url quedaba siendo un
@@ -393,13 +427,49 @@ class TransporteBackend:
         # ninguna llegaba al backend, sin una sola línea de error visible.
         self._http = TransporteHTTP(cfg_alerta.url, cfg_alerta.token)
         self.mapa = mapa
+        self.grabadora = grabadora
+        # evento_id -> severidad con la que ya se mandó evidencia.
+        self._con_evidencia: Dict[str, int] = {}
 
     def enviar(self, payload: Dict[str, Any]) -> None:
         cam = payload.get("sitio", {}).get("camara", "")
         cid = self.mapa.get(cam)
         if cid is not None:
             payload.setdefault("sitio", {})["camara_config_id"] = cid
+        self._adjuntar(payload, cam)
         self._http.enviar(payload)
+
+    def _adjuntar(self, payload: Dict[str, Any], cam: str) -> None:
+        """La captura y el clip, solo cuando el evento ABRE o SUBE de severidad.
+
+        Son los mismos dos momentos en que el backend lo muestra en el panel y
+        manda el mail. Los re-avisos cada 20 s no llevan nada: el backend les
+        hereda la evidencia del mensaje anterior, y mandar un clip nuevo cada
+        20 s sería llenar el disco con el mismo incendio.
+
+        Nunca levanta: una alerta sin imagen es mejor que una alerta que no
+        sale. Si el POST falla y se reintenta, el payload ya trae los
+        adjuntos y no se vuelven a armar.
+        """
+        if self.grabadora is None or "adjuntos" in payload:
+            return
+        evento = str(payload.get("id", ""))
+        sev = int(payload.get("severidad_num", 0) or 0)
+        if sev <= self._con_evidencia.get(evento, -1):
+            return
+        try:
+            adj = self.grabadora.adjuntos(cam)
+        except Exception as exc:                         # noqa: BLE001
+            print(f"[evidencia] no pude armar la evidencia de {evento}: {exc}",
+                  file=sys.stderr, flush=True)
+            return
+        if not adj:
+            return
+        payload["adjuntos"] = adj
+        self._con_evidencia[evento] = sev
+        if len(self._con_evidencia) > 1000:              # no crecer para siempre
+            for k in list(self._con_evidencia)[:500]:
+                self._con_evidencia.pop(k, None)
 
 
 # --------------------------------------------------------------------------- #
@@ -418,7 +488,11 @@ class Servicio:
         self._anotados: Dict[str, bytes] = {}
         self._lock_anotados = threading.Lock()
         self._srv_http: Any = None
+        # Los últimos segundos de cada cámara, para adjuntarlos a la alerta.
+        self.grabadora: Optional[Grabadora] = (
+            Grabadora(segundos=cfg.clip_s) if cfg.evidencia else None)
 
+        self.detector: Optional[str] = None
         self.ticks = 0
         self.eventos = 0
         self.arranque = 0.0
@@ -502,10 +576,40 @@ class Servicio:
                     f"pero creyendo que está es la falla que este sistema no "
                     f"se puede permitir.") from e
 
+        cfg_tracker = None
+        pesos_propios = None if c.simular else c.pesos
+        if not c.simular and c.yolo != "no":
+            yolo = self._cargar_yolo()
+            if yolo is not None:
+                from motor_yolo import MotorMixto
+                from tracker_local import ConfigTracker
+                # Si ya está el YOLO reentrenado con pistola/humo/llama/paquete
+                # (entrenar_yolo.py), la cabeza propia no se carga: era lo más
+                # lento del servicio (un ResNet-50 entero por cuadro).
+                propio = self._cargar_yolo_horus()
+                if propio is None and c.pesos:
+                    propio = PipelineHorus._crear_motor(
+                        c.pesos, c.pesos_backbone, max(c.max_batch, 1), c.device,
+                        c.verboso)
+                motor = MotorMixto(yolo, propio) if propio is not None else yolo
+                pesos_propios = None
+                cfg_tracker = ConfigTracker(fps=c.fps)
+                # Otra escala de scores: YOLO le da 0,6-0,9 a una persona de
+                # verdad y la silla con ropa le llega a 0,3-0,4 (medido en
+                # los 293 cuadros vacíos: 33 cuadros >= 0,25, 8 >= 0,40).
+                p = cfg_tracker.params("persona")
+                p.score_alto, p.score_bajo = 0.40, 0.20
+                if propio is None:
+                    self.detector = "YOLO11"
+                elif hasattr(propio, "mapa"):
+                    self.detector = "YOLO11 + YOLO11 de Horus (pistola, humo, llama, paquete)"
+                else:
+                    self.detector = "YOLO11 + cabeza propia (pistola, humo, llama, paquete)"
         self.pipe = PipelineHorus(
-            pesos=None if c.simular else c.pesos,
+            pesos=pesos_propios,
             pesos_backbone=c.pesos_backbone,
             topologia=topo, fps=c.fps, max_batch=max(c.max_batch, 1),
+            cfg_tracker=cfg_tracker,
             motor_objetos=motor, motor_segmentacion=motor_seg,
             device=c.device, detector_agresion=(c.agresion and not c.simular),
             detector_caidas=det_caidas, verboso=c.verboso)
@@ -514,7 +618,8 @@ class Servicio:
             url=c.url(c.ruta_alertas), token=c.token, spool=c.spool,
             severidad_min=c.severidad_min, sitio=c.sitio, nodo=c.nodo)
         self.emisor = EmisorAlertas(
-            cfg_al, transporte=TransporteBackend(cfg_al, self.config_ids))
+            cfg_al, transporte=TransporteBackend(cfg_al, self.config_ids,
+                                                 self.grabadora))
         # (antes acá se hacía `self.pipe.emisor = self.emisor`, que no servía
         # de nada: el pipeline no lee ese atributo. Quien emite es el bucle.)
 
@@ -522,7 +627,8 @@ class Servicio:
         # un vistazo: la diferencia entre "no pasó nada" y "nadie lo estaba
         # mirando" empieza acá.
         for nombre, prendida, porque in (
-                ("objetos     ", self.pipe.objetos is not None, "--pesos"),
+                (f"objetos     {' [' + self.detector + ']' if self.detector else ''}",
+                 self.pipe.objetos is not None, "--pesos"),
                 ("segmentación", self.pipe.segmentacion is not None, "--segmentacion"),
                 ("agresión    ", self.pipe.agresion is not None, "--agresion"),
                 ("caídas      ", self.pipe.caidas is not None, "--caidas")):
@@ -543,6 +649,53 @@ class Servicio:
 
         # (el servidor HTTP ya se levantó al principio de iniciar(), antes de
         # cargar los modelos: ver el comentario de allá arriba.)
+
+    # ------------------------------------------------------------------ #
+    def _cargar_yolo(self):
+        """El detector preentrenado. None si no está y se pidió "auto".
+
+        Con "auto" que falte no es un error: se sigue con la cabeza propia,
+        como antes, pero se dice fuerte, porque con ella el sistema ve gente
+        donde no hay. Pedido con una ruta y sin poder cargar: no arranca.
+        """
+        c = self.cfg
+        try:
+            from motor_yolo import ConfigYolo, MotorYolo
+            dev = c.device or "cpu"
+            if dev != "cpu":
+                try:
+                    import torch
+                    dev = "cuda" if torch.cuda.is_available() else "cpu"
+                except Exception:                        # noqa: BLE001
+                    dev = "cpu"
+            return MotorYolo(ConfigYolo(
+                pesos=None if c.yolo == "auto" else c.yolo, tam=c.yolo_tam,
+                bolsos=c.yolo_bolsos, device=dev, verboso=c.verboso))
+        except Exception as e:                           # noqa: BLE001
+            if c.yolo != "auto":
+                raise RuntimeError(f"se pidió YOLO ({c.yolo}) y no carga: {e}") from e
+            _log(c, "=" * 70)
+            _log(c, f"  AVISO: sin detector preentrenado ({type(e).__name__}: {e}).")
+            _log(c, "  Sigo con la cabeza propia, que ve personas donde no hay.")
+            _log(c, "  Para arreglarlo:  pip install ultralytics onnxruntime")
+            _log(c, "=" * 70)
+            return None
+
+    def _cargar_yolo_horus(self):
+        """El YOLO de 4 clases de `entrenar_yolo.py`, si está en modelos/."""
+        c = self.cfg
+        try:
+            from motor_yolo import ConfigYolo, MotorYolo, pesos_horus_por_defecto
+            ruta = pesos_horus_por_defecto()
+            if ruta is None:
+                return None
+            return MotorYolo(ConfigYolo(pesos=ruta, tam=c.yolo_tam,
+                                        device="cpu" if not c.device else c.device,
+                                        verboso=c.verboso))
+        except Exception as e:                           # noqa: BLE001
+            _log(c, f"aviso: el YOLO de Horus no carga ({type(e).__name__}: {e}); "
+                    "sigo con la cabeza propia para pistola/humo/llama/paquete")
+            return None
 
     # ------------------------------------------------------------------ #
     def _bucle_descubrir(self) -> None:
@@ -610,6 +763,8 @@ class Servicio:
                 _log(self.cfg, f"  [{cam}] baja")
                 self.fuentes.pop(cam).parar()
                 self.config_ids.pop(cam, None)
+                if self.grabadora is not None:
+                    self.grabadora.olvidar(cam)
 
         for cam, (url, cid) in quiero.items():
             actual = self.fuentes.get(cam)
@@ -644,6 +799,10 @@ class Servicio:
                 try:
                     eventos = self.pipe.procesar(lote)
                     self.eventos += len(eventos)
+                    # Dibujar ANTES de emitir: la captura que viaja con la
+                    # alerta tiene que ser el cuadro que la disparó, con las
+                    # cajas encima, no el del tick anterior.
+                    self._grabar(lote)
                     for ev in eventos:
                         _log(self.cfg, "  " + ev.linea())
                         # 18/09, MEDIDO: acá el bucle imprimía el evento y
@@ -662,8 +821,6 @@ class Servicio:
                         # alertas y da la sensación de que está funcionando.
                         if self.emisor is not None:
                             self.emisor.emitir(ev)
-                    if self.cfg.dibujar and self.cfg.puerto_stream:
-                        self._anotar(lote)
                 except Exception as exc:
                     _log(self.cfg, f"error en el pipeline: {exc}")
                 self.ticks += 1
@@ -710,6 +867,90 @@ class Servicio:
         "humo":  (190, 190, 190),   # gris
         "agua":  (255, 170, 0),     # celeste
     }
+
+    def _grabar(self, lote: Dict[str, np.ndarray]) -> None:
+        """El video anotado para el panel y, de paso, para la evidencia."""
+        try:
+            if self.grabadora is not None:
+                for cam, frame in lote.items():
+                    self.grabadora.guardar_crudo(cam, frame)
+            if self.cfg.dibujar and (self.cfg.puerto_stream or self.grabadora is not None):
+                self._anotar(lote)
+            elif self.grabadora is not None:
+                for cam, frame in lote.items():
+                    self.grabadora.agregar_cuadro(cam, frame)
+        except Exception as exc:                         # noqa: BLE001
+            # Dibujar o grabar nunca puede frenar el análisis.
+            _log(self.cfg, f"aviso al dibujar: {exc}")
+
+    # 26/09 — "se superponen muchos cuadrados cuando aparezco, como si
+    # estuviera subdividido". Parte era del tracker (ver `_fusionar_tracks` y
+    # `_medir_fps` en tracker_local.py) y parte era de acá: la capa 2 dibujaba
+    # TODA detección cruda con score >= 0,10 que no tuviera un track con la
+    # esquina de arriba a menos de 20 px. El torso, las piernas o una caja
+    # corrida de la misma persona no comparten esquina con su track, así que
+    # se dibujaban todas, en gris, encima de ella. Incluidas las que la dedup
+    # del tracker ya había descartado por duplicadas.
+    _PISO_CRUDAS = 0.20        # por debajo, ruido: no ayuda a calibrar nada
+
+    @staticmethod
+    def _solape(a, b) -> Tuple[float, float, float]:
+        """(IoU, fracción de a dentro de b, fracción de b dentro de a)."""
+        ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+        iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+        inter = ix * iy
+        aa = max((a[2] - a[0]) * (a[3] - a[1]), 1e-6)
+        ab = max((b[2] - b[0]) * (b[3] - b[1]), 1e-6)
+        return inter / (aa + ab - inter), inter / aa, inter / ab
+
+    def _crudas_para_dibujar(self, tracker, tracks, dets) -> List[Any]:
+        """Las detecciones sueltas que vale la pena mostrar: las que el modelo
+        vio y NO terminaron siendo (parte de) un track."""
+        por_clase: Dict[str, List[Any]] = {}
+        for d in dets or ():
+            try:
+                if float(d.score) < self._PISO_CRUDAS:
+                    continue
+            except Exception:                            # noqa: BLE001
+                continue
+            lbl = getattr(d, "label", None) or getattr(d, "clase", "?")
+            por_clase.setdefault(lbl, []).append(d)
+        salida: List[Any] = []
+        for lbl, ds in por_clase.items():
+            # La misma dedup que usa el tracker: lo que él tiró por duplicado
+            # tampoco se dibuja.
+            try:
+                antes = tracker.suprimidas_duplicadas    # dibujar no ensucia sus contadores
+                ds = tracker._deduplicar(ds, tracker.cfg.params(lbl))
+                tracker.suprimidas_duplicadas = antes
+            except Exception:                            # noqa: BLE001
+                pass
+            cajas = [t.bbox_xyxy for t in tracks if t.clase == lbl]
+            for d in ds:
+                encima = False
+                for c in cajas:
+                    iou, dentro, envuelve = self._solape(d.bbox_xyxy, c)
+                    if iou >= 0.20 or dentro >= 0.50 or envuelve >= 0.50:
+                        encima = True
+                        break
+                if not encima:
+                    salida.append(d)
+        return salida
+
+    def _tracks_para_dibujar(self, tracks) -> List[Any]:
+        """Un track perdido (naranja) que quedó encima de uno visible de su
+        misma clase no se dibuja: es el rastro de la misma cosa, que el
+        tracker todavía no soltó, y en pantalla parece una segunda persona.
+        Sigue existiendo para el tracker y las reglas; solo no se pinta."""
+        visibles = [t for t in tracks if t.frames_sin_ver == 0]
+        salida = []
+        for t in tracks:
+            if t.frames_sin_ver > 0 and any(
+                    v.clase == t.clase and max(self._solape(t.bbox_xyxy, v.bbox_xyxy)) >= 0.50
+                    for v in visibles):
+                continue
+            salida.append(t)
+        return salida
 
     def _anotar(self, lote: Dict[str, np.ndarray]) -> None:
         """Dibuja en el video TODO lo que las cabezas vieron, no solo lo que
@@ -779,23 +1020,29 @@ class Servicio:
                     pass                                 # dibujar no puede tumbar el servicio
 
             # --- 2. detecciones crudas que no llegaron a track ------------
-            tracks = pipe.tracking.tracker(cam).tracks
-            cajas_track = [tuple(int(v) for v in t.bbox_xyxy) for t in tracks]
-            for d in getattr(pipe, "ultimas_detecciones", {}).get(cam, []):
+            tracker = pipe.tracking.tracker(cam)
+            tracks = tracker.tracks
+            crudas = self._crudas_para_dibujar(
+                tracker, tracks,
+                getattr(pipe, "ultimas_detecciones", {}).get(cam, []))
+            for d in crudas:
                 try:
                     x1, y1, x2, y2 = (int(v) for v in d.bbox_xyxy)
                 except Exception:                        # noqa: BLE001
                     continue
-                # Si ya hay un track encima, no se repite.
-                if any(abs(x1 - a) < 20 and abs(y1 - b) < 20 for a, b, _, _ in cajas_track):
-                    continue
                 cv2.rectangle(img, (x1, y1), (x2, y2), (120, 120, 120), 1)
-                cv2.putText(img, f"{d.clase} {d.score:.2f}", (x1, max(12, y1 - 4)),
+                # 25/09: era `d.clase`, pero la Detection del motor de objetos
+                # la llama `label` (los tracks sí tienen `.clase`). Tiraba en
+                # casi todos los ticks y el video del panel solo se renovaba
+                # en el tick raro sin detecciones sueltas: 1 frame por minuto
+                # con los modelos andando a 2 por segundo.
+                lbl = getattr(d, "label", None) or getattr(d, "clase", "?")
+                cv2.putText(img, f"{lbl} {d.score:.2f}", (x1, max(12, y1 - 4)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (160, 160, 160), 1,
                             cv2.LINE_AA)
 
             # --- 3. los tracks -------------------------------------------
-            for tr in tracks:
+            for tr in self._tracks_para_dibujar(tracks):
                 x1, y1, x2, y2 = (int(v) for v in tr.bbox_xyxy)
                 if tr.estado == "tentativo":
                     color, grosor = (0, 200, 255), 1     # amarillo, fino
@@ -807,17 +1054,17 @@ class Servicio:
                 etiqueta = f"#{tr.track_id} {tr.clase} {tr.score:.2f}"
                 if tr.estado == "tentativo":
                     etiqueta = f"{tr.clase} {tr.score:.2f} (tentativo)"
-                cv2.putText(img, etiqueta, (x1, max(14, y1 - 5)),
+                cv2.putText(img, _ascii(etiqueta), (x1, max(14, y1 - 5)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
 
             # --- 4. los textos de arriba ---------------------------------
             y = 20
             if linea_seg:
-                cv2.putText(img, linea_seg, (8, y), cv2.FONT_HERSHEY_SIMPLEX,
+                cv2.putText(img, _ascii(linea_seg), (8, y), cv2.FONT_HERSHEY_SIMPLEX,
                             0.5, (0, 200, 255), 1, cv2.LINE_AA)
                 y += 20
             for ev in pipe.fusion.abiertos[:4]:
-                cv2.putText(img, ev.linea()[:90], (8, y),
+                cv2.putText(img, _ascii(ev.linea())[:90], (8, y),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (60, 60, 255), 1,
                             cv2.LINE_AA)
                 y += 20
@@ -825,8 +1072,11 @@ class Servicio:
             ok, jpg = cv2.imencode(".jpg", img,
                                    [int(cv2.IMWRITE_JPEG_QUALITY), 70])
             if ok:
+                datos = jpg.tobytes()
                 with self._lock_anotados:
-                    self._anotados[cam] = jpg.tobytes()
+                    self._anotados[cam] = datos
+                if self.grabadora is not None:
+                    self.grabadora.agregar(cam, datos)
 
     # ------------------------------------------------------------------ #
     def _levantar_http(self) -> None:
@@ -964,6 +1214,7 @@ class Servicio:
             "ok": True,
             "fase": getattr(self, "fase", "listo"),
             "modelos": "simulados" if self.cfg.simular else "cargados",
+            "detector": self.detector or ("simulado" if self.cfg.simular else "cabeza propia"),
             "listo_en_s": round(self.listo_en_s, 2),
             "arriba_s": round(time.time() - self.arranque, 1) if self.arranque else 0,
             "ticks": self.ticks,
@@ -976,6 +1227,10 @@ class Servicio:
                        if getattr(self.pipe, "caidas", None) is not None
                        else None),
             "camaras": [f.resumen() for f in self.fuentes.values()],
+            # Cuántos segundos de video hay guardados por cámara para adjuntar
+            # a la próxima alerta. Cero con la cámara andando = algo anda mal.
+            "evidencia": (self.grabadora.resumen()
+                          if self.grabadora is not None else None),
             # Por qué NO está alertando cada regla.
             #
             # 18/09: toda esta información existía desde siempre —
@@ -1108,6 +1363,16 @@ def main() -> int:
                     help="sin GPU ni cámaras: verifica el cableado entero")
     ap.add_argument("--segundos", type=float, default=0.0,
                     help="cortar solo después de N segundos (para probar)")
+    ap.add_argument("--yolo", default="auto",
+                    help='"auto" (default), "no", o la ruta a un .onnx/.pt de YOLO')
+    ap.add_argument("--yolo-tam", dest="yolo_tam", type=int, default=416)
+    ap.add_argument("--yolo-bolsos", dest="yolo_bolsos", action="store_true",
+                    help="mochila/cartera/valija cuentan como paquete (apagado: "
+                         "en una casa hay bolsos por todos lados)")
+    ap.add_argument("--sin-evidencia", dest="sin_evidencia", action="store_true",
+                    help="no adjuntar captura ni clip a las alertas")
+    ap.add_argument("--clip", type=float, default=8.0,
+                    help="segundos de video ANTERIORES a la alerta que se adjuntan")
     args = ap.parse_args()
 
     cfg = ConfigServicio(
@@ -1120,9 +1385,12 @@ def main() -> int:
         segmentacion_checkpoint=args.segmentacion_checkpoint,
         agresion=args.agresion,
         caidas=args.caidas, caidas_checkpoint=args.caidas_checkpoint,
-        caidas_max_personas=args.caidas_max_personas)
+        caidas_max_personas=args.caidas_max_personas,
+        evidencia=not args.sin_evidencia, clip_s=args.clip,
+        yolo=args.yolo, yolo_tam=args.yolo_tam, yolo_bolsos=args.yolo_bolsos)
 
-    if not cfg.simular and not cfg.pesos and not cfg.segmentacion:
+    hay_yolo = cfg.yolo != "no" and (cfg.yolo != "auto" or _hay_pesos_yolo())
+    if not cfg.simular and not cfg.pesos and not cfg.segmentacion and not hay_yolo:
         print("hace falta al menos una cabeza: --pesos (objetos) o "
               "--segmentacion (fuego y humo).")
         print("Para probar el cableado sin modelos ni cámaras: --simular")

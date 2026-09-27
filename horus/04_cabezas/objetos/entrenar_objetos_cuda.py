@@ -84,6 +84,64 @@ _FPN_LEVELS = ("p3", "p4", "p5")
 _ANCHOR_SIZES = ((16, 20, 25), (32, 40, 51), (64, 81, 102))
 
 
+# 2026-09-25: clases que cada fuente NO anota, por prefijo del nombre de archivo
+# (bajar_datasets.py nombra todo `<fuente>__NNNNNN.jpg`, y ese nombre sobrevive
+# al armado). En esas imágenes la clase no cuenta como "acá no hay": sus
+# negativos no entran a la pérdida ni al mAP. Ver ObjectsHead.compute_loss.
+#
+# persona en D-Fire y Pyro-SDIS: es el techo medido del modelo. El run del
+# 17/09 dio persona AP50 0,16 contra 0,74 de pistola, y la mezcla tiene 7.314
+# fotos de incendios y torres de vigilancia sin una sola persona anotada
+# (contra 5.700 que sí). Son escenas donde suele haber gente: cada una le
+# enseñaba a la red "esto no es una persona". En campo, eso sale como personas
+# que no ve y, del otro lado del mismo umbral, fantasmas.
+#
+# Se agregan más reglas con un `ignorar.json` en la raíz del dataset
+# ({"prefijo__": ["clase", ...]}), que es lo que escribe sumar_propio.py para
+# los frames de la cámara propia.
+IGNORAR_POR_FUENTE: Dict[str, Tuple[str, ...]] = {
+    "d-fire__": ("persona",),
+    "pyro-sdis__": ("persona",),
+}
+
+
+def cargar_ignorar(raiz: Optional[Path], clases: Sequence[str],
+                   usar_defecto: bool = True) -> Dict[str, np.ndarray]:
+    """{prefijo: bool[num_clases]} con lo que cada fuente no anota.
+
+    Una clase mal escrita corta acá: un "presona" que se ignora en silencio es
+    exactamente el arreglo que no arregla nada y nadie se entera."""
+    reglas: Dict[str, List[str]] = {}
+    if usar_defecto:
+        reglas.update({k: list(v) for k, v in IGNORAR_POR_FUENTE.items()})
+    if raiz is not None and (raiz / "ignorar.json").exists():
+        extra = json.loads((raiz / "ignorar.json").read_text(encoding="utf-8"))
+        for pref, cls in extra.items():
+            reglas[pref] = sorted(set(reglas.get(pref, [])) | set(cls))
+    salida: Dict[str, np.ndarray] = {}
+    for pref, cls in reglas.items():
+        malas = [c for c in cls if c not in clases]
+        if malas:
+            sys.exit(f"ignorar: '{pref}' nombra clases que no existen: {malas}. "
+                     f"Las clases son {list(clases)}.")
+        v = np.zeros(len(clases), dtype=bool)
+        for c in cls:
+            v[list(clases).index(c)] = True
+        if v.all():
+            sys.exit(f"ignorar: '{pref}' ignora TODAS las clases: esas fotos "
+                     "no enseñarían nada. Sacalas del dataset o corregí la regla.")
+        salida[pref] = v
+    return salida
+
+
+def ignorar_de(nombre: str, reglas: Dict[str, np.ndarray],
+               num_clases: int) -> np.ndarray:
+    for pref, v in reglas.items():
+        if nombre.startswith(pref):
+            return v
+    return np.zeros(num_clases, dtype=bool)
+
+
 # --------------------------------------------------------------------------- #
 # Dataset: devuelve uint8, la normalización se hace en GPU
 # --------------------------------------------------------------------------- #
@@ -91,7 +149,11 @@ class DatasetYoloRapido(Dataset):
     EXT_IMG = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 
     def __init__(self, raiz: Path, split: str, aumentar: bool = False,
-                 tam: int = TAM) -> None:
+                 tam: int = TAM,
+                 ignorar: Optional[Dict[str, np.ndarray]] = None,
+                 num_clases: int = 7) -> None:
+        self.ignorar = ignorar or {}
+        self.num_clases = num_clases
         self.dir_img = raiz / "images" / split
         self.dir_lbl = raiz / "labels" / split
         if not self.dir_img.is_dir():
@@ -153,8 +215,26 @@ class DatasetYoloRapido(Dataset):
 
         # uint8 CHW: 4x menos bytes al GPU que float32
         x = torch.from_numpy(np.ascontiguousarray(img.transpose(2, 0, 1)))
-        return x, {"boxes": torch.from_numpy(self.rel_a_xyxy(rel, self.tam)),
-                   "labels": torch.from_numpy(clases)}
+        return x, self.objetivo(ruta.stem, rel, clases)
+
+    def objetivo(self, nombre: str, rel: np.ndarray,
+                 clases: np.ndarray) -> Dict[str, Tensor]:
+        t = {"boxes": torch.from_numpy(self.rel_a_xyxy(rel, self.tam)),
+             "labels": torch.from_numpy(clases)}
+        if self.ignorar:
+            # Siempre la misma clave en todo el lote, aunque sea todo False.
+            t["ignorar"] = torch.from_numpy(
+                ignorar_de(nombre, self.ignorar, self.num_clases))
+        return t
+
+    def contar_ignorados(self) -> Dict[str, int]:
+        cuenta: Dict[str, int] = {}
+        for p in self.archivos:
+            for pref in self.ignorar:
+                if p.stem.startswith(pref):
+                    cuenta[pref] = cuenta.get(pref, 0) + 1
+                    break
+        return cuenta
 
 
 class DatasetSintetico(Dataset):
@@ -181,8 +261,17 @@ class DatasetSintetico(Dataset):
             cajas.append([x1, y1, x1 + w, y1 + h])
             labels.append(c)
         x = torch.from_numpy(np.ascontiguousarray(img.transpose(2, 0, 1)))
-        return x, {"boxes": torch.tensor(cajas, dtype=torch.float32),
-                   "labels": torch.tensor(labels, dtype=torch.int64)}
+        # Una de cada tres "no anota" la clase 2, como una foto de D-Fire con
+        # persona: así el autotest pasa por el camino de clases ignoradas.
+        ign = torch.zeros(self.clases, dtype=torch.bool)
+        if i % 3 == 0:
+            ign[2] = True
+            keep = [j for j, c in enumerate(labels) if c != 2]
+            cajas = [cajas[j] for j in keep]
+            labels = [labels[j] for j in keep]
+        return x, {"boxes": torch.tensor(cajas, dtype=torch.float32).reshape(-1, 4),
+                   "labels": torch.tensor(labels, dtype=torch.int64),
+                   "ignorar": ign}
 
 
 # Clases que, si faltan en el dataset de objetos, NO dejan ciego al sistema:
@@ -447,9 +536,7 @@ class CacheFeatures(Dataset):
         if var and len(rel):
             rel = rel.copy()
             rel[:, 0] = 1.0 - rel[:, 0]
-        return feats, {"boxes": torch.from_numpy(
-            DatasetYoloRapido.rel_a_xyxy(rel, self.base.tam)),
-            "labels": torch.from_numpy(clases)}
+        return feats, self.base.objetivo(self.base.archivos[i].stem, rel, clases)
 
 
 # --------------------------------------------------------------------------- #
@@ -507,6 +594,11 @@ def calcular_map(preds: List[Dict], gts: List[Dict], num_clases: int,
         for c in range(num_clases):
             scores, tp, n_gt = [], [], 0
             for p, g in zip(preds, gts):
+                ign = g.get("ignorar")
+                if ign is not None and bool(ign[c]):
+                    # La imagen no anota esta clase: ni sus predicciones son
+                    # falsos positivos ni hay verdades que perder.
+                    continue
                 mp = p["labels"] == c
                 mg = g["labels"] == c
                 pb, ps = p["boxes"][mp], p["scores"][mp]
@@ -586,6 +678,9 @@ class Ajustes:
     reanudar: Optional[str] = None
     revisar: bool = True
     permitir_vacias: bool = False
+    # Sin esto, las reglas de IGNORAR_POR_FUENTE se apagan (pero ignorar.json
+    # del dataset se sigue leyendo). Existe para comparar contra el run viejo.
+    ignorar_por_fuente: bool = True
 
 
 def _sembrar(seed: int) -> None:
@@ -656,6 +751,7 @@ def entrenar(a: Ajustes, dir_base: Path, autotest: bool = False) -> float:
           f"compile={a.compile}  cache={a.cachear_features}")
 
     # --- datos ------------------------------------------------------------
+    reglas_ign: Dict[str, np.ndarray] = {}
     if autotest:
         ds_tr = DatasetSintetico(24, a.tam)
         ds_va = DatasetSintetico(8, a.tam)
@@ -663,8 +759,23 @@ def entrenar(a: Ajustes, dir_base: Path, autotest: bool = False) -> float:
         raiz = Path(a.dataset)
         if not raiz.is_absolute():
             raiz = dir_base / a.dataset
-        ds_tr = DatasetYoloRapido(raiz, "train", aumentar=True, tam=a.tam)
-        ds_va = DatasetYoloRapido(raiz, "val", aumentar=False, tam=a.tam)
+        clases_cfg = ObjectsHeadConfig().classes
+        reglas_ign = cargar_ignorar(raiz, clases_cfg, a.ignorar_por_fuente)
+        ds_tr = DatasetYoloRapido(raiz, "train", aumentar=True, tam=a.tam,
+                                  ignorar=reglas_ign, num_clases=len(clases_cfg))
+        ds_va = DatasetYoloRapido(raiz, "val", aumentar=False, tam=a.tam,
+                                  ignorar=reglas_ign, num_clases=len(clases_cfg))
+        # Que se vea cuántas fotos toca cada regla. Una regla con 0 fotos es un
+        # prefijo mal escrito: el arreglo no estaría aplicándose a nada.
+        for nom, ds in (("train", ds_tr), ("val", ds_va)):
+            cuenta = ds.contar_ignorados()
+            for pref, v in reglas_ign.items():
+                cls = [clases_cfg[j] for j in np.nonzero(v)[0]]
+                print(f"[setup] ignorar {nom:<5} {pref:<18} "
+                      f"{cuenta.get(pref, 0):>6} fotos  -> no anotan {cls}")
+        if reglas_ign and not ds_tr.contar_ignorados():
+            print("[setup] ⚠ ninguna regla de ignorar toca una sola foto de "
+                  "train: revisá los prefijos contra los nombres de archivo.")
     print(f"[setup] train: {len(ds_tr)} · val: {len(ds_va)}")
 
     if not autotest and a.revisar:
@@ -881,10 +992,13 @@ def entrenar(a: Ajustes, dir_base: Path, autotest: bool = False) -> float:
                             "labels": np.array([d.class_id for d in dets[i]],
                                                dtype=np.int64),
                         })
-                        gts.append({
+                        g = {
                             "boxes": tg[i]["boxes"].cpu().numpy().reshape(-1, 4),
                             "labels": tg[i]["labels"].cpu().numpy(),
-                        })
+                        }
+                        if "ignorar" in tg[i]:
+                            g["ignorar"] = tg[i]["ignorar"].cpu().numpy()
+                        gts.append(g)
             head.cfg.score_thresh = thr_orig
             val_loss /= max(1, len(dl_va))
             metricas = calcular_map(preds, gts, cfg.num_classes,
@@ -934,6 +1048,11 @@ def entrenar(a: Ajustes, dir_base: Path, autotest: bool = False) -> float:
             # exportar_objetos.py --incrustar-backbone los mete adentro y lo
             # pone en True, y ahi el .pt ya no depende de ningun archivo suelto.
             "backbone_parcial": False,
+            # Qué clases no se le exigieron a qué fuentes. Sin esto, dos
+            # checkpoints con mAP distintos parecen comparables y no lo son.
+            "ignorar_por_fuente": ({k: [cfg.classes[j] for j in np.nonzero(v)[0]]
+                                    for k, v in reglas_ign.items()}
+                                   if not autotest else {}),
         }
         torch.save(ck, dir_ckpt / "head_last.pt")
         # Se reescribe en CADA época, no al final: si la corrida se corta con
@@ -983,6 +1102,10 @@ def main() -> int:
     ap.add_argument("--sin-revisar", dest="revisar", action="store_false",
                     default=True,
                     help="saltear el chequeo previo del dataset")
+    ap.add_argument("--sin-ignorar", dest="ignorar_por_fuente",
+                    action="store_false", default=True,
+                    help="no aplicar IGNORAR_POR_FUENTE (persona en D-Fire y "
+                         "Pyro-SDIS). Solo para comparar contra el run viejo.")
     ap.add_argument("--permitir-clases-vacias", action="store_true",
                     help="entrenar aunque haya clases sin un solo ejemplo "
                          "(útil para probar el pipeline; NO para el modelo real)")
@@ -997,7 +1120,8 @@ def main() -> int:
                 rehacer_cache=args.rehacer_cache, ema=args.ema,
                 paciencia=args.paciencia, seed=args.seed, tam=args.tam,
                 reanudar=args.reanudar, revisar=args.revisar,
-                permitir_vacias=args.permitir_clases_vacias)
+                permitir_vacias=args.permitir_clases_vacias,
+                ignorar_por_fuente=args.ignorar_por_fuente)
 
     if args.autotest:
         a.epocas, a.batch, a.workers, a.tam = 2, 4, 0, 128

@@ -8,9 +8,24 @@ corra sobre cámaras. Si esto llega al panel, llega lo real.
 
 Con el backend arriba (HORUS.bat):
 
-    python enviar_alerta_prueba.py                # incendio
-    python enviar_alerta_prueba.py agresion
+    python enviar_alerta_prueba.py                # incendio, en tu primera cámara
+    python enviar_alerta_prueba.py agresion --camara 2
     python enviar_alerta_prueba.py --listar
+
+26/09 · "el nombre de la cámara no es el mismo que el registrado en la base".
+Dos errores juntos:
+
+  1. `--camara` no se usaba. Se pasaba a `armar_payload(ev, a.camara, ...)`,
+     pero el segundo parámetro de `armar_payload` es la SECUENCIA. La cámara
+     quedaba la del escenario de prueba ("cam-deposito"), que no existe en tu
+     base, y el panel la mostraba tal cual.
+  2. El backend no sabía traducir "cam-1" a la cámara registrada (ver
+     `_config_de` en alerta_rutas.py).
+
+Ahora la cámara sale de las que tenés registradas (la primera, o la que digas
+con `--camara`), va con el mismo formato que usa el servicio —`cam-<id>` más
+`camara_config_id`— y la alerta lleva captura y clip: del video real si el
+servicio de modelos está corriendo, y si no, una imagen que dice PRUEBA.
 """
 
 from __future__ import annotations
@@ -30,6 +45,94 @@ for p in (RAIZ / "horus" / "06_fusion_decision", RAIZ / "horus" / "07_alerta"):
         sys.path.insert(0, str(p))
 
 URL = os.environ.get("HORUS_URL", "http://127.0.0.1:8000")
+SERVICIO = os.environ.get("HORUS_SERVICIO_URL", "http://127.0.0.1:8010")
+_OP = urllib.request.build_opener(urllib.request.ProxyHandler({}))   # 127.0.0.1
+
+
+def _get_json(url: str, timeout: float = 5.0):
+    with _OP.open(url, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def elegir_camara(pedida):
+    """La cámara registrada en el backend. (id, nombre) o sale con el motivo."""
+    try:
+        filas = _get_json(f"{URL}/camaras/config")
+    except Exception as e:
+        print(f"  no pude pedirle las cámaras a {URL}: {e}")
+        print("  ¿Está corriendo el backend? Arrancalo con HORUS.bat")
+        raise SystemExit(1)
+    if not filas:
+        print("  No hay ninguna cámara registrada en la base.")
+        print("  Agregá una desde el panel (Cámaras -> +) y volvé a probar.")
+        raise SystemExit(1)
+    if pedida is None:
+        f = filas[0]
+    else:
+        f = next((x for x in filas if x.get("id") == pedida), None)
+        if f is None:
+            print(f"  No hay ninguna cámara con id {pedida}. Las registradas son:")
+            for x in filas:
+                print(f"    --camara {x.get('id')}   {x.get('nombre')!r}")
+            raise SystemExit(1)
+    return int(f["id"]), f.get("nombre") or f"Cámara {f['id']}"
+
+
+def _cuadros_del_servicio(cam: str, segundos: float = 4.0):
+    """Cuadros JPEG reales del stream del servicio, si lo tiene."""
+    try:
+        estado = _get_json(f"{SERVICIO}/estado", timeout=2.0)
+    except Exception:
+        return []
+    if not any(c.get("camara") == cam for c in estado.get("camaras", [])):
+        return []
+    out, fin = [], time.time() + segundos
+    try:
+        with _OP.open(f"{SERVICIO}/camaras/{cam}/stream", timeout=5) as r:
+            buf = b""
+            while time.time() < fin:
+                buf += r.read(16384)
+                while True:
+                    a = buf.find(b"\xff\xd8")
+                    b = buf.find(b"\xff\xd9", a + 2)
+                    if a < 0 or b < 0:
+                        break
+                    out.append((time.time(), buf[a:b + 2]))
+                    buf = buf[b + 2:]
+    except Exception:
+        pass
+    return out
+
+
+def _cuadros_de_prueba(nombre: str, n: int = 12):
+    """Una imagen que dice PRUEBA en grande: que nadie la confunda con una real."""
+    import cv2
+    import numpy as np
+    out, t0 = [], time.time() - n * 0.4
+    for i in range(n):
+        img = np.full((360, 640, 3), (40, 30, 30), dtype=np.uint8)
+        cv2.putText(img, "ALERTA DE PRUEBA", (40, 120), cv2.FONT_HERSHEY_SIMPLEX,
+                    1.5, (0, 200, 255), 3, cv2.LINE_AA)
+        cv2.putText(img, nombre[:34], (40, 180), cv2.FONT_HERSHEY_SIMPLEX,
+                    1.0, (230, 230, 230), 2, cv2.LINE_AA)
+        x = 40 + i * 45
+        cv2.rectangle(img, (x, 230), (x + 60, 330), (60, 60, 255), -1)
+        ok, jpg = cv2.imencode(".jpg", img)
+        out.append((t0 + i * 0.4, jpg.tobytes()))
+    return out
+
+
+def armar_evidencia(cam: str, nombre: str):
+    from evidencia import Grabadora
+    cuadros = _cuadros_del_servicio(cam)
+    origen = "video real del servicio de modelos"
+    if len(cuadros) < 2:
+        cuadros = _cuadros_de_prueba(nombre)
+        origen = "imagen de prueba (el servicio de modelos no está o no tiene la cámara)"
+    g = Grabadora(segundos=30)
+    for ts, jpg in cuadros:
+        g.agregar(cam, jpg, ts)
+    return g.adjuntos(cam), origen
 
 
 def main() -> int:
@@ -37,7 +140,10 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("escenario", nargs="?", default="incendio")
     ap.add_argument("--listar", action="store_true")
-    ap.add_argument("--camara", type=int, default=1)
+    ap.add_argument("--camara", type=int, default=None,
+                    help="id de la cámara registrada (por defecto, la primera)")
+    ap.add_argument("--sin-evidencia", dest="sin_evidencia", action="store_true",
+                    help="mandar la alerta sin captura ni clip")
     ap.add_argument("--repetir", action="store_true",
                     help="mandar el MISMO id otra vez, para ver la idempotencia")
     a = ap.parse_args()
@@ -66,7 +172,17 @@ def main() -> int:
         return 1
 
     ev = eventos[0]
-    payload = armar_payload(ev, a.camara, sitio="prueba", nodo="local")
+    cam_id, cam_nombre = elegir_camara(a.camara)
+    cam = f"cam-{cam_id}"            # como la nombra el servicio de verdad
+    payload = armar_payload(ev, 1, sitio="prueba", nodo="local")
+    payload["sitio"]["camara"] = cam
+    payload["sitio"]["camaras"] = [cam]
+    payload["sitio"]["camara_config_id"] = cam_id
+    # Con la hora de AHORA: los escenarios de probar_fusion tienen fechas fijas
+    # (24/08) y la alerta de prueba aparecía abajo de todo en el historial.
+    ahora = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    ahora = ahora[:-2] + ":" + ahora[-2:]
+    payload["tiempo"].update(inicio=ahora, ultimo=ahora, emitido=ahora)
 
     # Cada corrida manda un evento NUEVO. Sin esto, la segunda vez que probás
     # el backend contesta "duplicada" y no emite: la idempotencia por
@@ -81,10 +197,17 @@ def main() -> int:
         print("el payload no valida:", problemas)
         return 1
 
+    origen_ev = "no"
+    if not a.sin_evidencia:
+        adj, origen_ev = armar_evidencia(cam, cam_nombre)
+        if adj:
+            payload["adjuntos"] = adj
+
     print(f"  evento    : {ev.tipo}")
     print(f"  severidad : {ev.severidad.etiqueta}")
     print(f"  id        : {payload['id']}")
-    print(f"  camera_id : {a.camara}")
+    print(f"  cámara    : {cam_nombre!r} (id {cam_id}, {cam})")
+    print(f"  evidencia : {origen_ev}")
     print(f"  confianza : {payload.get('confianza')}")
     print(f"  modelos   : {payload.get('modelos')}")
     print()
@@ -111,6 +234,7 @@ def main() -> int:
         # 22/09. Antes esta prueba terminaba acá y uno se quedaba pensando que
         # había andado todo. La alerta se veía en el panel, sí, pero el mail a
         # los contactos podía no haber salido nunca y no lo decía nadie.
+        _contar_evidencia(payload["id"])
         _contar_mail(payload["id"])
         return 0
     except urllib.error.HTTPError as e:
@@ -120,6 +244,22 @@ def main() -> int:
         print(f"  no pude hablar con {URL}: {e.reason}")
         print("  ¿Está corriendo el backend? Arrancalo con HORUS.bat")
         return 1
+
+
+def _contar_evidencia(evento_id: str) -> None:
+    try:
+        h = _get_json(f"{URL}/alertas/{evento_id}")
+        m = (h.get("mensajes") or [{}])[-1]
+    except Exception as e:
+        print(f"  (no pude leer la evidencia guardada: {e})")
+        return
+    print(f"  cámara en la base: {m.get('nombre_camara')!r} "
+          f"(camara_config_id={m.get('camara_config_id')})")
+    for clave in ("captura_url", "clip_url"):
+        if m.get(clave):
+            print(f"  {clave:<11}: {URL}{m[clave]}")
+    if not m.get("captura_url"):
+        print("  captura    : NO se guardó ninguna")
 
 
 def _contar_mail(evento_id: str) -> None:
@@ -143,7 +283,7 @@ def _contar_mail(evento_id: str) -> None:
     elif estado == "apagado":
         print("  MAIL: APAGADO. No le llegó a nadie.")
         print(f"        {detalle}")
-        print("        Se arregla creando FASTAPI\\.env — ver .env.example")
+        print("        Se configura desde el panel: Ajustes -> Aviso por mail.")
     elif estado == "sin_destinos":
         print("  MAIL: no hay contactos con dirección cargada.")
         print("        Agregalos en el panel, en Ajustes.")

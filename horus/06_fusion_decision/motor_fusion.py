@@ -155,6 +155,15 @@ class MotorFusion:
         self._cooldown: Dict[Tuple, float] = {}
         self._ultimo_aviso: Dict[Tuple, float] = {}
         self._n = 0
+        # 26/09 — los ids eran E000001, E000002... desde cero en CADA arranque
+        # del servicio. El backend es idempotente por (id, secuencia), así que
+        # después de reiniciar, las primeras alertas chocaban con las de la
+        # corrida anterior guardadas con el mismo id: el backend contestaba
+        # 200 "duplicada" o "tarde", no las guardaba nuevas y NO las mostraba
+        # en el panel. Medido corriendo el servicio contra una copia de la base
+        # de Teo: 5 POST /alertas con 200 y ni una fila nueva. Con la hora de
+        # arranque en el id, dos corridas no pueden repetirse.
+        self._sesion = time.strftime("%y%m%d%H%M%S")
         self.historial: Deque[Evento] = deque(maxlen=500)
         self.stats: Dict[str, int] = {}
 
@@ -416,7 +425,7 @@ class MotorFusion:
         self._n += 1
         primera = min((x.ts for x in pend.hallazgos), default=h.ts or ts)
         ev = Evento(
-            evento_id=f"E{self._n:06d}",
+            evento_id=f"E{self._n:06d}-{self._sesion}",
             tipo=h.tipo, severidad=h.severidad, camera_id=h.camera_id,
             ts_inicio=primera, ts_ultimo=h.ts or ts,
             confianza=max(x.confianza for x in pend.hallazgos),

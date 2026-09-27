@@ -24,10 +24,13 @@ La contraseña no se imprime, no se devuelve y no se loguea en ningún caso.
 Para Gmail va una "contraseña de aplicación" de 16 letras, no la del mail.
 """
 
+import mimetypes
 import os
 import smtplib
-from email.mime.text import MIMEText
-from typing import Tuple
+from email.message import EmailMessage
+from email.utils import make_msgid
+from html import escape
+from typing import Optional, Tuple
 
 from dotenv import load_dotenv
 
@@ -158,24 +161,67 @@ def estado_mail() -> Tuple[bool, str]:
 
 
 def enviar_alerta_email(event_type: str, nombre_camara: str, confidence: float,
-                        timestamp: str, email_receiver: str) -> None:
-    listo, motivo = estado_mail()
+                        timestamp: str, email_receiver: str,
+                        captura: Optional[str] = None, clip: Optional[str] = None,
+                        motivo: str = "") -> None:
+    """El aviso. 26/09: con la imagen del momento y el clip de los segundos
+    anteriores, si los hay.
+
+    La captura va DENTRO del cuerpo (se ve sin abrir nada: en el celular, en
+    la notificación) y además adjunta, porque algunos clientes bloquean las
+    imágenes del cuerpo. El clip va adjunto; si pasa de `MAX_CLIP_MAIL` no se
+    manda — un mail que Gmail rechaza por tamaño es un aviso que no llega, y
+    eso es mucho peor que un aviso sin video.
+    """
+    listo, motivo_mail = estado_mail()
     if not listo:
         # Antes esto llegaba hasta smtplib y explotaba con un error de login
         # que no decía nada del problema real.
-        raise MailApagado(motivo)
+        raise MailApagado(motivo_mail)
     if not email_receiver or "@" not in str(email_receiver):
         raise ValueError("destinatario sin dirección de mail: %r" % email_receiver)
 
-    msg = MIMEText(
+    texto = (
         f"Se detectó un evento en {nombre_camara}.\n\n"
         f"Tipo: {event_type}\n"
-        f"Confianza: {confidence * 100:.0f}%\n"
+        + (f"Qué vio: {motivo}\n" if motivo else "")
+        + f"Confianza: {confidence * 100:.0f}%\n"
         f"Hora: {timestamp}"
     )
-    msg['Subject'] = f" Alerta Horus AI — {event_type}"
+    msg = EmailMessage()
+    msg['Subject'] = f" Alerta Horus AI — {event_type} en {nombre_camara}"
     msg['From'] = EMAIL_SENDER      # el gmail que creen para Horus
     msg['To'] = email_receiver
+    msg.set_content(texto + ("\n\nVa adjunta la imagen del momento."
+                             if captura else ""))
+
+    datos_captura = _leer(captura, MAX_CAPTURA_MAIL)
+    if datos_captura:
+        cid = make_msgid(domain="horus.local")
+        html = (
+            "<div style='font-family:sans-serif'>"
+            f"<p><b>Se detectó un evento en {escape(nombre_camara)}.</b></p>"
+            f"<p>Tipo: {escape(event_type)}<br>"
+            + (f"Qué vio: {escape(motivo)}<br>" if motivo else "")
+            + f"Confianza: {confidence * 100:.0f}%<br>"
+            f"Hora: {escape(str(timestamp))}</p>"
+            f"<img src='cid:{cid[1:-1]}' style='max-width:640px;width:100%' "
+            "alt='Imagen del momento'>"
+            + ("<p>El video de los segundos anteriores va adjunto.</p>" if clip else "")
+            + "</div>")
+        msg.add_alternative(html, subtype="html")
+        sub = mimetypes.guess_type(captura)[0] or "image/jpeg"
+        msg.get_payload()[1].add_related(datos_captura, maintype="image",
+                                         subtype=sub.split("/")[1], cid=cid)
+        msg.add_attachment(datos_captura, maintype="image",
+                           subtype=sub.split("/")[1],
+                           filename=os.path.basename(captura))
+
+    datos_clip = _leer(clip, MAX_CLIP_MAIL)
+    if datos_clip:
+        tipo = (mimetypes.guess_type(clip)[0] or "application/octet-stream").split("/")
+        msg.add_attachment(datos_clip, maintype=tipo[0], subtype=tipo[1],
+                           filename=os.path.basename(clip))
 
     # 2026-09-15: timeout explicito. Sin el, un SMTP inalcanzable (sin red,
     # puerto 465 filtrado, gmail lento) deja la conexion colgada para siempre
@@ -185,3 +231,24 @@ def enviar_alerta_email(event_type: str, nombre_camara: str, confidence: float,
     with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=SMTP_TIMEOUT) as server:
         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
         server.send_message(msg)
+
+
+# Gmail corta en 25 MB el mail entero, y el base64 infla un 33 %.
+MAX_CAPTURA_MAIL = 5 * 1024 * 1024
+MAX_CLIP_MAIL = 15 * 1024 * 1024
+
+
+def _leer(ruta: Optional[str], maximo: int) -> Optional[bytes]:
+    """Los bytes de un archivo de evidencia, o None si no hay o se pasa."""
+    if not ruta:
+        return None
+    try:
+        if os.path.getsize(ruta) > maximo:
+            print(f"[mail] {os.path.basename(ruta)} pesa más de "
+                  f"{maximo // 2**20} MB: sale el mail sin ese adjunto")
+            return None
+        with open(ruta, "rb") as fh:
+            return fh.read()
+    except OSError as e:
+        print(f"[mail] no pude leer {ruta}: {e}")
+        return None

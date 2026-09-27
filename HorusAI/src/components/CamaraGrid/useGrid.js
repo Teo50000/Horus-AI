@@ -1,6 +1,5 @@
 import { useState, useCallback } from "react";
 
-import { API_VIDEO } from "../../config";
 // Cada slot puede tener:
 // null → vacío
 // { tipo: "camara", id, nombre }
@@ -45,11 +44,16 @@ export function useGrid() {
   }, []);
 
   // Navegar entre cámaras de un sector pineado
+  // 26/09: estas dos funciones hacian fetch por su cuenta, y mal:
+  //  - `POST /video/stop_feed` SIN id, una ruta que no existe (405);
+  //  - `GET /video/video_feed/${nuevoIndice}`: el INDICE del carrusel en vez
+  //    del id de la camara, y con un fetch cuyo cuerpo nadie lee. Eso abria
+  //    un stream que quedaba colgado en el backend, con la camara tomada, y
+  //    el servicio de modelos sin poder abrirla. La celda ya pide su video
+  //    sola (CeldaCamara) y ya lo corta al quitarla: aca no hace falta nada.
   const navegarSector = useCallback((slotIdx, direccion) => {
     setSlots((prev) => {
       const slot = prev[slotIdx];
-      fetch(`${API_VIDEO}/stop_feed`, { method: 'POST' })
-      .catch(err => console.error('Error al detener backend:', err));
       if (!slot || slot.tipo !== "sector") return prev;
       const total = slot.camaras.length;
       const nuevoIndice =
@@ -58,8 +62,6 @@ export function useGrid() {
           : (slot.indice - 1 + total) % total;
       const next = [...prev];
       next[slotIdx] = { ...slot, indice: nuevoIndice };
-      fetch(`${API_VIDEO}/video_feed/${nuevoIndice}?t=${Date.now()}`)
-      .catch(err => console.error('Error al empezar nuevo stream:', err));
       return next;
     });
   }, []);
@@ -68,8 +70,6 @@ export function useGrid() {
     setSlots((prev) => {
       const next = [...prev];
       next[slotIdx] = null;
-      fetch(`${API_VIDEO}/stop_feed`, { method: 'POST' })
-      .catch(err => console.error('Error al detener backend:', err));
       return next;
     });
   }, []);

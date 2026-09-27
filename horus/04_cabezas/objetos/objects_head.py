@@ -80,6 +80,18 @@ class Detection:
         return asdict(self)
 
 
+def _peso_clases(gt_cls: Tensor, ignorar: Tensor) -> Tensor:
+    """(A, C) de 0/1: 0 en los negativos de una clase ignorada, 1 en el resto.
+
+    Se multiplica contra la focal elemento a elemento. No cambia la
+    normalización (número de positivos, o de anclas en una imagen vacía): una
+    imagen de fuego sigue pesando lo mismo para humo y llama, simplemente deja
+    de opinar sobre persona."""
+    ign = ignorar.to(device=gt_cls.device, dtype=torch.bool).view(1, -1)
+    anular = ign & (gt_cls <= 0)
+    return (~anular).to(gt_cls.dtype)
+
+
 class _Tower(nn.Module):
     def __init__(self, channels: int, num_convs: int):
         super().__init__()
@@ -235,6 +247,18 @@ class ObjectsHead(nn.Module):
         image_sizes: Sequence[Tuple[int, int]],
         targets: Sequence[Dict[str, Tensor]],
     ) -> Dict[str, Tensor]:
+        """Focal + GIoU.
+
+        `targets[i]["ignorar"]` (opcional): bool de largo `num_classes`. Una
+        clase marcada es una clase que ESA imagen no anota: sus negativos no
+        se penalizan. No es lo mismo "no hay persona" que "nadie marcó las
+        personas", y una foto de incendio de D-Fire es lo segundo — contarla
+        como lo primero le enseñó a la red a no ver gente (persona AP 0,16 el
+        17/09, con 7.314 fotos de fuego sin una sola persona anotada).
+
+        Los positivos se conservan siempre, aunque la clase esté marcada: si
+        alguien la anotó, la anotación vale.
+        """
         c = self.cfg
 
         cls_out, box_out = self.forward(fpn_feats)
@@ -247,12 +271,35 @@ class ObjectsHead(nn.Module):
             anchors_i, logits_i, deltas_i = anchors[i], logits[i], deltas[i]
             gt_boxes, gt_labels = tgt["boxes"], tgt["labels"]
 
+            ignorar = tgt.get("ignorar")
+            if ignorar is not None and not bool(ignorar.any()):
+                ignorar = None
+
             if gt_boxes.numel() == 0:
                 gt_cls = torch.zeros_like(logits_i)
-                cls_losses.append(sigmoid_focal_loss(
+                perdida = sigmoid_focal_loss(
                     logits_i, gt_cls, alpha=c.focal_alpha,
-                    gamma=c.focal_gamma, reduction="sum",
-                ) / max(1, anchors_i.shape[0]))
+                    gamma=c.focal_gamma, reduction="none")
+                if ignorar is not None:
+                    perdida = perdida * _peso_clases(gt_cls, ignorar)
+                # 26/09 — se normaliza por 1, no por la cantidad de anclas.
+                #
+                # Antes era `/ anchors_i.shape[0]` (~27.000 anclas a 384 px):
+                # una imagen SIN cajas pesaba 27.000 veces menos que una con
+                # cajas. Medido con el v4: la silla del cuarto seguía saliendo
+                # "persona" con score 0,5-0,9 en 234 de los 293 frames vacíos,
+                # siendo frames del propio train. Con 10 anclas diciendo
+                # "persona 0,9" la focal suma 14,2; dividido por 27.216 anclas
+                # quedaba en 0,0005 — nada. Los 3.982 negativos de D-Fire y
+                # los frames de la cámara propia no le enseñaban nada.
+                #
+                # RetinaNet (y torchvision) normalizan por
+                # max(1, positivos), que en una imagen vacía es 1. La focal ya
+                # aplasta a los negativos fáciles (una imagen vacía bien
+                # clasificada suma ~0,14), así que lo único que pesa es lo que
+                # el modelo se equivoca con confianza: justo lo que hay que
+                # corregir.
+                cls_losses.append(perdida.sum())
                 box_losses.append(deltas_i.sum() * 0.0)
                 continue
 
@@ -262,10 +309,12 @@ class ObjectsHead(nn.Module):
 
             gt_cls = torch.zeros_like(logits_i)
             gt_cls[fg, gt_labels[match[fg].clamp(min=0)]] = 1.0
-            cls_losses.append(sigmoid_focal_loss(
+            perdida = sigmoid_focal_loss(
                 logits_i[valid], gt_cls[valid], alpha=c.focal_alpha,
-                gamma=c.focal_gamma, reduction="sum",
-            ) / max(1, int(fg.sum())))
+                gamma=c.focal_gamma, reduction="none")
+            if ignorar is not None:
+                perdida = perdida * _peso_clases(gt_cls[valid], ignorar)
+            cls_losses.append(perdida.sum() / max(1, int(fg.sum())))
 
             if fg.any():
                 matched = gt_boxes[match[fg]]

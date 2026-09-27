@@ -1,0 +1,120 @@
+.visor-evidencia__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.visor-evidencia {
+  width: min(92vw, 1100px);
+  max-height: 90vh;
+  background: #060d1a;
+  border: 2px solid #ff8427;
+  border-radius: 16px;
+  padding: 14px 16px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: #fff;
+}
+
+.visor-evidencia__cabecera {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.visor-evidencia__tipo {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.visor-evidencia__donde {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visor-evidencia__cerrar {
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  color: #fff;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.visor-evidencia__medios {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.visor-evidencia__figura {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.visor-evidencia__figura video,
+.visor-evidencia__figura img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #000;
+  border-radius: 10px;
+}
+
+.visor-evidencia__figura figcaption {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.visor-evidencia__pie {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+}
+
+.visor-evidencia__pie a {
+  color: #ff8427;
+}
+
+.visor-evidencia__revision {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.visor-evidencia__voto {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  color: #fff;
+  font: inherit;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.visor-evidencia__voto:disabled { opacity: 0.5; cursor: wait; }
+.visor-evidencia__voto--si { background: rgba(60, 200, 90, 0.35); border-color: rgb(60, 200, 90); }
+.visor-evidencia__voto--no { background: rgba(255, 90, 60, 0.35); border-color: rgb(255, 110, 70); }
+
+.visor-evidencia__nota {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+}

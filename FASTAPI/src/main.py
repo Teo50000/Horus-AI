@@ -4,6 +4,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 import datetime
+import os
 from contextlib import asynccontextmanager
 from sqlmodel import SQLModel
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,79 @@ from src.routers.video_rutas import video_router
 from src.routers.alerta_rutas import alerta_router
 from src.routers.config_rutas import config_router
 from src.models import alerta_model # IMPORTANTE: registra la tabla antes de crearla
+
+# --------------------------------------------------------------------------- #
+# 26/09 — "cuando pineas la cámara se apaga y se prende, y después se cae todo
+# el backend". En logs\backend.txt no quedaba NADA: ni un traceback. Eso deja
+# dos candidatos, y los dos se cubren acá.
+#
+# 1. Un crash nativo. OpenCV con MSMF puede tirar abajo el proceso entero
+#    (access violation) cuando la webcam está tomada por otro proceso —el
+#    servicio de modelos—, y Python no llega a escribir nada. `faulthandler`
+#    escribe el stack aunque el proceso muera así, y va a parar al log.
+# 2. La consola congelada. Si alguien hace clic adentro de la ventana, Windows
+#    entra en "modo selección" (QuickEdit) y BLOQUEA a quien escriba en ella.
+#    Con un log por cada pedido, el backend se frena en el siguiente print y
+#    desde afuera es idéntico a que se cayó. Se apaga el QuickEdit de esta
+#    consola, y además se callan del log los pedidos que el panel hace cada
+#    pocos segundos, que eran casi todo el texto.
+# --------------------------------------------------------------------------- #
+import faulthandler
+import logging
+import sys as _sys
+
+try:
+    faulthandler.enable(file=_sys.stderr, all_threads=True)
+except Exception:                                        # noqa: BLE001
+    pass
+
+
+def _apagar_quickedit() -> None:
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        h = k32.CreateFileW("CONIN$", 0xC0000000, 3, None, 3, 0, None)
+        if h in (0, -1):
+            return
+        modo = ctypes.c_uint32()
+        if k32.GetConsoleMode(h, ctypes.byref(modo)):
+            ENABLE_QUICK_EDIT_MODE, ENABLE_EXTENDED_FLAGS = 0x40, 0x80
+            k32.SetConsoleMode(h, (modo.value & ~ENABLE_QUICK_EDIT_MODE)
+                               | ENABLE_EXTENDED_FLAGS)
+        k32.CloseHandle(h)
+    except Exception:                                    # noqa: BLE001
+        pass
+
+
+class _SinSondeos(logging.Filter):
+    """Saca del log de accesos los pedidos de rutina que devolvieron 200.
+
+    Un error en esas mismas rutas SÍ se ve: solo se calla el 200 de siempre.
+    """
+
+    def filter(self, rec: logging.LogRecord) -> bool:
+        try:
+            return not self._es_rutina(rec)
+        except Exception:                                # noqa: BLE001
+            return True
+
+    def _es_rutina(self, rec: logging.LogRecord) -> bool:
+        args = rec.args if isinstance(rec.args, tuple) else ()
+        # uvicorn.access: (cliente, método, ruta, versión, status)
+        if len(args) >= 5:
+            metodo, ruta, status = str(args[1]), str(args[2]), args[4]
+            ruta = ruta.split("?", 1)[0]
+            return (metodo == "GET" and status == 200 and
+                    ruta in ("/camaras/config", "/estado", "/camaras/emergencia",
+                             "/config/mail"))
+        return False
+
+
+_apagar_quickedit()
+logging.getLogger("uvicorn.access").addFilter(_SinSondeos())
+
 
 def hay_websockets() -> Optional[str]:
     """Devuelve el nombre de la implementación de WebSocket, o None.
@@ -143,6 +217,13 @@ def estado():
         "mail": {"ok": listo, "motivo": motivo},
     }
 
+
+# La captura y el clip de cada alerta (ver src/services/evidencia.py). Se
+# sirven como archivos: el panel los muestra con <img>/<video> y el mail los
+# lleva adjuntos.
+from fastapi.staticfiles import StaticFiles
+from src.services.evidencia import PREFIJO_URL, asegurar_carpeta
+app.mount(PREFIJO_URL, StaticFiles(directory=asegurar_carpeta()), name="evidencia")
 
 app.include_router(prefix='/camaras', router=camara_router)
 app.include_router(prefix='/video', router=video_router)

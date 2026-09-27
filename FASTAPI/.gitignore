@@ -6,3 +6,14 @@
 # Copias que hace la migracion antes de reconstruir una tabla. Son la base
 # entera: no van al repo, pero no se borran solas a proposito.
 *.respaldo-*
+
+# La captura y el clip de cada alerta (src/services/evidencia.py). Son
+# imagenes de las camaras de la casa: no van al repositorio.
+evidencia/
+
+# Copias que deja "Limpiar historial" (base + evidencia). No van al repo.
+respaldos/
+
+# Lo que se marca como falsa alarma o correcta desde el panel (capa 12).
+# Son imagenes de la casa: no van al repo.
+revision/

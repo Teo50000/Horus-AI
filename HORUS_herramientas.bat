@@ -18,6 +18,7 @@ echo   1  Correr las 13 suites de pruebas
 echo   2  Mandar una alerta de prueba al panel
 echo   3  Ver que esta instalado y que falta
 echo   4  Pasar el detector por una carpeta de fotos tuyas
+echo   G  Grabar tu camara para reentrenar objetos ^(pistolas y personas falsas^)
 echo   5  Dejar lista la cabeza de CAIDAS
 echo   6  Dibujar la zona restringida ^(prende INTRUSION^)
 echo   7  Adelgazar head_best_solo.pt  ^(93 MB -^> 33 MB^)
@@ -39,6 +40,7 @@ if "%OPCION%"=="1" goto pruebas
 if "%OPCION%"=="2" goto alerta
 if "%OPCION%"=="3" goto chequeo
 if "%OPCION%"=="4" goto fotos
+if /i "%OPCION%"=="G" goto grabar
 if "%OPCION%"=="5" goto mediapipe
 if "%OPCION%"=="6" goto topologia
 if "%OPCION%"=="7" goto adelgazar
@@ -178,6 +180,47 @@ echo  Listo. Las fotos con cajas quedaron en:
 echo     %~dp0horus\04_cabezas\objetos\revision\
 echo.
 start "" "%~dp0horus\04_cabezas\objetos\revision"
+pause
+goto menu
+
+rem ===============================================================
+:grabar
+cls
+echo  Graba frames de tu camara para reentrenar el detector de objetos
+echo  en Kaggle. Es lo que le ensena que lo de tu cuarto NO es una pistola.
+echo.
+echo  ANTES: cerra HORUS ^(la ventana "Horus modelos"^). En Windows la
+echo  camara la abre un solo programa a la vez.
+echo.
+echo    1  Cuarto VACIO   - salis del cuadro. 3 minutos.
+echo                        Prende y apaga la luz, deja cosas en la mesa.
+echo    2  CON VOS        - sin armas, haciendo lo de siempre. 5 minutos.
+echo                        Agarra el celular, el mouse, el control: lo que
+echo                        el panel marcaba como pistola.
+echo.
+set ESC=
+set MIN=
+set ESCENA=
+set /p ESCENA=  1 o 2:
+if "%ESCENA%"=="1" set ESC=vacia
+if "%ESCENA%"=="1" set MIN=3
+if "%ESCENA%"=="2" set ESC=conmigo
+if "%ESCENA%"=="2" set MIN=5
+if not defined ESC goto menu
+set CAM=0
+set /p CAM=  Camara [0]:
+if "%CAM%"=="" set CAM=0
+pushd horus\04_cabezas\objetos
+python grabar_propio.py --escena %ESC% --minutos %MIN% --camara %CAM%
+popd
+echo.
+echo  Los frames quedan en:
+echo     %~dp0horus\04_cabezas\objetos\datasets\propio\
+echo  Cuando tengas las dos escenas: comprimi esa carpeta "propio" en un
+echo  .zip y subila a Kaggle como dataset "horus-propio" ^(ver el paso 5b
+echo  del notebook horus_objetos_kaggle.ipynb^).
+echo.
+start "" "%~dp0horus\04_cabezas\objetos\datasets\propio"
 pause
 goto menu
 

@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fuenteVideo } from "../fuenteVideo";
 import "./CeldaCamara.css";
 
@@ -10,14 +11,34 @@ const detenerStream = (camaraId) => {
 };
 
 function Stream({ camaraId, nombre, servicio, claveExtra }) {
-  const f = fuenteVideo(camaraId, servicio);
+  // 26/09 — "cuando pineas la camara se apaga y se prende". La URL del backend
+  // llevaba `?t=${Date.now()}` calculado EN CADA RENDER, y el panel se
+  // re-renderiza solo cada pocos segundos (el estado del servicio, el del
+  // mail, cada alerta que llega). Cada render era un `src` distinto: el
+  // navegador cortaba el video y pedia uno nuevo, y el backend volvia a abrir
+  // la camara. Ahora el `t` es uno por celda y solo cambia cuando cambia la
+  // camara o cuando hay que reintentar.
+  const [intento, setIntento] = useState(0);
+  const t = useMemo(() => Date.now(), [camaraId, claveExtra, intento]);
+  const f = fuenteVideo(camaraId, servicio, t);
   const caida = f.conIA && f.estado && f.estado !== "ok";
+
+  // Si el video no carga (el backend contesta 503 mientras el servicio de
+  // modelos engancha la camara), se reintenta solo a los 3 s en vez de dejar
+  // el recuadro roto para siempre.
+  const reintento = useRef(null);
+  useEffect(() => () => clearTimeout(reintento.current), []);
+  const alFallar = () => {
+    clearTimeout(reintento.current);
+    reintento.current = setTimeout(() => setIntento((n) => n + 1), 3000);
+  };
 
   return (
     <>
       <img
-        key={`${camaraId}-${f.conIA}-${claveExtra ?? ""}`}
+        key={`${camaraId}-${f.conIA}-${claveExtra ?? ""}-${intento}`}
         src={f.url}
+        onError={alFallar}
         className="celda-camara__stream"
         alt={nombre}
       />
@@ -70,7 +91,7 @@ export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar, servic
 
       <button
         className="celda-camara__unpin"
-        onClick={() => { detenerStream(slot.id); onVaciar(slotIdx); }}
+        onClick={() => { detenerStream(camaraActual.id); onVaciar(slotIdx); }}
         title="Quitar"
       >
         ✕

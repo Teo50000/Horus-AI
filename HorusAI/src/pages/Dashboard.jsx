@@ -18,7 +18,7 @@ export default function Dashboard() {
   const [panelAbierto, setPanelAbierto]    = useState(null);
 
   // El hook va ACÁ ADENTRO, no afuera del componente
-  const { eventos, conectado } = useWebSocketEventos(WS_ALERTAS);
+  const { eventos, conectado, limpiar: limpiarEnVivo } = useWebSocketEventos(WS_ALERTAS);
 
   // El servicio de modelos: si esta corriendo, el video de las camaras sale
   // de el (con las cajas dibujadas) en vez de salir del backend. Ver el
@@ -27,7 +27,7 @@ export default function Dashboard() {
   const { mail } = useEstadoBackend();
   const nCamaras = Object.keys(servicio.camaras).length;
 
-  const historial = useHistorial(eventos);
+  const historial = useHistorial(eventos, limpiarEnVivo);
   const ajustes   = useAjustes();
   const grid      = useGrid();
 

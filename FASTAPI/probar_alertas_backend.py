@@ -45,6 +45,9 @@ for _p in (_AQUI, _REPO,
 # Base temporal ANTES de importar el módulo, que crea el engine al importarse.
 _TMP = tempfile.mkdtemp()
 os.chdir(_TMP)
+# La evidencia (capturas y clips) también a la carpeta temporal: la suite no
+# puede dejar archivos en FASTAPI\evidencia.
+os.environ["HORUS_EVIDENCIA"] = os.path.join(_TMP, "evidencia")
 
 _RAIZ_REPO = Path(__file__).resolve().parent.parent
 
@@ -80,8 +83,16 @@ ws.manager.broadcast = _broadcast_espia
 # tarea de fondo abre una conexión SMTP real y la prueba se cuelga — que es
 # exactamente lo que le pasaría al backend en una máquina sin salida al 465.
 MAILS: List[tuple] = []
+MAILS_KW: List[dict] = []
 import src.routers.alerta_rutas as ar                          # noqa: E402
-ar.enviar_alerta_email = lambda *a, **k: MAILS.append(a)
+
+
+def _mail_espia(*a: Any, **k: Any) -> None:
+    MAILS.append(a)
+    MAILS_KW.append(k)
+
+
+ar.enviar_alerta_email = _mail_espia
 
 app = FastAPI()
 app.include_router(prefix="/alertas", router=alerta_router)
@@ -108,6 +119,7 @@ def postear(payload: dict) -> dict:
 def limpiar() -> None:
     EMITIDOS.clear()
     MAILS.clear()
+    MAILS_KW.clear()
     with Session(engine) as s:
         for tabla in (Alerta, Camara):
             for f in s.exec(select(tabla)).all():
@@ -1006,6 +1018,397 @@ def caso_la_base_vieja_se_migra_sola() -> Tuple[bool, str]:
                 f"conservadas · las viejas siguen: {conserva}")
 
 
+# --------------------------------------------------------------------------- #
+# 26/09 · el nombre de la cámara y la evidencia
+# --------------------------------------------------------------------------- #
+def _cocina() -> int:
+    """Una cámara registrada con nombre propio, como la del usuario."""
+    with Session(engine) as s:
+        c = s.exec(select(CamaraConfig).where(CamaraConfig.nombre == "Cocina")).first()
+        if c is None:
+            c = CamaraConfig(nombre="Cocina", usb_index=0)
+            s.add(c)
+            s.commit()
+            s.refresh(c)
+        return c.id
+
+
+def _payload_servicio(cid: int, con_id: bool = True) -> dict:
+    """Como lo manda el servicio: `cam-<id>` y, del TransporteBackend,
+    `sitio.camara_config_id`."""
+    ev = [e for e in eventos("incendio") if e.tipo == "incendio"][0]
+    p = armar_payload(ev, 1)
+    p["id"] = f"{p['id']}-{cid}-{int(time.time() * 1e6) % 10**9}"
+    p["sitio"]["camara"] = f"cam-{cid}"
+    p["sitio"]["camaras"] = [f"cam-{cid}"]
+    if con_id:
+        p["sitio"]["camara_config_id"] = cid
+    return p
+
+
+def caso_nombre_de_la_base() -> Tuple[bool, str]:
+    """La alerta del servicio (`cam-1`) sale con el nombre registrado.
+
+    Desde el 15/09 el modelo del POST tiraba `sitio.camara_config_id` y
+    `_config_de` buscaba "cam-1" por nombre: nada. El panel y el mail decían
+    "cam-1" en vez de "Cocina"."""
+    limpiar()
+    cid = _cocina()
+    postear(_payload_servicio(cid))
+    en_vivo = EMITIDOS[-1]["nombre_camara"] if EMITIDOS else None
+    lista = cliente.get("/alertas").json()
+    en_hist = lista[0]["nombre_camara"] if lista else None
+    with Session(engine) as s:
+        fila = s.exec(select(Alerta)).first()
+        compat = s.exec(select(Camara)).first()
+    ok = (en_vivo == "Cocina" and en_hist == "Cocina"
+          and fila.camara_config_id == cid
+          and compat.camara_config_nombre == "Cocina")
+    return ok, (f"en vivo {en_vivo!r} · historial {en_hist!r} · "
+                f"config_id={fila.camara_config_id} · fila vieja {compat.camara_config_nombre!r}")
+
+
+def caso_nombre_sin_id() -> Tuple[bool, str]:
+    """Aunque no venga el id, "cam-<n>" alcanza para encontrarla."""
+    limpiar()
+    cid = _cocina()
+    postear(_payload_servicio(cid, con_id=False))
+    en_vivo = EMITIDOS[-1]["nombre_camara"] if EMITIDOS else None
+    return en_vivo == "Cocina", f"en vivo {en_vivo!r}"
+
+
+def caso_nombre_filas_viejas() -> Tuple[bool, str]:
+    """Las alertas guardadas antes del arreglo (sin config_id, con "cam-1")
+    también muestran el nombre en el historial."""
+    limpiar()
+    cid = _cocina()
+    p = _payload_servicio(cid, con_id=False)
+    postear(p)
+    with Session(engine) as s:          # como quedaron las del 15/09 al 26/09
+        for f in s.exec(select(Alerta)).all():
+            f.camara_config_id = None
+            s.add(f)
+        s.commit()
+    lista = cliente.get("/alertas").json()
+    h = cliente.get(f"/alertas/{p['id']}").json()
+    ok = bool(lista) and lista[0]["nombre_camara"] == "Cocina" \
+        and h.get("nombre_camara") == "Cocina"
+    return ok, f"historial {lista[0]['nombre_camara'] if lista else None!r} · evento {h.get('nombre_camara')!r}"
+
+
+def _adjuntos_de_prueba() -> dict:
+    from evidencia import Grabadora
+    import cv2
+    import numpy as np
+    g = Grabadora(segundos=30)
+    t0 = time.time()
+    for i in range(8):
+        img = np.full((120, 160, 3), 30 * i, dtype=np.uint8)
+        cv2.rectangle(img, (10 + 15 * i, 30), (40 + 15 * i, 90), (0, 0, 255), -1)
+        g.agregar_cuadro("cam-x", img, ts=t0 + i * 0.4)
+    return g.adjuntos("cam-x")
+
+
+def caso_evidencia_se_guarda() -> Tuple[bool, str]:
+    """La captura y el clip se guardan, llenan los campos de los compañeros
+    (`snapshot_url`, `clip_url`), salen por el websocket SIN el base64, y el
+    mail los recibe."""
+    limpiar()
+    cid = _cocina()
+    p = _payload_servicio(cid)
+    p["adjuntos"] = _adjuntos_de_prueba()
+    p["severidad"], p["severidad_num"] = "critico", 3
+    postear(p)
+    import src.services.evidencia as evmod
+    with Session(engine) as s:
+        fila = s.exec(select(Alerta)).first()
+        compat = s.exec(select(Camara)).first()
+    ws_msg = EMITIDOS[-1] if EMITIDOS else {}
+    cap = evmod.ruta_de(fila.captura_url)
+    clip = evmod.ruta_de(fila.clip_url)
+    sin_b64_ws = "adjuntos" not in json.dumps(ws_msg) and len(json.dumps(ws_msg)) < 20000
+    sin_b64_base = "b64" not in (fila.evidencia or "")
+    mail_kw = MAILS_KW[-1] if MAILS_KW else {}
+    ok = (bool(cap) and bool(clip) and os.path.getsize(cap) > 100
+          and compat.snapshot_url == fila.captura_url
+          and compat.clip_url == fila.clip_url
+          and ws_msg.get("captura_url") == fila.captura_url
+          and sin_b64_ws and sin_b64_base
+          and mail_kw.get("captura") == cap and mail_kw.get("clip") == clip)
+    return ok, (f"captura={bool(cap)} clip={bool(clip)} ({p['adjuntos']['clip']['tipo']}) · "
+                f"fila vieja={compat.snapshot_url == fila.captura_url} · ws sin base64={sin_b64_ws} · "
+                f"mail con adjuntos={bool(mail_kw.get('captura'))}")
+
+
+def caso_evidencia_se_hereda() -> Tuple[bool, str]:
+    """Un re-aviso sin adjuntos hereda la evidencia del mensaje anterior: el
+    historial muestra la ÚLTIMA fila de cada evento."""
+    limpiar()
+    cid = _cocina()
+    p = _payload_servicio(cid)
+    p["adjuntos"] = _adjuntos_de_prueba()
+    postear(p)
+    p2 = json.loads(json.dumps(p))
+    p2.pop("adjuntos")
+    p2["secuencia"] = 2
+    postear(p2)
+    lista = cliente.get("/alertas").json()
+    ok = bool(lista) and bool(lista[0].get("captura_url")) and bool(lista[0].get("clip_url"))
+    return ok, f"la fila que ve el historial trae captura={bool(lista and lista[0].get('captura_url'))}"
+
+
+def caso_evidencia_rota_no_tumba() -> Tuple[bool, str]:
+    """Un base64 roto o un tipo que no corresponde: la alerta entra igual."""
+    limpiar()
+    cid = _cocina()
+    p = _payload_servicio(cid)
+    p["adjuntos"] = {"captura": {"tipo": "image/jpeg", "b64": "esto no es base64!!"},
+                     "clip": {"tipo": "application/x-msdownload", "b64": "TVqQAAMAAAAEAAAA"}}
+    r = cliente.post("/alertas", json=p)
+    with Session(engine) as s:
+        fila = s.exec(select(Alerta)).first()
+    ok = r.status_code == 200 and fila is not None and not fila.captura_url and not fila.clip_url
+    return ok, f"status={r.status_code} · captura={fila.captura_url if fila else '-'}"
+
+
+def caso_mail_lleva_la_imagen() -> Tuple[bool, str]:
+    """El mail de verdad (sin mandarlo): la captura en el cuerpo y adjunta, y
+    el clip adjunto."""
+    import smtplib
+    import src.services.email_service as es
+    import src.services.evidencia as evmod
+    guardado = evmod.guardar(_adjuntos_de_prueba(), evento_id="E-mail", secuencia=1,
+                             cfg_id=1, camara="cam-1")
+    enviados = []
+
+    class _SMTP:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def login(self, *a): pass
+        def send_message(self, m): enviados.append(m)
+
+    original = smtplib.SMTP_SSL
+    smtplib.SMTP_SSL = _SMTP
+    try:
+        es.enviar_alerta_email("incendio", "Cocina", 0.9, "2026-09-26T07:00:00-03:00",
+                               "guardia@sucursal.test", captura=guardado["captura_ruta"],
+                               clip=guardado["clip_ruta"], motivo="fuego en segmentación")
+    finally:
+        smtplib.SMTP_SSL = original
+    m = enviados[0]
+    tipos = [p.get_content_type() for p in m.walk()]
+    inline = any(p.get("Content-ID") for p in m.walk())
+    adjuntos = [p.get_filename() for p in m.walk() if p.get_filename()]
+    ok = ("image/jpeg" in tipos and inline and len(adjuntos) == 2
+          and "Cocina" in m["Subject"])
+    return ok, f"partes={tipos} · inline={inline} · adjuntos={len(adjuntos)}"
+
+
+# --------------------------------------------------------------------------- #
+# 26/09 · "cuando pineas la cámara se apaga y se prende y se cae el backend"
+# --------------------------------------------------------------------------- #
+class _ServicioFalso:
+    """Un servicio de modelos de mentira en un puerto libre.
+
+    modo: "con_camara" · "cargando" · "lento" · None (apagado)."""
+
+    def __init__(self) -> None:
+        import http.server
+        import socketserver
+        import threading
+        falso = self
+        self.modo = "con_camara"
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if falso.modo == "lento":
+                    time.sleep(4.5)
+                camaras = ([{"camara": "cam-1", "config_id": 1, "url": "0",
+                             "estado": "ok"}] if falso.modo == "con_camara" else [])
+                cuerpo = json.dumps({"ok": True,
+                                     "fase": "cargando" if falso.modo == "cargando" else "listo",
+                                     "camaras": camaras}).encode()
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(cuerpo)))
+                    self.end_headers()
+                    self.wfile.write(cuerpo)
+                except OSError:
+                    pass
+
+            def log_message(self, *a):
+                pass
+
+        class Srv(socketserver.ThreadingMixIn, http.server.HTTPServer):
+            daemon_threads = True
+
+        self.srv = Srv(("127.0.0.1", 0), H)
+        self.url = f"http://127.0.0.1:{self.srv.server_address[1]}"
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+
+    def cerrar(self) -> None:
+        self.srv.shutdown()
+        self.srv.server_close()
+
+
+def _video_con(servicio_url: str):
+    """Cliente con las rutas de video, sin cámaras de verdad: `_abrir` anota
+    cuántas veces el backend INTENTÓ abrir una cámara."""
+    import src.routers.video_rutas as vr
+    vr.SERVICIO_URL = servicio_url
+    abiertas: List[Any] = []
+    vr._abrir = lambda fuente: abiertas.append(fuente) or None
+    app_v = FastAPI()
+    app_v.include_router(prefix="/video", router=vr.video_router)
+    return TestClient(app_v), abiertas
+
+
+def _registrar_cam1() -> None:
+    with Session(engine) as s:
+        if s.get(CamaraConfig, 1) is None:
+            s.add(CamaraConfig(id=1, nombre="cam-deposito", usb_index=0))
+            s.commit()
+
+
+def caso_video_no_se_la_saca() -> Tuple[bool, str]:
+    """Con el servicio arriba el backend NUNCA abre la cámara: si la tiene,
+    redirige; si todavía no (cargando, o lento para contestar), 503.
+
+    Antes: si el servicio tardaba más de 0,6 s o estaba cargando, el backend
+    abría la webcam él. El servicio y el backend se la peleaban (la luz se
+    apagaba y se prendía) y OpenCV con MSMF podía matar el proceso."""
+    _registrar_cam1()
+    falso = _ServicioFalso()
+    try:
+        c, abiertas = _video_con(falso.url)
+        res = {}
+        for modo in ("con_camara", "cargando", "lento"):
+            falso.modo = modo
+            r = c.get("/video/video_feed/1", follow_redirects=False)
+            res[modo] = r.status_code
+        rp = None
+        falso.modo = "con_camara"
+        rp = c.get("/video/preview/0", follow_redirects=False).status_code
+    finally:
+        falso.cerrar()
+    ok = (res == {"con_camara": 307, "cargando": 503, "lento": 503}
+          and rp == 307 and not abiertas)
+    return ok, f"{res} · preview de la suya={rp} · intentos de abrir={len(abiertas)}"
+
+
+def caso_video_sin_servicio_abre() -> Tuple[bool, str]:
+    """Sin servicio (puerto cerrado) el backend sí abre la cámara: es el modo
+    'solo ver cámaras', que tiene que seguir andando."""
+    import socket
+    _registrar_cam1()
+    sk = socket.socket()
+    sk.bind(("127.0.0.1", 0))
+    puerto = sk.getsockname()[1]
+    sk.close()                               # nadie escucha ahí
+    c, abiertas = _video_con(f"http://127.0.0.1:{puerto}")
+    t0 = time.perf_counter()
+    r = c.get("/video/video_feed/1", follow_redirects=False)
+    ms = (time.perf_counter() - t0) * 1000
+    # _abrir de mentira devuelve None -> 409 "no se pudo abrir": lo que importa
+    # es que lo INTENTÓ, y rápido (sin esperar un timeout).
+    ok = abiertas == [0] and r.status_code == 409 and ms < 1500
+    return ok, f"intentó abrir={abiertas} · status={r.status_code} · {ms:.0f} ms"
+
+
+def caso_preview_sin_camara_no_explota() -> Tuple[bool, str]:
+    """`/video/preview` con una cámara que no abre: 400, no 500
+    (`None.isOpened()`)."""
+    import socket
+    sk = socket.socket()
+    sk.bind(("127.0.0.1", 0))
+    puerto = sk.getsockname()[1]
+    sk.close()
+    c, _ = _video_con(f"http://127.0.0.1:{puerto}")
+    r = c.get("/video/preview/3", follow_redirects=False)
+    return r.status_code == 400, f"status={r.status_code}"
+
+
+def caso_broadcast_con_panel_muerto() -> Tuple[bool, str]:
+    """Un panel que murió sin despedirse no puede hacer fallar la alerta ni
+    dejar a los demás sin enterarse."""
+    import asyncio
+
+    class _Muerto:
+        async def send_text(self, m): raise RuntimeError("conexión muerta")
+
+    class _Vivo:
+        def __init__(self): self.recibidos = []
+        async def send_text(self, m): self.recibidos.append(m)
+
+    mgr = ws.ConnectionManager()
+    vivo = _Vivo()
+    mgr.active_connections = {0: [_Muerto(), vivo]}
+    asyncio.run(_MANAGER_REAL.__func__(mgr, "hola"))
+    quedan = len(mgr.active_connections.get(0, []))
+    ok = vivo.recibidos == ["hola"] and quedan == 1
+    return ok, f"el vivo recibió={vivo.recibidos} · conexiones que quedan={quedan}"
+
+
+def caso_revision_guarda_el_dato() -> Tuple[bool, str]:
+    """Marcar una alerta como falsa la anota en todas sus filas y copia el
+    cuadro CRUDO, el clip y un meta.json con las clases ausentes a revision/."""
+    limpiar()
+    cid = _cocina()
+    p = _payload_servicio(cid)
+    p["tipo"] = "merodeo"
+    adj = _adjuntos_de_prueba()
+    adj["cruda"] = dict(adj["captura"])
+    p["adjuntos"] = adj
+    postear(p)
+    p2 = json.loads(json.dumps(p)); p2.pop("adjuntos"); p2["secuencia"] = 2
+    postear(p2)
+    malo = cliente.post(f"/alertas/{p['id']}/revision", json={"veredicto": "quizas"}).status_code
+    no_existe = cliente.post("/alertas/NOEXISTE/revision", json={"veredicto": "falsa"}).status_code
+    r = cliente.post(f"/alertas/{p['id']}/revision", json={"veredicto": "falsa"}).json()
+    with Session(engine) as s:
+        marcas = {f.revision for f in s.exec(select(Alerta)).all()}
+    meta = json.load(open(os.path.join(r["guardado_en"], "meta.json"))) if r.get("guardado_en") else {}
+    archivos = os.listdir(r["guardado_en"]) if r.get("guardado_en") else []
+    lista = cliente.get("/alertas").json()
+    cliente.post(f"/alertas/{p['id']}/revision", json={"veredicto": ""})
+    with Session(engine) as s:
+        sin = {f.revision for f in s.exec(select(Alerta)).all()}
+    ok = (malo == 400 and no_existe == 404 and marcas == {"falsa"}
+          and meta.get("ausentes") == ["persona"] and len(archivos) >= 4
+          and lista and lista[0].get("revision") == "falsa" and sin == {None})
+    return ok, (f"400={malo} 404={no_existe} · filas {marcas} · ausentes {meta.get('ausentes')} · "
+                f"{len(archivos)} archivos · desmarcar -> {sin}")
+
+
+def caso_borrar_historial() -> Tuple[bool, str]:
+    """Vaciar el historial deja copia de la base y de la evidencia, pide
+    confirmación, y no toca cámaras ni contactos."""
+    import sqlite3
+    limpiar()
+    cid = _cocina()
+    p = _payload_servicio(cid)
+    p["adjuntos"] = _adjuntos_de_prueba()
+    postear(p)
+    sin_confirmar = cliente.delete("/alertas").status_code
+    r = cliente.delete("/alertas?confirmar=true")
+    d = r.json()
+    with Session(engine) as s:
+        quedan = len(s.exec(select(Alerta)).all()) + len(s.exec(select(Camara)).all())
+        camaras = len(s.exec(select(CamaraConfig)).all())
+        contactos = len(s.exec(select(NumeroEmergencia)).all())
+    copia = os.path.join(d.get("respaldo", ""), "horus.db")
+    en_copia = sqlite3.connect(copia).execute("select count(*) from alerta").fetchone()[0] \
+        if os.path.exists(copia) else 0
+    ev_copia = sum(len(fs) for _, _, fs in os.walk(os.path.join(d.get("respaldo", ""), "evidencia")))
+    lista = cliente.get("/alertas").json()
+    ok = (sin_confirmar == 400 and r.status_code == 200 and quedan == 0 and not lista
+          and en_copia >= 1 and ev_copia >= 2 and camaras >= 1 and contactos >= 1)
+    return ok, (f"sin confirmar={sin_confirmar} · quedan={quedan} · en la copia={en_copia} · "
+                f"evidencia movida={ev_copia} · cámaras={camaras} contactos={contactos}")
+
+
 CASOS: Dict[str, Callable[[], Tuple[bool, str]]] = {
     "alerta_real": caso_alerta_real,
     "forma_ws": caso_forma_del_websocket,
@@ -1044,6 +1447,21 @@ CASOS: Dict[str, Callable[[], Tuple[bool, str]]] = {
     "plurales": caso_los_filtros_saben_pluralizar,
     "ws_instalado": caso_el_servidor_puede_hacer_websockets,
     "ws_no_es_evento": caso_ws_no_se_confunde_con_un_evento,
+    # --- 26/09: nombre de la cámara y evidencia ---
+    "nombre_de_la_base": caso_nombre_de_la_base,
+    "nombre_sin_id": caso_nombre_sin_id,
+    "nombre_viejas": caso_nombre_filas_viejas,
+    "evidencia_guarda": caso_evidencia_se_guarda,
+    "evidencia_hereda": caso_evidencia_se_hereda,
+    "evidencia_rota": caso_evidencia_rota_no_tumba,
+    "mail_con_imagen": caso_mail_lleva_la_imagen,
+    # --- 26/09: la cámara es del servicio ---
+    "video_es_del_serv": caso_video_no_se_la_saca,
+    "video_sin_serv": caso_video_sin_servicio_abre,
+    "preview_no_500": caso_preview_sin_camara_no_explota,
+    "panel_muerto": caso_broadcast_con_panel_muerto,
+    "borrar_historial": caso_borrar_historial,
+    "revision": caso_revision_guarda_el_dato,
 }
 
 

@@ -43,3 +43,50 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 26/09 · con evidencia: miniatura a la izquierda, ocupando las dos lineas. */
+.evento-item--con-evidencia {
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "mini tipo   fecha"
+    "mini camara camara";
+  cursor: pointer;
+}
+
+.evento-item--con-evidencia:hover {
+  border-color: rgba(255, 132, 39, 0.6);
+}
+
+.evento-item__miniatura {
+  grid-area: mini;
+  position: relative;
+  width: 64px;
+  height: 36px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #000;
+  align-self: center;
+}
+
+.evento-item__miniatura img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.evento-item__play,
+.evento-item__insignia {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+
+.evento-item__marca { color: rgb(255, 110, 70); font-weight: 700; }
+.evento-item__marca--si { color: rgb(60, 200, 90); }

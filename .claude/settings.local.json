@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp ../data/processed/todos.npy \"C:/Users/48792583/AppData/Local/Temp/claude/C--Users-48792583-Documents-GitHub-Horus-AI-fresh/d3a16133-39da-4b44-a645-5d9da552fc26/scratchpad/todos_backup.npy\")",
+      "Bash(\"C:/Users/48792583/Documents/falldet_env/Scripts/python.exe\" 03_normalizar.py)",
+      "Bash(cp ../data/processed/todos.npy \"C:/Users/48792583/AppData/Local/Temp/claude/C--Users-48792583-Documents-GitHub-Horus-AI-fresh/d3a16133-39da-4b44-a645-5d9da552fc26/scratchpad/todos_ref_pre_refactor.npy\")",
+      "Bash(C:/Users/48792583/Documents/falldet_env/Scripts/python.exe -c ' *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit -q -m ' *)",
+      "Bash(\"C:/Users/48792583/Documents/falldet_env/Scripts/python.exe\" -c \"import pytest; print\\('pytest', pytest.__version__\\)\")",
+      "Bash(\"C:/Users/48792583/Documents/falldet_env/Scripts/python.exe\" tests/test_detector_caidas.py)",
+      "Bash(\"C:/Users/48792583/Documents/falldet_env/Scripts/python.exe\" -)",
+      "Bash(\"C:/Users/48792583/Documents/falldet_env/Scripts/python.exe\" 16_armar_streams.py)",
+      "Bash(\"C:/Users/48792583/Documents/falldet_env/Scripts/python.exe\" -c \"import sklearn; print\\('sklearn', sklearn.__version__\\)\")",
+      "Bash(\"C:/Users/48792583/Documents/falldet_env/Scripts/python.exe\" 17_evaluar_evento.py --checkpoint ../checkpoints/modelo_demo_todo.pt --max-streams 5 --tag smoke)",
+      "Bash(git mv *)",
+      "PowerShell(nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; Get-Process python -ErrorAction SilentlyContinue | Select-Object Id, @{N='CPU_s';E={[math]::Round\\($_.CPU,1\\)}}, @{N='MB';E={[math]::Round\\($_.WorkingSet64/1MB\\)}}, StartTime)",
+      "Bash(\"C:/Users/48792583/Documents/falldet_env/Scripts/python.exe\" \"C:/Users/48792583/AppData/Local/Temp/claude/C--Users-48792583-Documents-GitHub-Horus-AI-fresh/d3a16133-39da-4b44-a645-5d9da552fc26/scratchpad/chk_regla_persistencia.py\" chk_regla_persistencia_s0)",
+      "Bash(\"C:/Users/48792583/Documents/falldet_env/Scripts/python.exe\" 17_evaluar_evento.py --checkpoint ../checkpoints/modelo_demo_s0.pt --sin-pico --descarte-inicial 1.5 --tag chk_demo_s0)",
+      "Bash(\"C:/Users/48792583/Documents/falldet_env/Scripts/python.exe\" \"C:/Users/48792583/AppData/Local/Temp/claude/C--Users-48792583-Documents-GitHub-Horus-AI-fresh/d3a16133-39da-4b44-a645-5d9da552fc26/scratchpad/chk_regla_persistencia.py\" chk_demo_s0)",
+      "Bash(\"C:/Users/48792583/Documents/falldet_env/Scripts/python.exe\" 17_evaluar_evento.py --loso --fps nativo --sin-pico --tag base_loso_nativo_sinpico)",
+      "Bash(\"C:/Users/48792583/Documents/falldet_env/Scripts/python.exe\" 19_barrer_alarma.py --tag fase4a_defaults_loso_nativo)",
+      "Bash(\"C:/Users/48792583/Documents/falldet_env/Scripts/python.exe\" 19_barrer_alarma.py --tag C3_nobypass_f2.5_tol2.0_10fps --umbrales 0.5,0.7,0.8 --persistencias 0,0.25,0.5,1.0)",
+      "Bash(grep -vE \"Warning|^\\\\s*$\" \"C:\\\\Users\\\\48792583\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-48792583-Documents-GitHub-Horus-AI-fresh\\\\d3a16133-39da-4b44-a645-5d9da552fc26\\\\tasks\\\\byhqnrb4z.output\")",
+      "Bash(nvidia-smi --query-gpu=name --format=csv,noheader)"
+    ]
+  }
+}

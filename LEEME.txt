@@ -4,6 +4,24 @@ HORUS
 Vigilancia que mira video en vivo, decide si algo pasa, y avisa.
 
 
+Primera vez en una PC
+---------------------
+
+    INSTALAR.bat       doble clic, una sola vez despues de clonar
+
+Instala torch (con la placa de video si hay NVIDIA: `pip install torch` a
+secas baja la version de CPU y nadie avisa), las dependencias de python, los
+pesos de los modelos (del release de GitHub), la cabeza de caidas y el panel.
+Al final muestra en verde y rojo que quedo y que no.
+
+Antes hace falta tener instalados:
+
+    Python 3.12    python.org  (marcar "Add python.exe to PATH")
+    Node.js LTS    nodejs.org
+
+Correrlo de nuevo no rompe nada: lo que ya esta, lo saltea.
+
+
 Arrancar
 --------
 

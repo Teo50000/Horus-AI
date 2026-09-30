@@ -12,8 +12,8 @@
 /* ── Caja del modal ── */
 .creacion-modal {
   width: 320px;
-  background: #0d1530;
-  border: 1.5px solid rgba(80, 100, 255, 0.4);
+  background: #090326;
+  border: 1.5px solid rgba(255, 255, 255, 0.68);
   border-radius: 14px;
   padding: 20px 16px 16px;
   display: flex;
@@ -34,7 +34,7 @@
   flex: 1;
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.4);
+  color: #FFFFFF;
   font-size: 13px;
   padding: 6px 0 10px;
   cursor: pointer;
@@ -59,24 +59,29 @@
 
 /* ── Input de nombre ── */
 .creacion-modal__nombre-row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(80, 100, 255, 0.3);
-  border-radius: 8px;
-  padding: 8px 10px;
+  display: flex;
+  align-items: center;
 }
 
 .creacion-modal__nombre-input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(26, 63, 142, 0.78);
+  width: 100%;
+  border-radius: 8px;
+  padding: 12px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.68);
+  color: rgba(255, 255, 255, 1);
   font-size: 13px;
   outline: none;
 }
-
+.creacion-modal__nombre-input:focus {
+  border-color: #ff8427;
+}
 
 /* ── Subtítulo (modo agregar a sector) ── */
 .creacion-modal__subtitulo {
@@ -110,7 +115,7 @@
   justify-content: space-between;
   gap: 8px;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(80, 100, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.68);
   border-radius: 8px;
   padding: 7px 10px;
   cursor: pointer;
@@ -124,7 +129,7 @@
 
 .creacion-modal__row--selected {
   border-color: #ff8427;
-  background: rgba(255, 132, 39, 0.08);
+  background: rgba(26, 63, 142, 0.78);
 }
 
 .creacion-modal__row--check {
@@ -139,7 +144,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 /* Botón preview dentro de la fila */
 .creacion-modal__row-preview {
   width: 1.5vw;
@@ -208,7 +212,8 @@
 
 .creacion-modal__btn--cancelar {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-top: 1px solid #ff8427;
+  border-bottom: 1px solid #ff8427;
   color: rgba(255, 255, 255, 0.6);
 }
 

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Horus</title>
+<!--
+  Lo que muestra Horus.exe mientras levanta todo: nada, la ventana en negro.
+  Cuando el panel contesta en localhost:1420, la ventana pasa al panel.
+  Solo si algo falla aparece el motivo, con un botón a la carpeta de logs.
+  Lo que va diciendo HORUS.bat queda en logs\arranque.txt.
+-->
+<style>
+  :root {
+    --texto: #e9e7f5;
+    --tenue: #8d88b0;
+    --caja: #090326;
+    --borde: #1c1650;
+    --naranja: #ff8427;
+    --rojo: #ff4d4d;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: #000; color: var(--texto);
+    font-family: Consolas, ui-monospace, monospace;
+    -webkit-user-select: none; user-select: none;
+    overflow: hidden;
+  }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 24px; }
+
+  #error {
+    display: none; width: min(560px, 100%);
+    padding: 16px 18px; border-radius: 10px;
+    border: 1px solid var(--rojo); background: rgba(255, 77, 77, .08);
+    font-size: 14px; line-height: 1.5;
+  }
+  body.error #error { display: block; }
+  #error b { color: var(--rojo); display: block; margin-bottom: 4px; letter-spacing: .08em; }
+  .botones { display: flex; gap: 10px; margin-top: 14px; }
+  button {
+    font: inherit; font-size: 13px; color: var(--texto); cursor: pointer;
+    padding: 8px 14px; border-radius: 8px;
+    border: 1px solid var(--borde); background: var(--caja);
+  }
+  button:hover { border-color: var(--naranja); }
+  button.fuerte { background: var(--naranja); border-color: var(--naranja); color: #000; }
+</style>
+</head>
+<body>
+  <div id="error">
+    <b>HORUS NO ARRANCÓ</b>
+    <span id="error-texto"></span>
+    <div class="botones">
+      <button id="b-logs">Abrir la carpeta de logs</button>
+      <button id="b-cerrar" class="fuerte">Cerrar</button>
+    </div>
+  </div>
+
+<script>
+  const T = window.__TAURI__;
+
+  async function tick() {
+    try {
+      // `desde` alto: no pide las líneas del arranque, solo cómo va.
+      const r = await T.core.invoke('estado', { desde: Number.MAX_SAFE_INTEGER });
+      if (r.fase.tipo === 'error') {
+        document.getElementById('error-texto').textContent = r.fase.detalle;
+        document.body.classList.add('error');
+      } else {
+        document.body.classList.remove('error');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setTimeout(tick, 400);
+  }
+
+  document.getElementById('b-logs').onclick = () => T.core.invoke('abrir_logs');
+  document.getElementById('b-cerrar').onclick = () => T.core.invoke('cerrar_app');
+  tick();
+</script>
+</body>
+</html>

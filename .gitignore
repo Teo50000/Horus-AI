@@ -92,6 +92,11 @@ node_modules/
 dist/
 src-tauri/target/
 
+# Horus.exe es la app de HorusAI/src-tauri ya compilada (ver LEEME, "Si
+# hay que rehacer Horus.exe"). Es un archivo generado, como los pesos: va
+# al Release, no a git.
+/Horus.exe
+
 # --- scratch de las sesiones de Claude --------------------------------
 push_log.txt
 limpieza_log.txt

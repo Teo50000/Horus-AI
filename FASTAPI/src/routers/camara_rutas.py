@@ -231,7 +231,7 @@ def actualizar_telefono(id: int, tel: NumeroEmergencia) -> List[NumeroEmergencia
 
 #metodo put 
 @camara_router.put("/{id}", tags=["Camaras de prueba"])
-def actualizar_camara(id: int, cam: Camara) -> List[Camara]:
+def actualizar_camaras(id: int, cam: Camara) -> List[Camara]:
     for i in camaras:
         if i.camera_id == id:
             i.event_type = cam.event_type

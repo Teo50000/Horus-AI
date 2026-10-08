@@ -171,7 +171,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-app.title =  "Mi primer API con FastAPI"
+app.title =  "Horus AI Backend"
 
 app.add_middleware(
     CORSMiddleware,

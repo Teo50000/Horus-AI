@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 # import numpy as np
 import cv2
@@ -8,17 +9,22 @@ import urllib.request
 import time
 import urllib.error
 from typing import Any, Dict, Optional, Tuple
+=======
+import cv2
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse, StreamingResponse
+>>>>>>> Stashed changes
 from sqlmodel import Session
-from src.database import engine
-import src.models.video_model as video_model  
-#from fastapi.templating import Jinja2Templates
 
+import src.models.video_model as video_model
+from src.database import engine
 from src.models.camara_model import CamaraConfig
 from src.models.video_model import VideoCamera, gen
-from fastapi import APIRouter
+
 video_router = APIRouter()
 
 
+<<<<<<< Updated upstream
 # --------------------------------------------------------------------------- #
 def _backends():
     """Los backends de captura a probar, en el orden que conviene.
@@ -165,18 +171,24 @@ def _abrir(fuente):
 
 
 @video_router.get('/video_feed/{camara_config_id}', tags=["Streaming video"])
+=======
+@video_router.get("/video_feed/{camara_config_id}", tags=["Streaming video"])
+>>>>>>> Stashed changes
 def video_feed(camara_config_id: int):
     with Session(engine) as session:
         config = session.get(CamaraConfig, camara_config_id)
         if not config:
-            return JSONResponse(status_code=404, content={"error": "Cámara no encontrada"})
-        
-        # determinar la fuente
+            return JSONResponse(
+                status_code=404,
+                content={"error": "Cámara no encontrada"},
+            )
+
         if config.rtsp_url:
-                source = config.rtsp_url
+            source = config.rtsp_url
         elif config.usb_index is not None:
-                source = config.usb_index
+            source = config.usb_index
         else:
+<<<<<<< Updated upstream
                 return JSONResponse(content={"error": "Debe proveer rtsp_url o usb_index"}, status_code=400)
             
         # ¿Hay servicio de modelos? Entonces la cámara es SUYA, la tenga
@@ -206,11 +218,27 @@ def video_feed(camara_config_id: int):
                 ],
                 "para_ver_que_pasa": "python FASTAPI/diagnostico_camaras.py",
             })
+=======
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Debe proveer rtsp_url o usb_index"},
+            )
+
+        test_cap = cv2.VideoCapture(source)
+        if not test_cap.isOpened():
+            test_cap.release()
+            return JSONResponse(
+                status_code=400,
+                content={"error": "No se pudo conectar a la cámara"},
+            )
+>>>>>>> Stashed changes
         test_cap.release()
+
         return StreamingResponse(
             gen(VideoCamera(source), camara_config_id),
-            media_type="multipart/x-mixed-replace;boundary=frame"
+            media_type="multipart/x-mixed-replace;boundary=frame",
         )
+<<<<<<< Updated upstream
     
 # --------------------------------------------------------------------------- #
 # Búsqueda de cámaras
@@ -269,6 +297,13 @@ def _buscar_camaras() -> None:
                           buscando=False, ts=time.time() - FRESCO_S + 10)
         return
     del_servicio = _indices_del_servicio(estado) if fase == "arriba" else {}
+=======
+
+
+@video_router.get("/cameras/available", tags=["Streaming video"])
+def get_available_cameras():
+    available = []
+>>>>>>> Stashed changes
     for i in range(5):
         if i in del_servicio:
             vacios = 0
@@ -340,17 +375,19 @@ def get_available_cameras(refrescar: bool = False):
     return JSONResponse(content=lista, headers=cab)
 
 
-@video_router.post('/stop_feed/{camara_config_id}', tags=["Streaming video"])
+
+@video_router.post("/stop_feed/{camara_config_id}", tags=["Streaming video"])
 def stop_stream(camara_config_id: int):
     was_running = video_model.is_stream_running(camara_config_id)
     video_model.stop_stream(camara_config_id)
     return {
         "status": "Streaming detenido",
         "camara_config_id": camara_config_id,
-        "was_running": was_running
+        "was_running": was_running,
     }
-    
-@video_router.get('/preview/{usb_index}', tags=["Streaming video"])
+
+
+@video_router.get("/preview/{usb_index}", tags=["Streaming video"])
 def video_preview(usb_index: int):
     # Si esa webcam ya la tiene el servicio (es una cámara ya dada de alta),
     # la vista previa sale de él: abrirla acá es la misma pelea de siempre.
@@ -362,24 +399,35 @@ def video_preview(usb_index: int):
         return RedirectResponse(url=f"{SERVICIO_URL}/camaras/{cam}/stream",
                                 status_code=307)
     source = usb_index
+<<<<<<< Updated upstream
     test_cap = _abrir(source)
     # 26/09: `_abrir` devuelve None cuando no abre, y esto hacía
     # `None.isOpened()` -> 500 en vez de decir que no se pudo conectar.
     if test_cap is None:
         return JSONResponse(content={"error": "No se pudo conectar"}, status_code=400)
+=======
+    test_cap = cv2.VideoCapture(source)
+    if not test_cap.isOpened():
+        test_cap.release()
+        return JSONResponse(
+            status_code=400,
+            content={"error": "No se pudo conectar"},
+        )
+>>>>>>> Stashed changes
     test_cap.release()
-    # usamos usb_index como id temporal para el stream
+
     return StreamingResponse(
         gen(VideoCamera(source), usb_index),
-        media_type="multipart/x-mixed-replace;boundary=frame"
+        media_type="multipart/x-mixed-replace;boundary=frame",
     )
 
-@video_router.post('/stop_preview/{usb_index}', tags=["Streaming video"])
+
+@video_router.post("/stop_preview/{usb_index}", tags=["Streaming video"])
 def stop_preview(usb_index: int):
     was_running = video_model.is_stream_running(usb_index)
     video_model.stop_stream(usb_index)
     return {
         "status": "Preview detenido",
         "usb_index": usb_index,
-        "was_running": was_running
+        "was_running": was_running,
     }

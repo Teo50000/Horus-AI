@@ -64,6 +64,7 @@ function CamaraCheckRow({ camara, checked, onToggle }) {
 // ── Modo: nueva cámara ────────────────────────────────────────
 function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
   const [nombre, setNombre]         = useState("Nueva Cámara");
+  const [rtspUrl, setRtspUrl]       = useState("");
   const [seleccionada, setSeleccion] = useState(null);
   const [camarasDisponibles, setCamarasDisponibles] = useState([]);
   const [buscando, setBuscando] = useState(true);
@@ -99,8 +100,14 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
   useEffect(() => { buscar(false); }, []);
 
   const confirmar = () => {
-    if (seleccionada === null) return;
-    onConfirmar({ tipo: "camara", nombre, hardwareId: seleccionada });
+    const url = rtspUrl.trim();
+    if (seleccionada === null && !url) return;
+    onConfirmar({
+      tipo: "camara",
+      nombre,
+      hardwareId: seleccionada,
+      rtspUrl: url || null,
+    });
   };
 
   return (
@@ -150,6 +157,12 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
           </div>
         )}
       </div>
+      <input
+          className="creacion-modal__nombre-input"
+          value={rtspUrl}
+          onChange={(e) => setRtspUrl(e.target.value)}
+          placeholder="Endpoint RTSP (opcional)"
+        />
 
       <div className="creacion-modal__footer">
         <button className="creacion-modal__btn creacion-modal__btn--cancelar" onClick={onCancelar}>
@@ -158,7 +171,7 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
         <button
           className="creacion-modal__btn creacion-modal__btn--confirmar"
           onClick={confirmar}
-          disabled={seleccionada === null}
+          disabled={seleccionada === null && !rtspUrl.trim()}
         >
           Aceptar
         </button>

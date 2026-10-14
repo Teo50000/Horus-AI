@@ -12,6 +12,7 @@ function dbAItem(config) {
     tipo: "camara",
     nombre: config.nombre ?? `Camara ${config.id}`,
     usb_index: config.usb_index,
+    rtsp_url: config.rtsp_url,
   };
 }
 
@@ -150,14 +151,20 @@ export function useCamaras() {
     setSeleccionadosIds(new Set());
   };
 
-  const confirmarCreacion = async ({ tipo, nombre, hardwareId, camaraIds, sectorId }) => {
+  const confirmarCreacion = async ({ tipo, nombre, rtspUrl, hardwareId, camaraIds, sectorId }) => {
     if (tipo === "camara") {
       try {
+        const body = {
+          nombre,
+          rtsp_url: rtspUrl || null,
+          usb_index: rtspUrl ? null : hardwareId,
+        };
         const res = await fetch(`${API}/config`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ usb_index: hardwareId, nombre }),
+          body: JSON.stringify(body),
         });
+        if (!res.ok) throw new Error(`Error ${res.status}`);
         const data = await res.json();
         setItems((prev) => [...prev, dbAItem(data)]);
       } catch (err) {

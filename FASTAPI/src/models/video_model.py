@@ -1,11 +1,11 @@
 import time
+
 import cv2
 
-#from fastapi.templating import Jinja2Templates
-#templates = Jinja2Templates(directory="templates")
 
-class VideoCamera(object):
+class VideoCamera:
     def __init__(self, source):
+<<<<<<< Updated upstream
         #self.video = cv2.VideoCapture(1)
         #self.video = cv2.VideoCapture("rtsp://localhost:8554/live")
         #si lo queremos hacer con direccion IP, habria que cambiarlo a self.video = cv2.VideoCapture('rstp://direccion_ip:puerto/video_feed')
@@ -19,6 +19,11 @@ class VideoCamera(object):
         self.video.set(4, 1080)  # float `height`
         # self.video = cv2.VideoCapture('Class_Det.mp4')
         # self.video = cv2.VideoCapture(args["input"])
+=======
+        self.video = cv2.VideoCapture(source)
+        self.video.set(3, 1920)
+        self.video.set(4, 1080)
+>>>>>>> Stashed changes
 
     def __del__(self):
         self.video.release()
@@ -27,6 +32,7 @@ class VideoCamera(object):
         success, image = self.video.read()
         if not success or image is None:
             return None
+<<<<<<< Updated upstream
         # 18/09: acá había un `print(image.shape)`.
         #
         # Son 30 prints por segundo por cámara a la consola de Windows, que es
@@ -74,14 +80,31 @@ def start_stream(camara_config_id: int) -> int:
     stream_running[camara_config_id] = token
     return token
 
+=======
+        image = cv2.resize(image, (640, 360))
+        ret, jpeg = cv2.imencode(".jpg", image)
+        if not ret:
+            return None
+        return jpeg.tobytes()
+
+
+stream_running: dict[int, bool] = {}
+
+
+def start_stream(camara_config_id: int) -> None:
+    stream_running[camara_config_id] = True
+>>>>>>> Stashed changes
+
 
 def stop_stream(camara_config_id: int) -> None:
     """Apaga el stream de esta cámara, sea cual sea."""
     stream_running.pop(camara_config_id, None)
 
 
+
 def is_stream_running(camara_config_id: int) -> bool:
     return camara_config_id in stream_running
+
 
 
 def gen(camera: VideoCamera, camara_config_id: int):
@@ -90,6 +113,7 @@ def gen(camera: VideoCamera, camara_config_id: int):
         while stream_running.get(camara_config_id) == mio:
             frame = camera.get_frame()
             if frame is None:
+<<<<<<< Updated upstream
                 time.sleep(0.01)   # no quemar CPU cuando no hay frame
                 continue
             yield (b'--frame\r\n'
@@ -110,3 +134,20 @@ def gen(camera: VideoCamera, camara_config_id: int):
             camera.video.release()
         except Exception:                                # noqa: BLE001
             pass
+=======
+                time.sleep(0.01)
+                continue
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n"
+                + frame
+                + b"\r\n\r\n"
+            )
+    except Exception as e:
+        print(f"Error en el stream: {e}")
+    finally:
+        stop_stream(camara_config_id)
+        stream_running.pop(camara_config_id, None)
+        camera.video.release()
+        print("Stream finalizado con éxito - Cámara liberada físicamente.")
+>>>>>>> Stashed changes

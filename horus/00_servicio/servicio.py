@@ -83,7 +83,8 @@ for _p in (_AQUI,
            os.path.join(_RAIZ, "05_tracking", "global_reid"),
            os.path.join(_RAIZ, "06_fusion_decision"),
            os.path.join(_RAIZ, "07_alerta"),
-           os.path.join(_RAIZ, "04_cabezas", "objetos")):
+           os.path.join(_RAIZ, "04_cabezas", "objetos"),
+           os.path.join(_RAIZ, "fall")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 

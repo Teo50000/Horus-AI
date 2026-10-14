@@ -92,10 +92,9 @@ node_modules/
 dist/
 src-tauri/target/
 
-# Horus.exe es la app de HorusAI/src-tauri ya compilada (ver LEEME, "Si
-# hay que rehacer Horus.exe"). Es un archivo generado, como los pesos: va
-# al Release, no a git.
-/Horus.exe
+# Horus.exe (la app de HorusAI/src-tauri ya compilada) SI va en git: pesa
+# ~6 MB y asi el que clona tiene el lanzador sin instalar Rust. Para
+# rehacerlo, ver LEEME, "Si hay que rehacer Horus.exe".
 
 # --- scratch de las sesiones de Claude --------------------------------
 push_log.txt

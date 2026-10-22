@@ -261,3 +261,93 @@
   font: inherit;
   padding: 4px 14px;
 }
+.creacion-modal__subtabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 10px;
+}
+ 
+.creacion-modal__subtab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 12px;
+  padding: 5px 0 8px;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.15s;
+}
+ 
+.creacion-modal__subtab--active {
+  color: rgba(255, 255, 255, 0.8);
+}
+ 
+.creacion-modal__subtab--active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 20%;
+  right: 20%;
+  height: 1.5px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 2px;
+}
+ 
+/* ── Formulario cámara IP ── */
+.creacion-modal__ip-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+ 
+.creacion-modal__ip-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(80, 100, 255, 0.3);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s;
+}
+ 
+.creacion-modal__ip-input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+ 
+.creacion-modal__ip-input:focus {
+  border-color: rgba(255, 132, 39, 0.6);
+}
+ 
+.creacion-modal__ip-select {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(80, 100, 255, 0.3);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='rgba(255,255,255,0.4)' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+ 
+.creacion-modal__ip-select:focus {
+  border-color: rgba(255, 132, 39, 0.6);
+}
+ 
+.creacion-modal__ip-select option {
+  background: #0d1530;
+  color: #fff;
+}

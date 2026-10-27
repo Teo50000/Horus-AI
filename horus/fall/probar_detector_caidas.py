@@ -420,19 +420,51 @@ def caso_visibilidad_baja_se_descarta() -> Tuple[bool, str]:
 
 
 def caso_hueco_largo_reinicia() -> Tuple[bool, str]:
-    """Un segundo sin pose confiable: se corta, no se sigue con pose vieja.
+    """Más de dos segundos sin pose: se corta, no se sigue con pose vieja.
 
     Arrastrar la última pose durante un hueco largo es clasificar un frame
     congelado. Y el pico viejo tiene que morir con él: si sobreviviera, al
     reaparecer validaría una alarma con un movimiento de hace un minuto.
+
+    Octubre: el corte pasó de 0,6 s a `tolerancia_sin_ver_s` = 2,0 s (ver
+    `caso_hueco_corto_sostiene`), así que el hueco de acá es de 2,5 s.
     """
     det, pose, _ = detector()
-    guion = guion_caida(60, 3, 40) + [None] * 12 + [(88.0, 0.9)] * 40
+    guion = guion_caida(60, 3, 40) + [None] * 25 + [(88.0, 0.9)] * 40
     sal = correr(det, pose, {1: guion}, len(guion), quieto_desde={1: 64})
     et = etiquetas(sal, 1)
-    tras_hueco = et[-30:]
-    ok = "caida" in et[:110] and not any(e == "caida" for e in tras_hueco[:5])
-    return ok, f"cortó en el hueco y volvió a llenar buffer ({len(et)} obs)"
+    antes, despues = et[:-40], et[-40:]
+    ok = "caida" in antes and not any(e == "caida" for e in despues)
+    return ok, (f"cortó en el hueco de 2,5 s; después {len(despues)} obs, "
+                f"ninguna caída sin firma nueva")
+
+
+def caso_hueco_corto_sostiene() -> Tuple[bool, str]:
+    """Un hueco de 1,2 s con la persona en el piso NO mata la caída.
+
+    MediaPipe pierde a la persona seguido justo cuando está tirada: en Le2i el
+    37% de las caídas tiene un hueco de más de 0,6 s adentro del evento. Con
+    el corte viejo (0,6 s) la caída se borraba en el medio y había que esperar
+    una firma nueva que nunca llega, porque la persona ya está en el piso.
+    Dos variantes: el track desaparece, y el track sigue pero la pose sale con
+    visibilidad baja (se descarta). En las dos la etiqueta vuelve sola.
+    """
+    det, pose, _ = detector()
+    guion = guion_caida(60, 3, 40) + [None] * 12 + [(88.0, 0.9)] * 20
+    sal = correr(det, pose, {1: guion}, len(guion), quieto_desde={1: 64})
+    sin_track = etiquetas(sal, 1)[-20:]
+
+    det, pose, _ = detector()
+    guion = (guion_caida(60, 3, 40) + [(88.0, 0.2)] * 12
+             + [(88.0, 0.9)] * 20)
+    sal = correr(det, pose, {1: guion}, len(guion), quieto_desde={1: 64})
+    baja_vis = etiquetas(sal, 1)[-20:]
+
+    ok = (sin_track and all(e == "caida" for e in sin_track)
+          and baja_vis and all(e == "caida" for e in baja_vis))
+    return ok, (f"tras el hueco: sin track {sin_track.count('caida')}/"
+                f"{len(sin_track)}, visibilidad baja "
+                f"{baja_vis.count('caida')}/{len(baja_vis)} caída")
 
 
 def caso_remapeo_coco() -> Tuple[bool, str]:
@@ -456,10 +488,14 @@ def caso_remapeo_coco() -> Tuple[bool, str]:
 
 
 def caso_calentamiento_manda_pose() -> Tuple[bool, str]:
-    """Mientras el ST-GCN llena su ventana (3,2 s a 10 FPS) manda keypoints.
+    """Alguien que entra a cuadro ya tirado manda keypoints a ReglaCaida.
 
-    Alguien que entra a cuadro ya tirado en el piso es exactamente el caso que
-    no se puede perder esperando 32 frames.
+    Es exactamente el caso que no se puede perder: no hay transición que ver,
+    así que el clasificador nunca va a tener firma. Antes esto salía gratis
+    porque la ventana tardaba 3,2 s en llenarse a 10 FPS (el bug de fps); con
+    el remuestreo la ventana es de 1,24 s a cualquier fps, y el diferimiento
+    a la geometría es explícito: `calentamiento_s` = 3,0 s desde que aparece
+    el track, más que los 2 s de `ReglaCaida.quieto_s`.
     """
     det, pose, _ = detector()
     sal = correr(det, pose, {1: [(88.0, 0.9)] * 40}, 40, quieto_desde={1: 0})
@@ -609,6 +645,7 @@ CASOS = [
     ("persona_chica", caso_persona_chica_se_descarta),
     ("visibilidad", caso_visibilidad_baja_se_descarta),
     ("hueco", caso_hueco_largo_reinicia),
+    ("hueco_corto", caso_hueco_corto_sostiene),
     ("remapeo", caso_remapeo_coco),
     ("calentamiento", caso_calentamiento_manda_pose),
     ("calentamiento_off", caso_calentamiento_apagable),

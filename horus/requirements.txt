@@ -18,3 +18,13 @@ opencv-python
 # licencia comercial de Ultralytics. onnxruntime lo hace ~1,8x mas rapido en CPU.
 ultralytics
 onnxruntime
+
+# Caidas: el harness de evaluacion y los scripts de datos de horus/fall/
+# (16-21) leen los csv de OMNIFALL con pandas. La webcam integrada
+# (07_alerta/webcam_integrado.py) avisa al backend con requests.
+pandas
+requests
+
+# mediapipe NO va aca a proposito: lo instala bin/instalar_caidas.py junto con
+# el pose_landmarker.task, porque `pip install mediapipe` solo no alcanza y
+# segun la version de Python puede no haber wheel. Ver INSTALAR.bat paso 5.

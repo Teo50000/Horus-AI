@@ -600,11 +600,22 @@ class Servicio:
             # las está mirando. Misma razón por la que una regla sin cabeza se
             # declara dormida en vez de devolver "no pasó nada".
             try:
+                # Mismo armado de path que `PipelineHorus._crear_caidas`. Acá
+                # faltaba, y `--caidas` (que HORUS.bat pasa solo si están los
+                # pesos) cortaba el arranque con "No module named
+                # 'detector_caidas'".
+                _fall = os.path.normpath(os.path.join(_AQUI, "..", "fall"))
+                for _p in (_fall, os.path.join(_fall, "src")):
+                    if _p not in sys.path:
+                        sys.path.insert(0, _p)
                 from detector_caidas import ConfigCaidas, DetectorCaidas
                 cfg_c = ConfigCaidas(max_personas=c.caidas_max_personas)
                 if c.caidas_checkpoint:
                     cfg_c.checkpoint = c.caidas_checkpoint
-                det_caidas = DetectorCaidas(cfg_c, verboso=c.verboso)
+                # .cargar(): los backends son perezosos; sin esto un .task o
+                # un mediapipe faltante no caía en este try sino en el primer
+                # frame, con el servicio ya "andando".
+                det_caidas = DetectorCaidas(cfg_c, verboso=c.verboso).cargar()
             except Exception as e:                       # noqa: BLE001
                 raise RuntimeError(
                     f"se pidió la cabeza de caídas y no se pudo cargar: "

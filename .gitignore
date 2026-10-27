@@ -49,6 +49,11 @@
 *.npz
 *.parquet
 *.feather
+# caidas: streams re-armados por fall/scripts/16_armar_streams.py y el cache
+# de probabilidades del harness (17). Se regeneran; el indice.csv no es npz y
+# se colaba.
+horus/fall/data/keypoints/streams/
+horus/fall/data/processed/streams_probs/
 
 # --- salidas y temporales -------------------------------------------
 diag*.txt
@@ -110,3 +115,8 @@ _archivo/
 # Lo que escriben las ventanas de HORUS.bat. Sirve para saber por que
 # se cayo algo, pero es de esta maquina y de este rato.
 logs/
+# lo baja bin/instalar_caidas.py con la variante correcta (ver pose_landmarker.variante.txt)
+horus/fall/pose_landmarker.task
+
+# permisos de Claude Code de cada maquina (rutas y comandos propios), no se comparten
+.claude/settings.local.json

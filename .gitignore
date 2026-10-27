@@ -113,3 +113,6 @@ _archivo/
 logs/
 # lo baja bin/instalar_caidas.py con la variante correcta (ver pose_landmarker.variante.txt)
 horus/fall/pose_landmarker.task
+
+# permisos de Claude Code de cada maquina (rutas y comandos propios), no se comparten
+.claude/settings.local.json

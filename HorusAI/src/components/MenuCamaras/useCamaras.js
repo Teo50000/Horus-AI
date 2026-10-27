@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 
 import { API_CAMARAS } from "../../config";
 const API = API_CAMARAS;
+const API_CAMARA_IP = `${API}/config/ip`;
 
 // ⚠️ Reemplazar cuando el backend tenga el endpoint
 const DELETE_CAMARA = (id) => `${API}/config/${id}`;
@@ -151,15 +152,20 @@ export function useCamaras() {
     setSeleccionadosIds(new Set());
   };
 
-  const confirmarCreacion = async ({ tipo, nombre, rtspUrl, hardwareId, camaraIds, sectorId }) => {
+  const confirmarCreacion = async ({ tipo, nombre, rtspUrl, hardwareId, camaraIds, sectorId, ipData }) => {
     if (tipo === "camara") {
       try {
-        const body = {
-          nombre,
-          rtsp_url: rtspUrl || null,
-          usb_index: rtspUrl ? null : hardwareId,
-        };
-        const res = await fetch(`${API}/config`, {
+        const esCamaraIP = !!ipData;
+        const endpoint = esCamaraIP ? API_CAMARA_IP : `${API}/config`;
+        const body = esCamaraIP
+          ? { nombre, ...ipData }
+          : {
+              nombre,
+              rtsp_url: rtspUrl || null,
+              usb_index: rtspUrl ? null : hardwareId,
+            };
+
+        const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),

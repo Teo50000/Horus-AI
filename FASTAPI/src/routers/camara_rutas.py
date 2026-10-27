@@ -9,6 +9,8 @@ from src.models.camara_model import Camara, CamaraConfig, NumeroEmergencia
 from src.services.websockets import manager
 from src.services.email_service import (MailApagado, enviar_alerta_email,
                                         estado_mail)
+from enum import Enum
+from pydantic import BaseModel
 
 
 def _mail_en_fondo(event_type, nombre_camara, confidence, timestamp, destinos):
@@ -167,6 +169,42 @@ async def recibir_prediccion(camara: Camara, tareas: BackgroundTasks):
                   "dirección de mail: no se avisó a nadie")
         return camara
     
+class MarcaCamara(str, Enum):
+    hikvision = "hikvision"
+    dahua = "dahua"
+    gadnic = "gadnic"
+
+RUTAS_RTSP = {
+    MarcaCamara.hikvision: "554/Streaming/Channels/101",
+    MarcaCamara.dahua:     "5554/cam/realmonitor?channel=1&subtype=0",
+    MarcaCamara.gadnic: "554/live/ch0"
+}
+
+class CamaraIPRequest(BaseModel):
+    nombre: str
+    usuario: str
+    password: str
+    ip: str
+    marca: MarcaCamara
+
+@camara_router.post("/config/ip", tags=["Camaras"])
+def agregar_camara_ip(datos: CamaraIPRequest):
+    ruta = RUTAS_RTSP[datos.marca]
+    rtsp_url = f"rtsp://{datos.usuario}:{datos.password}@{datos.ip}:{ruta}"
+
+    config = CamaraConfig(
+        nombre=datos.nombre,
+        rtsp_url=rtsp_url,
+        usb_index=None,
+    )
+
+    with Session(engine) as session:
+        session.add(config)
+        session.commit()
+        session.refresh(config)
+        return config
+
+
 @camara_router.post("/config", tags=["Camaras"])
 def agregar_camara_config(config: CamaraConfig):
     with Session(engine) as session:

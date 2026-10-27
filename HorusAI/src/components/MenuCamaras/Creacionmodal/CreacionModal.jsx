@@ -7,14 +7,10 @@ import { API_VIDEO } from "../../../config";
 // TODO: completar con las marcas que aceptan
 const MARCAS_IP = [
   { value: "", label: "Seleccionar marca..." },
-  // { value: "hikvision", label: "Hikvision" },
-  // { value: "dahua",     label: "Dahua" },
-  // { value: "axis",      label: "Axis" },
+  { value: "hikvision", label: "Hikvision" },
+  { value: "dahua",     label: "Dahua" },
+  { value: "gadnic",      label: "Gadnic" },
 ];
-
-// ── Endpoint de cámara IP ────────────────────────────────────
-// TODO: reemplazar con el endpoint real cuando esté disponible
-const API_CAMARA_IP = null; // ej: `${API_CAMARAS}/config/ip`
 
 // ── Selector de pestaña ──────────────────────────────────────
 function TabSelector({ tab, onChange }) {
@@ -186,28 +182,20 @@ function FormIP({ nombre, setNombre, onConfirmar, onCancelar }) {
 
   const valido = usuario.trim() && password.trim() && ip.trim() && marca;
 
-  const confirmar = async () => {
+  const confirmar = () => {
     if (!valido) return;
-
-    if (!API_CAMARA_IP) {
-      // TODO: conectar cuando el endpoint esté disponible
-      console.log("Cámara IP — datos a enviar:", { nombre, usuario, password, ip, marca });
-      onConfirmar({ tipo: "camara", nombre, rtspUrl: `pendiente-${ip}`, hardwareId: null });
-      return;
-    }
-
-    try {
-      const res = await fetch(API_CAMARA_IP, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nombre, usuario, password, ip, marca }),
-      });
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      const data = await res.json();
-      onConfirmar({ tipo: "camara", nombre, rtspUrl: data.rtsp_url, hardwareId: null });
-    } catch (err) {
-      console.error("Error al agregar cámara IP:", err);
-    }
+    onConfirmar({
+      tipo: "camara",
+      nombre,
+      hardwareId: null,
+      rtspUrl: null,
+      ipData: {
+        usuario: usuario.trim(),
+        password: password.trim(),
+        ip: ip.trim(),
+        marca,
+      },
+    });
   };
 
   return (

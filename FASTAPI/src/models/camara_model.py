@@ -39,6 +39,7 @@ class Camara(SQLModel, table=True):
 class CamaraConfig(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     rtsp_url: Optional[str] = None
+    #usuario, clave, ip, params, puerto, ruta, tipo de camara (ip o local)
     usb_index: Optional[int] = None
     nombre: Optional[str]
 

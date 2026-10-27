@@ -26,12 +26,12 @@
 }
 
 .filter-buttons__btn:hover {
-  border-color: rgba(255, 132, 39, 0.5);
+  background-color: rgba(255, 132, 39, 0.5);
   color: #fff;
 }
 
 .filter-buttons__btn--active {
-  background: rgba(255, 132, 39, 0.15);
+  background:#ff8427;
   border-color: #ff8427;
-  color: #ff8427;
+  color: #fff;
 }

@@ -83,7 +83,8 @@ for _p in (_AQUI,
            os.path.join(_RAIZ, "05_tracking", "global_reid"),
            os.path.join(_RAIZ, "06_fusion_decision"),
            os.path.join(_RAIZ, "07_alerta"),
-           os.path.join(_RAIZ, "04_cabezas", "objetos")):
+           os.path.join(_RAIZ, "04_cabezas", "objetos"),
+           os.path.join(_RAIZ, "fall")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
@@ -135,8 +136,13 @@ class ConfigServicio:
     fps: float = 10.0                      # ritmo de análisis, no de la cámara
     max_batch: int = 4
     reconexion_s: float = 3.0
-    ancho_captura: int = 0                 # 0 = lo que dé la cámara
-    alto_captura: int = 0
+    ancho_captura: int = 1280              # 0 = lo que dé la cámara
+    alto_captura: int = 720
+    # Una RTSP puede anunciar 4K aunque el modelo y el panel trabajen en
+    # 720p. Limitar el frame evita que una sola fuente agote CPU y memoria al
+    # inferir, dibujar y guardar evidencia.
+    max_ancho_captura: int = 1280
+    max_alto_captura: int = 720
 
     # --- salida -----------------------------------------------------------
     spool: str = "alertas_pendientes.jsonl"
@@ -256,7 +262,24 @@ class FuenteCamara:
                 cap.release()
                 cap = None
         if cap is None:
-            cap = cv2.VideoCapture(fuente)
+            if isinstance(fuente, str) and fuente.lower().startswith(
+                    ("rtsp://", "rtsps://")):
+                parametros = []
+                for nombre, valor in (
+                        ("CAP_PROP_OPEN_TIMEOUT_MSEC", 5000),
+                        ("CAP_PROP_READ_TIMEOUT_MSEC", 5000)):
+                    propiedad = getattr(cv2, nombre, None)
+                    if propiedad is not None:
+                        parametros.extend((propiedad, valor))
+                try:
+                    cap = (cv2.VideoCapture(fuente, cv2.CAP_FFMPEG, parametros)
+                           if parametros else cv2.VideoCapture(fuente))
+                except (TypeError, cv2.error):
+                    # Algunas versiones de OpenCV no aceptan parámetros al
+                    # abrir una fuente; se conserva el fallback compatible.
+                    cap = cv2.VideoCapture(fuente)
+            else:
+                cap = cv2.VideoCapture(fuente)
 
         if cap.isOpened():
             # Que OpenCV no acumule frames viejos adentro suyo. Sin esto, el
@@ -271,6 +294,21 @@ class FuenteCamara:
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.cfg.alto_captura)
         return cap
 
+    def _limitar_frame(self, frame: np.ndarray) -> np.ndarray:
+        """Mantiene el aspecto y evita procesar RTSP 2K/4K innecesariamente."""
+        max_ancho = self.cfg.max_ancho_captura
+        max_alto = self.cfg.max_alto_captura
+        if not max_ancho or not max_alto:
+            return frame
+        alto, ancho = frame.shape[:2]
+        escala = min(max_ancho / ancho, max_alto / alto, 1.0)
+        if escala >= 1.0:
+            return frame
+        import cv2
+        return cv2.resize(
+            frame, (max(1, int(ancho * escala)), max(1, int(alto * escala))),
+            interpolation=cv2.INTER_AREA)
+
     def _correr(self) -> None:
         cap = None
         while not self._parar.is_set():
@@ -279,7 +317,7 @@ class FuenteCamara:
                     cap.release()
                     self.reconexiones += 1
                 cap = self._abrir()
-                if not cap.isOpened():
+                if cap is None or not cap.isOpened():
                     self.estado = "caida"
                     self.ultimo_error = f"no abre {self.url!r}"
                     _log(self.cfg, f"  [{self.cam_id}] no abre, reintento en "
@@ -298,6 +336,7 @@ class FuenteCamara:
                 cap = None
                 continue
 
+            frame = self._limitar_frame(frame)
             with self._lock:
                 self._frame = frame
                 self._ts = time.time()

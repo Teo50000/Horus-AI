@@ -1,8 +1,8 @@
 [package]
 name = "horusai"
-version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+version = "0.2.0"
+description = "Horus: la ventana de escritorio que arranca todo y muestra el panel"
+authors = ["Teo"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -12,7 +12,9 @@ edition = "2021"
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "horusai_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Solo rlib: staticlib/cdylib son para Android/iOS. Con el toolchain GNU la
+# cdylib ni siquiera linkea ("export ordinal too large").
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -20,7 +22,27 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-opener = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri-plugin-shell = "2"
 
+# Job object (que todo lo que arranca Horus muera con Horus), la tabla TCP
+# (para apagar lo que el job no atrapa) y el cartel de "¿apagar?" al cerrar. Solo Windows: en otro sistema la app compila igual,
+# pero el lanzador es HORUS.bat y eso ya es Windows.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_Security",
+  "Win32_System_JobObjects",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Threading",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "s"

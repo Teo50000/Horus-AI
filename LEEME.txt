@@ -25,16 +25,33 @@ Correrlo de nuevo no rompe nada: lo que ya esta, lo saltea.
 Arrancar
 --------
 
-    HORUS.bat          doble clic
+    Horus.exe          doble clic
 
-Levanta las tres partes:
+Abre UNA ventana: mientras arranca muestra el logo, y cuando el panel
+contesta esa misma ventana pasa a ser el panel. Sin ventanas negras y sin
+abrir Edge. Si algo falla, la ventana dice por que. Levanta las tres partes:
 
     modelos   horus/00_servicio/servicio.py   mira el video y decide
     backend   FASTAPI                          camaras, historial, alertas
     panel     HorusAI                          lo que ves
 
 Se fija solo que dependencias y que modelos tenes, prende cada cabeza cuyos
-pesos esten, y te dice en voz alta cual falta. Despues abre el navegador.
+pesos esten, y te dice en voz alta cual falta. La salida de cada parte queda
+en logs\ como siempre, y lo que dijo el arranque en logs\arranque.txt.
+
+Al cerrar la ventana pregunta, porque cerrar = dejar de vigilar: se apagan
+los modelos, el backend y el panel. Si Horus ya estaba corriendo de antes
+(por ejemplo con HORUS.bat), la ventana solo lo muestra y al cerrarla sigue.
+
+Para tenerlo en el escritorio: clic derecho en Horus.exe -> Enviar a ->
+Escritorio (crear acceso directo). Copiarlo NO sirve: tiene que estar al
+lado de HORUS.bat para encontrar el proyecto.
+
+    HORUS.bat          lo mismo, a la antigua
+
+Hace exactamente el mismo arranque (Horus.exe corre este mismo .bat por
+abajo), pero con una ventana negra por parte y el panel en el navegador.
+Sirve si Horus.exe no anda, o para ver cada salida en vivo.
 
 Arriba a la derecha del panel hay un cartel. Verde "En vivo" = el panel esta
 recibiendo alertas. Rojo = no. Eso importa mas de lo que parece: un panel
@@ -53,6 +70,20 @@ Lo de vez en cuando
     5  instalar mediapipe                 0  salir
 
 
+Si hay que rehacer Horus.exe
+----------------------------
+
+Es la app de HorusAI\src-tauri (Tauri). No va a git: es un archivo
+generado. Los cambios al panel (HorusAI\src) NO piden recompilarla, porque
+la ventana carga el panel desde localhost:1420 igual que el navegador. Solo
+hace falta si se toca HorusAI\src-tauri o HorusAI\splash. Con Rust
+instalado (rustup.rs):
+
+    cd HorusAI
+    npx tauri build
+    copy src-tauri\target\release\horusai.exe ..\Horus.exe
+
+
 Que hay en cada carpeta
 -----------------------
 
@@ -65,7 +96,7 @@ Que hay en cada carpeta
       fall/           caidas    fight/  agresion
 
     FASTAPI/        el backend: camaras, historial, websocket al panel
-    HorusAI/        el panel (React + Tauri)
+    HorusAI/        el panel (React) y la app de escritorio (src-tauri, splash)
     _archivo/       lo pesado que no hace falta para correr. Ver su LEEME.
 
 

@@ -5,6 +5,22 @@ set PYTHONIOENCODING=utf-8
 cd /d "%~dp0"
 title HORUS
 
+rem ===============================================================
+rem  HORUS_APP=1 lo pone Horus.exe, que corre este mismo archivo
+rem  escondido y muestra lo que imprime en su pantalla de arranque.
+rem  En ese modo:
+rem    - backend, modelos y panel arrancan SIN ventanas negras
+rem      (start /b): su salida igual queda en logs\, como siempre;
+rem    - no se abre el navegador: el panel aparece en la ventana
+rem      de Horus.exe;
+rem    - no hay `pause`: nadie lo veria y quedaria colgado.
+rem  A mano (doble clic aca) todo sigue igual que antes.
+rem
+rem  Las esperas son con `ping` y no con `timeout`: timeout se niega
+rem  a correr sin teclado ("Input redirection is not supported") y
+rem  sale al instante, asi que una espera de 40 s duraba 0.
+rem ===============================================================
+
 echo ==============================================================
 echo   H O R U S
 echo ==============================================================
@@ -18,7 +34,7 @@ if errorlevel 1 (
   echo  No encuentro Python. Instalalo de python.org y marca
   echo  "Add python.exe to PATH" en la primera pantalla del instalador.
   echo.
-  pause
+  if not defined HORUS_APP pause
   exit /b 1
 )
 
@@ -158,7 +174,8 @@ echo ==============================================================
 echo  Backend  http://127.0.0.1:8000     ^(/docs para probar a mano^)
 echo  Panel    http://localhost:1420
 echo.
-echo  Se abren varias ventanas. Ctrl+C en cada una para cortar.
+if not defined HORUS_APP echo  Se abren varias ventanas. Ctrl+C en cada una para cortar.
+if defined HORUS_APP echo  Sin ventanas: todo queda en logs\. Se apaga al cerrar Horus.
 echo ==============================================================
 echo.
 
@@ -192,7 +209,8 @@ if not errorlevel 1 (
   goto backend_listo
 )
 
-start "Horus backend" cmd /k call "%~dp0bin\arrancar_backend.bat"
+if defined HORUS_APP start "" /b cmd /c call "%~dp0bin\arrancar_backend.bat" >nul 2>&1
+if not defined HORUS_APP start "Horus backend" cmd /k call "%~dp0bin\arrancar_backend.bat"
 
 echo  Esperando al backend...
 set /a ESPERA=0
@@ -204,17 +222,19 @@ if !ESPERA! GEQ 40 (
   echo  Tardo mas de 40 segundos. Mira su ventana para ver que paso.
   goto backend_listo
 )
-timeout /t 1 /nobreak >nul
+ping -n 2 127.0.0.1 >nul
 goto esperar_backend
 :backend_listo
 
 if not "!FLAGS!"=="" (
   echo  Levantando los modelos. La primera carga tarda ^(~20 s con GPU^).
   set "HORUS_FLAGS=!FLAGS!"
-  start "Horus modelos" cmd /k call "%~dp0bin\arrancar_modelos.bat"
+  if defined HORUS_APP start "" /b cmd /c call "%~dp0bin\arrancar_modelos.bat" >nul 2>&1
+  if not defined HORUS_APP start "Horus modelos" cmd /k call "%~dp0bin\arrancar_modelos.bat"
 )
 
-start "Horus panel" cmd /k call "%~dp0bin\arrancar_panel.bat"
+if defined HORUS_APP start "" /b cmd /c call "%~dp0bin\arrancar_panel.bat" >nul 2>&1
+if not defined HORUS_APP start "Horus panel" cmd /k call "%~dp0bin\arrancar_panel.bat"
 
 echo  Esperando al panel...
 set /a ESPERA=0
@@ -226,10 +246,10 @@ if !ESPERA! GEQ 90 (
   echo  Tardo mas de 90 segundos. Abrilo a mano: http://localhost:1420
   goto fin
 )
-timeout /t 1 /nobreak >nul
+ping -n 2 127.0.0.1 >nul
 goto esperar_panel
 :panel_listo
-start "" http://localhost:1420
+if not defined HORUS_APP start "" http://localhost:1420
 
 :fin
 echo.
@@ -257,7 +277,7 @@ curl -s -o nul --max-time 1 http://127.0.0.1:8010/estado >nul 2>&1
 if not errorlevel 1 goto modelos_listos
 set /a ESPERA+=1
 if !ESPERA! GEQ 60 goto modelos_no_arrancaron
-timeout /t 1 /nobreak >nul
+ping -n 2 127.0.0.1 >nul
 goto esperar_modelos
 
 :modelos_no_arrancaron
@@ -274,7 +294,10 @@ if exist "logs\modelos.txt" (
 )
 echo ==============================================================
 echo.
-goto fin
+rem A :sin_modelos y no a :fin. Desde :fin se vuelve a esperar a los
+rem modelos, asi que si no arrancaban, este cartel se repetia cada 60 s
+rem para siempre.
+goto sin_modelos
 
 :modelos_listos
 echo  Modelos arriba.
@@ -285,12 +308,14 @@ echo  Si algo se cae, no hace falta que copies nada: queda escrito en
 echo     logs\backend.txt   y   logs\modelos.txt
 echo  y los ves con HORUS_herramientas.bat, opcion L.
 echo.
+if defined HORUS_APP goto sin_consejo_ventanas
 echo  OJO con hacer clic adentro de las ventanas negras: Windows entra en
 echo  modo seleccion y CONGELA el programa hasta que apretes Esc. Se ve
 echo  igual que si se hubiera caido.
 echo.
+:sin_consejo_ventanas
 echo  Para mandar una alerta de prueba y verla llegar:
 echo     HORUS_herramientas.bat  ^(opcion 2^)
 echo ==============================================================
 echo.
-pause
+if not defined HORUS_APP pause

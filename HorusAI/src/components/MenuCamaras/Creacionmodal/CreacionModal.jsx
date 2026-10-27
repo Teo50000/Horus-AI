@@ -1,10 +1,22 @@
 import { useState, useEffect } from "react";
 import "./CreacionModal.css";
 import iconPreview from "../../../assets/PreView.svg";
-
-
 import { API_VIDEO } from "../../../config";
-// ── Selector de pestaña ───────────────────────────────────────
+
+// ── Marcas de cámaras IP ─────────────────────────────────────
+// TODO: completar con las marcas que aceptan
+const MARCAS_IP = [
+  { value: "", label: "Seleccionar marca..." },
+  // { value: "hikvision", label: "Hikvision" },
+  // { value: "dahua",     label: "Dahua" },
+  // { value: "axis",      label: "Axis" },
+];
+
+// ── Endpoint de cámara IP ────────────────────────────────────
+// TODO: reemplazar con el endpoint real cuando esté disponible
+const API_CAMARA_IP = null; // ej: `${API_CAMARAS}/config/ip`
+
+// ── Selector de pestaña ──────────────────────────────────────
 function TabSelector({ tab, onChange }) {
   return (
     <div className="creacion-modal__tabs">
@@ -24,20 +36,37 @@ function TabSelector({ tab, onChange }) {
   );
 }
 
-// ── Fila de cámara hardware seleccionable ─────────────────────
+// ── Tabs internas de ModoCamara ──────────────────────────────
+function SubTabSelector({ tab, onChange }) {
+  return (
+    <div className="creacion-modal__subtabs">
+      <button
+        className={`creacion-modal__subtab ${tab === "web" ? "creacion-modal__subtab--active" : ""}`}
+        onClick={() => onChange("web")}
+      >
+        Cámara web
+      </button>
+      <button
+        className={`creacion-modal__subtab ${tab === "ip" ? "creacion-modal__subtab--active" : ""}`}
+        onClick={() => onChange("ip")}
+      >
+        Cámara IP
+      </button>
+    </div>
+  );
+}
+
+// ── Fila de cámara hardware seleccionable ────────────────────
 function HardwareCamaraRow({ camara, seleccionada, onToggle, onPreview }) {
   return (
     <div
       className={`creacion-modal__row ${seleccionada ? "creacion-modal__row--selected" : ""}`}
-      onClick={onToggle}  // ← esto faltaba
+      onClick={onToggle}
     >
       <span className="creacion-modal__row-nombre">{camara.nombre}</span>
       <button
         className="creacion-modal__row-preview"
-        onClick={(e) => {
-          e.stopPropagation(); // ← evita que el click del preview también seleccione la fila
-          onPreview(camara);
-        }}
+        onClick={(e) => { e.stopPropagation(); onPreview(camara); }}
         title="Preview"
       >
         <img src={iconPreview} alt="Preview" className="creacion-modal__row-preview-img" />
@@ -46,7 +75,7 @@ function HardwareCamaraRow({ camara, seleccionada, onToggle, onPreview }) {
   );
 }
 
-// ── Fila de cámara existente con checkbox ─────────────────────
+// ── Fila de cámara existente con checkbox ────────────────────
 function CamaraCheckRow({ camara, checked, onToggle }) {
   return (
     <label className={`creacion-modal__row creacion-modal__row--check ${checked ? "creacion-modal__row--selected" : ""}`}>
@@ -61,37 +90,27 @@ function CamaraCheckRow({ camara, checked, onToggle }) {
   );
 }
 
-// ── Modo: nueva cámara ────────────────────────────────────────
-function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
-  const [nombre, setNombre]         = useState("Nueva Cámara");
-  const [seleccionada, setSeleccion] = useState(null);
-  const [camarasDisponibles, setCamarasDisponibles] = useState([]);
-  const [buscando, setBuscando] = useState(true);
-  const [motivo, setMotivo]     = useState(null);
+// ── Formulario cámara web ────────────────────────────────────
+function FormWeb({ nombre, setNombre, onConfirmar, onCancelar, onPreview }) {
+  const [seleccionada, setSeleccion]       = useState(null);
+  const [camarasDisponibles, setCamaras]   = useState([]);
+  const [buscando, setBuscando]            = useState(true);
+  const [motivo, setMotivo]                = useState(null);
 
-  // 18/09: esto era un fetch sin .catch y sin estado de "buscando". Si el
-  // backend no contestaba, o contestaba una lista vacía, el modal mostraba un
-  // rectángulo en blanco y listo. No había forma de distinguir "esta máquina
-  // no tiene cámaras" de "el backend está caído" de "la cámara la tiene
-  // Discord agarrada". Ahora el backend manda el motivo en X-Horus-Motivo y
-  // acá se muestra.
   const buscar = (forzar = false) => {
     setBuscando(true);
     fetch(`${API_VIDEO}/cameras/available${forzar ? "?refrescar=true" : ""}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         setMotivo(res.headers.get("X-Horus-Motivo"));
-        // El backend puede estar buscando todavia: en Windows cada intento
-        // tarda segundos. En vez de mostrar "no hay camaras" -que seria
-        // mentira- se vuelve a preguntar en un rato.
         return res.headers.get("X-Horus-Buscando")
           ? res.json().then((d) => { setTimeout(() => buscar(false), 2500); return d; })
           : res.json();
       })
-      .then((data) => setCamarasDisponibles(Array.isArray(data) ? data : []))
+      .then((data) => setCamaras(Array.isArray(data) ? data : []))
       .catch((err) => {
-        setCamarasDisponibles([]);
-        setMotivo(`no se pudo preguntar al backend (${err.message})`);
+        setCamaras([]);
+        setMotivo(`error conectando al backend (${err.message})`);
       })
       .finally(() => setBuscando(false));
   };
@@ -100,12 +119,11 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
 
   const confirmar = () => {
     if (seleccionada === null) return;
-    onConfirmar({ tipo: "camara", nombre, hardwareId: seleccionada });
+    onConfirmar({ tipo: "camara", nombre, hardwareId: seleccionada, rtspUrl: null });
   };
 
   return (
     <>
-      {/* Nombre editable */}
       <div className="creacion-modal__nombre-row">
         <input
           className="creacion-modal__nombre-input"
@@ -115,7 +133,6 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
         />
       </div>
 
-      {/* Lista de hardware */}
       <div className="creacion-modal__lista">
         {camarasDisponibles.map((cam) => (
           <HardwareCamaraRow
@@ -129,20 +146,15 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
 
         {camarasDisponibles.length === 0 && (
           <div className="creacion-modal__vacio">
-            {buscando ? (
-              "Buscando cámaras..."
-            ) : (
+            {buscando ? "Buscando cámaras..." : (
               <>
-                <div>No encontré ninguna cámara.</div>
+                <div>No se encontró ninguna cámara.</div>
                 {motivo && <div className="creacion-modal__motivo">{motivo}</div>}
                 <div className="creacion-modal__ayuda">
                   En Windows la webcam la abre un programa a la vez: si la
                   tenés abierta en Zoom, Discord o la app Cámara, cerralos.
-                  Para ver qué encuentra tu PC, corré
-                  HORUS_herramientas.bat → opción V.
                 </div>
-                <button type="button" className="creacion-modal__reintentar"
-                        onClick={() => buscar(true)}>
+                <button type="button" className="creacion-modal__reintentar" onClick={() => buscar(true)}>
                   Buscar de nuevo
                 </button>
               </>
@@ -152,9 +164,7 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
       </div>
 
       <div className="creacion-modal__footer">
-        <button className="creacion-modal__btn creacion-modal__btn--cancelar" onClick={onCancelar}>
-          Cancelar
-        </button>
+        <button className="creacion-modal__btn creacion-modal__btn--cancelar" onClick={onCancelar}>Cancelar</button>
         <button
           className="creacion-modal__btn creacion-modal__btn--confirmar"
           onClick={confirmar}
@@ -167,7 +177,127 @@ function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
   );
 }
 
-// ── Modo: nuevo sector ────────────────────────────────────────
+// ── Formulario cámara IP ─────────────────────────────────────
+function FormIP({ nombre, setNombre, onConfirmar, onCancelar }) {
+  const [usuario, setUsuario]   = useState("");
+  const [password, setPassword] = useState("");
+  const [ip, setIp]             = useState("");
+  const [marca, setMarca]       = useState("");
+
+  const valido = usuario.trim() && password.trim() && ip.trim() && marca;
+
+  const confirmar = async () => {
+    if (!valido) return;
+
+    if (!API_CAMARA_IP) {
+      // TODO: conectar cuando el endpoint esté disponible
+      console.log("Cámara IP — datos a enviar:", { nombre, usuario, password, ip, marca });
+      onConfirmar({ tipo: "camara", nombre, rtspUrl: `pendiente-${ip}`, hardwareId: null });
+      return;
+    }
+
+    try {
+      const res = await fetch(API_CAMARA_IP, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre, usuario, password, ip, marca }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json();
+      onConfirmar({ tipo: "camara", nombre, rtspUrl: data.rtsp_url, hardwareId: null });
+    } catch (err) {
+      console.error("Error al agregar cámara IP:", err);
+    }
+  };
+
+  return (
+    <>
+      <div className="creacion-modal__nombre-row">
+        <input
+          className="creacion-modal__nombre-input"
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          placeholder="Nombre de la cámara"
+        />
+      </div>
+
+      <div className="creacion-modal__ip-form">
+        <input
+          className="creacion-modal__ip-input"
+          value={usuario}
+          onChange={(e) => setUsuario(e.target.value)}
+          placeholder="Usuario"
+          autoComplete="off"
+        />
+        <input
+          className="creacion-modal__ip-input"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Contraseña"
+          autoComplete="new-password"
+        />
+        <input
+          className="creacion-modal__ip-input"
+          value={ip}
+          onChange={(e) => setIp(e.target.value)}
+          placeholder="Dirección IP  (ej: 192.168.1.100)"
+        />
+        <select
+          className="creacion-modal__ip-select"
+          value={marca}
+          onChange={(e) => setMarca(e.target.value)}
+        >
+          {MARCAS_IP.map((m) => (
+            <option key={m.value} value={m.value}>{m.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="creacion-modal__footer">
+        <button className="creacion-modal__btn creacion-modal__btn--cancelar" onClick={onCancelar}>Cancelar</button>
+        <button
+          className="creacion-modal__btn creacion-modal__btn--confirmar"
+          onClick={confirmar}
+          disabled={!valido}
+        >
+          Aceptar
+        </button>
+      </div>
+    </>
+  );
+}
+
+// ── Modo: nueva cámara (orquesta web / IP) ───────────────────
+function ModoCamara({ onConfirmar, onCancelar, onPreview }) {
+  const [subTab, setSubTab] = useState("web");
+  const [nombre, setNombre] = useState("Nueva Cámara");
+
+  return (
+    <>
+      <SubTabSelector tab={subTab} onChange={setSubTab} />
+
+      {subTab === "web" ? (
+        <FormWeb
+          nombre={nombre}
+          setNombre={setNombre}
+          onConfirmar={onConfirmar}
+          onCancelar={onCancelar}
+          onPreview={onPreview}
+        />
+      ) : (
+        <FormIP
+          nombre={nombre}
+          setNombre={setNombre}
+          onConfirmar={onConfirmar}
+          onCancelar={onCancelar}
+        />
+      )}
+    </>
+  );
+}
+
+// ── Modo: nuevo sector ───────────────────────────────────────
 function ModoSector({ camarasSueltas, onConfirmar, onCancelar }) {
   const [nombre, setNombre]       = useState("Nuevo Sector");
   const [seleccionadas, setSelec] = useState(new Set());
@@ -179,17 +309,8 @@ function ModoSector({ camarasSueltas, onConfirmar, onCancelar }) {
       return next;
     });
 
-  const confirmar = () => {
-    onConfirmar({
-      tipo: "sector",
-      nombre,
-      camaraIds: [...seleccionadas],
-    });
-  };
-
   return (
     <>
-      {/* Nombre editable */}
       <div className="creacion-modal__nombre-row">
         <input
           className="creacion-modal__nombre-input"
@@ -198,8 +319,6 @@ function ModoSector({ camarasSueltas, onConfirmar, onCancelar }) {
           placeholder="Nombre del sector"
         />
       </div>
-
-      {/* Lista de cámaras sueltas con checkbox */}
       <div className="creacion-modal__lista">
         {camarasSueltas.length === 0 && (
           <p className="creacion-modal__empty">No hay cámaras sueltas disponibles.</p>
@@ -213,15 +332,9 @@ function ModoSector({ camarasSueltas, onConfirmar, onCancelar }) {
           />
         ))}
       </div>
-
       <div className="creacion-modal__footer">
-        <button className="creacion-modal__btn creacion-modal__btn--cancelar" onClick={onCancelar}>
-          Cancelar
-        </button>
-        <button
-          className="creacion-modal__btn creacion-modal__btn--confirmar"
-          onClick={confirmar}
-        >
+        <button className="creacion-modal__btn creacion-modal__btn--cancelar" onClick={onCancelar}>Cancelar</button>
+        <button className="creacion-modal__btn creacion-modal__btn--confirmar" onClick={() => onConfirmar({ tipo: "sector", nombre, camaraIds: [...seleccionadas] })}>
           Agregar
         </button>
       </div>
@@ -229,7 +342,7 @@ function ModoSector({ camarasSueltas, onConfirmar, onCancelar }) {
   );
 }
 
-// ── Modo: agregar cámaras a sector existente ──────────────────
+// ── Modo: agregar cámaras a sector existente ─────────────────
 function ModoAgregarASector({ sector, camarasSueltas, onConfirmar, onCancelar }) {
   const [seleccionadas, setSelec] = useState(new Set());
 
@@ -240,20 +353,11 @@ function ModoAgregarASector({ sector, camarasSueltas, onConfirmar, onCancelar })
       return next;
     });
 
-  const confirmar = () => {
-    onConfirmar({
-      tipo: "agregarASector",
-      sectorId: sector.id,
-      camaraIds: [...seleccionadas],
-    });
-  };
-
   return (
     <>
       <p className="creacion-modal__subtitulo">
         Agregar cámaras a <strong>{sector.nombre}</strong>
       </p>
-
       <div className="creacion-modal__lista">
         {camarasSueltas.length === 0 && (
           <p className="creacion-modal__empty">No hay cámaras sueltas disponibles.</p>
@@ -267,15 +371,9 @@ function ModoAgregarASector({ sector, camarasSueltas, onConfirmar, onCancelar })
           />
         ))}
       </div>
-
       <div className="creacion-modal__footer">
-        <button className="creacion-modal__btn creacion-modal__btn--cancelar" onClick={onCancelar}>
-          Cancelar
-        </button>
-        <button
-          className="creacion-modal__btn creacion-modal__btn--confirmar"
-          onClick={confirmar}
-        >
+        <button className="creacion-modal__btn creacion-modal__btn--cancelar" onClick={onCancelar}>Cancelar</button>
+        <button className="creacion-modal__btn creacion-modal__btn--confirmar" onClick={() => onConfirmar({ tipo: "agregarASector", sectorId: sector.id, camaraIds: [...seleccionadas] })}>
           Agregar
         </button>
       </div>
@@ -283,9 +381,7 @@ function ModoAgregarASector({ sector, camarasSueltas, onConfirmar, onCancelar })
   );
 }
 
-// ── Modal principal ───────────────────────────────────────────
-// modoInicial: "camara" | "sector" | "agregarASector"
-// sectorDestino: objeto sector (solo cuando modoInicial === "agregarASector")
+// ── Modal principal ──────────────────────────────────────────
 export default function CreacionModal({
   modoInicial = "camara",
   sectorDestino = null,
@@ -295,41 +391,20 @@ export default function CreacionModal({
   onPreviewHardware,
 }) {
   const [tab, setTab] = useState(modoInicial === "sector" ? "sector" : "camara");
-
-  // En modo "agregarASector" no mostramos el selector de pestañas
   const esAgregarASector = modoInicial === "agregarASector";
 
   return (
     <div className="creacion-modal__overlay" onClick={onCancelar}>
       <div className="creacion-modal" onClick={(e) => e.stopPropagation()}>
+        {!esAgregarASector && <TabSelector tab={tab} onChange={setTab} />}
 
-        {/* Tabs — solo si no es "agregar a sector existente" */}
-        {!esAgregarASector && (
-          <TabSelector tab={tab} onChange={setTab} />
-        )}
-
-        {/* Contenido según modo */}
         {esAgregarASector ? (
-          <ModoAgregarASector
-            sector={sectorDestino}
-            camarasSueltas={camarasSueltas}
-            onConfirmar={onConfirmar}
-            onCancelar={onCancelar}
-          />
+          <ModoAgregarASector sector={sectorDestino} camarasSueltas={camarasSueltas} onConfirmar={onConfirmar} onCancelar={onCancelar} />
         ) : tab === "camara" ? (
-          <ModoCamara
-            onConfirmar={onConfirmar}
-            onCancelar={onCancelar}
-            onPreview={onPreviewHardware}
-          />
+          <ModoCamara onConfirmar={onConfirmar} onCancelar={onCancelar} onPreview={onPreviewHardware} />
         ) : (
-          <ModoSector
-            camarasSueltas={camarasSueltas}
-            onConfirmar={onConfirmar}
-            onCancelar={onCancelar}
-          />
+          <ModoSector camarasSueltas={camarasSueltas} onConfirmar={onConfirmar} onCancelar={onCancelar} />
         )}
-
       </div>
     </div>
   );

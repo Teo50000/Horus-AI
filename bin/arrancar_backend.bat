@@ -28,4 +28,5 @@ echo  tambien quedo en:
 echo     logs\backend.txt
 echo ==============================================================
 echo.
-pause
+rem Con HORUS_APP (Horus.exe) no hay ventana: nadie apretaria una tecla.
+if not defined HORUS_APP pause

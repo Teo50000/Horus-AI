@@ -1,19 +1,19 @@
 import time
+
 import cv2
 
-#from fastapi.templating import Jinja2Templates
-#templates = Jinja2Templates(directory="templates")
 
-class VideoCamera(object):
+class VideoCamera:
     def __init__(self, source):
-        #self.video = cv2.VideoCapture(1)
-        #self.video = cv2.VideoCapture("rtsp://localhost:8554/live")
-        #si lo queremos hacer con direccion IP, habria que cambiarlo a self.video = cv2.VideoCapture('rstp://direccion_ip:puerto/video_feed')
+        # self.video = cv2.VideoCapture(1)
+        # self.video = cv2.VideoCapture("rtsp://localhost:8554/live")
+        # si lo queremos hacer con direccion IP, habria que cambiarlo a self.video = cv2.VideoCapture('rstp://direccion_ip:puerto/video_feed')
         # 18/09: era `cv2.VideoCapture(source)` a secas. En Windows eso usa
         # MSMF, que no abre muchas webcams que DirectShow abre al toque — el
         # mismo motivo por el que no aparecían en la lista. El orden de
         # backends vive en un solo lugar, en video_rutas.
         from src.routers.video_rutas import _abrir
+
         self.video = _abrir(source) or cv2.VideoCapture(source)
         self.video.set(3, 1920)  # float `width`
         self.video.set(4, 1080)  # float `height`
@@ -21,7 +21,10 @@ class VideoCamera(object):
         # self.video = cv2.VideoCapture(args["input"])
 
     def __del__(self):
-        self.video.release()
+        try:
+            self.video.release()
+        except Exception:  # noqa: BLE001
+            pass
 
     def get_frame(self):
         success, image = self.video.read()
@@ -38,7 +41,7 @@ class VideoCamera(object):
         image = cv2.resize(image, (640, 360))
         # video stream.
         ret, jpeg = cv2.imencode('.jpg', image)
-        return jpeg.tobytes()
+        return jpeg.tobytes() if ret else None
 
 
 def check_cameras():
@@ -50,9 +53,10 @@ def check_cameras():
         else:
             print(f"Índice {i}: no hay cámara")
 
-#@app.get('/')
-#def index(request: Request):
-#    return templates.TemplateResponse("index.html", context={"request": request})
+
+# @app.get('/')
+# def index(request: Request):
+#     return templates.TemplateResponse("index.html", context={"request": request})
 
 # Qué stream está corriendo para cada cámara.
 #
@@ -90,14 +94,14 @@ def gen(camera: VideoCamera, camara_config_id: int):
         while stream_running.get(camara_config_id) == mio:
             frame = camera.get_frame()
             if frame is None:
-                time.sleep(0.01)   # no quemar CPU cuando no hay frame
+                time.sleep(0.01)  # no quemar CPU cuando no hay frame
                 continue
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
     except (GeneratorExit, ConnectionResetError, BrokenPipeError):
         # El navegador cerró la pestaña o cambió de cámara. Es lo normal.
         pass
-    except Exception as e:                               # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         print(f"[video] error en el stream de la camara {camara_config_id}: {e}")
     finally:
         # Solo apago si el que está anotado sigo siendo yo: si arrancó otro
@@ -108,5 +112,6 @@ def gen(camera: VideoCamera, camara_config_id: int):
         # servicio de modelos ni el próximo stream la pueden abrir.
         try:
             camera.video.release()
-        except Exception:                                # noqa: BLE001
+        except Exception:  # noqa: BLE001
             pass
+

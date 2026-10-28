@@ -41,7 +41,12 @@ def _plano(v):
     return str(v)
 
 
-def guardar(ruta, modelo, config=None, metricas=None, extra=None):
+def guardar(ruta, modelo, config=None, metricas=None, extra=None, miembros=None):
+    """`miembros`: varios modelos de la misma receta (un ensamble de semillas)
+    en UN archivo. Asi el despliegue sigue siendo un solo .pt: no cambian el
+    lanzador, el manifiesto de hashes ni el instalador. `state_dict` queda con
+    el primero, y un lector que no conozca `state_dicts` carga un miembro
+    valido en vez de romperse."""
     os.makedirs(os.path.dirname(os.path.abspath(ruta)), exist_ok=True)
     paquete = {
         CLAVE_FORMATO: 1,
@@ -53,6 +58,9 @@ def guardar(ruta, modelo, config=None, metricas=None, extra=None):
         "torch": str(torch.__version__),
     }
     paquete.update(_plano(extra or {}))
+    if miembros:
+        # despues de _plano a proposito: aplanaria los tensores a texto
+        paquete["state_dicts"] = [m.state_dict() for m in miembros]
     torch.save(paquete, ruta)
     return ruta
 
@@ -72,6 +80,24 @@ def cargar(ruta, modelo=None, device="cpu"):
     if modelo is not None:
         modelo.load_state_dict(state_dict)
     return state_dict, meta
+
+
+def guardar_umbral(ruta, umbral, config=None, metricas=None):
+    """Escribe el umbral calibrado en los metadatos de un checkpoint ya
+    guardado, sin tocar nada mas. Lo usa 21_calibrar_umbral.py.
+
+    No re-guarda con `guardar`: eso perderia los miembros de un ensamble y
+    pisaria `git` y `fecha`, que tienen que seguir siendo los del
+    entrenamiento, no los de la calibracion."""
+    paquete = torch.load(ruta, map_location="cpu", weights_only=True)
+    if not (isinstance(paquete, dict) and CLAVE_FORMATO in paquete):
+        # un state_dict pelado no tiene donde guardar el umbral: se envuelve
+        paquete = {CLAVE_FORMATO: 1, "state_dict": paquete, "config": {}, "metricas": {},
+                   "git": "?", "fecha": "?", "torch": str(torch.__version__)}
+    paquete.setdefault("config", {}).update(_plano(dict(config or {})))
+    paquete["config"]["umbral"] = float(umbral)
+    paquete.setdefault("metricas", {}).update(_plano(dict(metricas or {})))
+    torch.save(paquete, ruta)
 
 
 def aplicar_config(meta, cfg):

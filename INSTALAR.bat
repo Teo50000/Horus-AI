@@ -9,11 +9,13 @@ rem  Una sola vez, despues de clonar el repo. Instala todo lo que
 rem  necesita Horus en esta PC y al final muestra que quedo y que no.
 rem  Correrlo de nuevo no rompe nada: lo que ya esta, lo saltea.
 rem
-rem  Lo hace bin\instalar_todo.py; aca solo se chequea que haya un
-rem  Python para correrlo.
+rem  Lo hace bin\instalar_todo.py; aca solo se elige el Python que lo
+rem  corre (bin\elegir_python.bat), que es en el que instala: si fuera
+rem  `python` a secas, podria llenar uno que HORUS.bat despues no usa.
 rem ===============================================================
 
-python --version >nul 2>&1
+call "%~dp0bin\elegir_python.bat"
+%HORUS_PY% --version >nul 2>&1
 if errorlevel 1 (
   echo.
   echo  No encuentro Python.
@@ -40,6 +42,6 @@ echo  Para el panel hace falta Node.js ^(https://nodejs.org, el LTS^).
 echo.
 pause
 
-python bin\instalar_todo.py %*
+%HORUS_PY% bin\instalar_todo.py %*
 echo.
 pause

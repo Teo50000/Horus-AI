@@ -142,8 +142,15 @@ def cuda_del_driver() -> tuple:
 
 
 def leer_nvidia_smi(tabla: str) -> tuple | None:
-    """La CUDA que soporta el driver sale en el encabezado: 'CUDA Version: 12.8'."""
-    m = re.search(r"CUDA Version:\s*(\d+)\.(\d+)", tabla)
+    """La CUDA que soporta el driver sale en el encabezado.
+
+    Hasta el driver 5xx decia 'CUDA Version: 12.8'; desde el 610 dice
+    'CUDA UMD Version: 13.3'. Con la regex vieja un driver nuevo se leia como
+    "no hay placa NVIDIA" -- con el nombre de la RTX 2060 en la linea de al
+    lado -- y se quedaba la build de CPU para siempre, mientras preparar_pc.py
+    seguia pidiendo "torch con CUDA". Se acepta una palabra entre CUDA y
+    Version para que el proximo cambio de NVIDIA no lo vuelva a romper."""
+    m = re.search(r"CUDA(?:\s+\w+)?\s+Version:\s*(\d+)\.(\d+)", tabla)
     return (int(m.group(1)), int(m.group(2))) if m else None
 
 

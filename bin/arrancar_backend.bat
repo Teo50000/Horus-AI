@@ -11,13 +11,14 @@ rem vaciar el buffer.
 chcp 65001 >nul
 set PYTHONIOENCODING=utf-8
 set RAIZ=%~dp0..
+call "%~dp0elegir_python.bat"
 if not exist "%RAIZ%\logs" mkdir "%RAIZ%\logs"
 cd /d "%RAIZ%\FASTAPI"
 
 rem `bin\tee.py` y no `Tee-Object`: PowerShell bufferea y el archivo
 rem quedaba minutos atrasado, a veces vacio hasta que el proceso moria.
 rem Un log que no se refresca no sirve para mirar por que algo no anda.
-python -u -m uvicorn src.main:app --host 127.0.0.1 --port 8000 2>&1 | python -u "%RAIZ%\bin\tee.py" "%RAIZ%\logs\backend.txt"
+%HORUS_PY% -u -m uvicorn src.main:app --host 127.0.0.1 --port 8000 2>&1 | %HORUS_PY% -u "%RAIZ%\bin\tee.py" "%RAIZ%\logs\backend.txt"
 
 echo.
 echo ==============================================================

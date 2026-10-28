@@ -491,6 +491,10 @@ class ReglaCaida(Regla):
     angulo_torso_min: float = 55.0         # grados desde la vertical
     quieto_s: float = 2.0                  # sin levantarse
     critico_s: float = 15.0
+    # Cuanto puede faltar la postura de caida antes de que el reloj de
+    # "tumbado desde" vuelva a cero. Un segundo tapa el parpadeo de un frame
+    # en medio de una caida real; mas que eso, ya se levanto.
+    olvido_s: float = 1.0
     aspecto_tumbado: float = 1.00          # w/h de una caja de persona acostada
     permitir_heuristica_bbox: bool = False  # sin pose ni acción; ver abajo
 
@@ -530,6 +534,7 @@ class ReglaCaida(Regla):
     def _evaluar(self, obs: ObservacionCamara, ctx: Contexto) -> List[Hallazgo]:
         personas = {t.track_id: t for t in obs.confirmados("persona")}
         mem = ctx.mem(self).setdefault("desde", {})
+        ultimo = ctx.mem(self).setdefault("ultimo", {})   # ultima vez que se lo vio caido
         fuera: List[Hallazgo] = []
 
         for a in obs.acciones:
@@ -540,7 +545,17 @@ class ReglaCaida(Regla):
             persona = self._persona_de(a, personas)
             clave = (obs.camera_id, a.track_id if a.track_id is not None
                      else (getattr(persona, "track_id", None) or _redondear(a.bbox_xyxy)))
-            desde = mem.setdefault(clave, obs.ts)
+            # 28/10: el reloj se reinicia si hace mas de `olvido_s` que no se lo
+            # ve caido. Antes solo se reiniciaba si la persona desaparecia del
+            # frame, pero detector_caidas manda una AccionObs por persona en
+            # TODOS los frames (accion="" si no ve nada, para que la regla no
+            # figure dormida), asi que nunca desaparecia. Medido: dos parpadeos
+            # de un frame separados por 60 s de pie daban un evento CRITICO
+            # "sin levantarse hace 60 s", salteando los 2 s de quietud.
+            if clave not in mem or obs.ts - ultimo.get(clave, obs.ts) > self.olvido_s:
+                mem[clave] = obs.ts
+            ultimo[clave] = obs.ts
+            desde = mem[clave]
             tumbado_s = obs.ts - desde
 
             quieto_ok = persona is None or persona.quieto or persona.quieto_s >= self.quieto_s
@@ -568,10 +583,12 @@ class ReglaCaida(Regla):
 
         # Olvidar a los que ya se levantaron, para que la próxima caída
         # empiece a contar de cero.
+        # (con la cabeza de caidas esto casi no pasa: ver `olvido_s` arriba)
         vivos = {(obs.camera_id, a.track_id) for a in obs.acciones}
         for k in [k for k in mem if k[0] == obs.camera_id and k not in vivos
                   and not isinstance(k[1], tuple)]:
             mem.pop(k, None)
+            ultimo.pop(k, None)
         return fuera
 
     # -------------------------------------------------------------- #

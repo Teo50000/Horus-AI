@@ -28,8 +28,13 @@ echo.
 
 rem ===============================================================
 rem  1. Python
+rem
+rem     No `python` a secas: es el primero del PATH, no el que tiene
+rem     torch y mediapipe. Ver bin\elegir_python.bat. Todo lo que sigue
+rem     (y backend, modelos y panel, que heredan HORUS_PY) usa este.
 rem ===============================================================
-python --version >nul 2>&1
+call "%~dp0bin\elegir_python.bat"
+%HORUS_PY% --version >nul 2>&1
 if errorlevel 1 (
   echo  No encuentro Python. Instalalo de python.org y marca
   echo  "Add python.exe to PATH" en la primera pantalla del instalador.
@@ -37,6 +42,8 @@ if errorlevel 1 (
   if not defined HORUS_APP pause
   exit /b 1
 )
+echo    python: %HORUS_PY%
+echo.
 
 rem ===============================================================
 rem  2. Dependencias del backend
@@ -45,11 +52,11 @@ rem     `websockets` es el que rompe callado: sin el, uvicorn no hace
 rem     el upgrade del WebSocket, el panel abre, se ven las camaras...
 rem     y no llega NI UNA alerta, sin ningun error a la vista.
 rem ===============================================================
-python -c "import fastapi, uvicorn, sqlmodel, websockets" >nul 2>&1
+%HORUS_PY% -c "import fastapi, uvicorn, sqlmodel, websockets" >nul 2>&1
 if errorlevel 1 (
   echo  Falta alguna dependencia del backend. Instalando una sola vez...
   echo.
-  python -m pip install -q -r FASTAPI\requirements.txt
+  %HORUS_PY% -m pip install -q -r FASTAPI\requirements.txt
   echo.
 )
 
@@ -69,7 +76,10 @@ set HAY_VISION=0
 set M_OBJ=horus\04_cabezas\objetos\modelos\head_best_solo.pt
 set M_SEG=horus\04_cabezas\segmentacion\checkpoints\head_v4_produccion.pt
 set M_FIGHT=horus\fight\checkpoints\modelo_fight.pt
-set M_FALL=horus\fall\checkpoints\modelo_demo_todo.pt
+rem Mismo orden que detector_caidas.checkpoint_por_defecto(): el ensamble de
+rem 3 semillas si esta, y si no el de una semilla, que es el del release.
+set M_FALL=horus\fall\checkpoints\modelo_caidas_ens3.pt
+if not exist "%M_FALL%" set M_FALL=horus\fall\checkpoints\modelo_demo_todo.pt
 rem 22/09: faltaba mirar ESTE. Con mediapipe instalado pero sin el
 rem .task, el lanzador decia [SI] caidas y le pasaba --caidas al
 rem servicio: la cabeza no cargaba y el cartel ya habia dicho que si.
@@ -89,13 +99,19 @@ rem 26/09: YOLO11 preentrenado para personas, cuchillos y celulares. Con la
 rem cabeza propia sola el sistema veia personas en la silla con ropa. El
 rem servicio lo usa solo si estan los pesos; si falta el paquete, se instala
 rem una vez. Ifs de una linea a proposito (ver el comentario de caidas).
+rem Mismo orden que motor_yolo.pesos_por_defecto(): el ONNX es ~1,8x mas
+rem rapido en CPU, pero el .pt anda igual. Antes se miraba solo el ONNX y con
+rem el .pt solo decia [NO] yolo11: caidas y agresion quedaban con las personas
+rem de la cabeza propia, la que ve gente en la silla con ropa.
 set M_YOLO=horus\04_cabezas\objetos\modelos\yolo11n_416.onnx
+if not exist "%M_YOLO%" if exist "horus\04_cabezas\objetos\modelos\yolo11n.onnx" set M_YOLO=horus\04_cabezas\objetos\modelos\yolo11n.onnx
+if not exist "%M_YOLO%" if exist "horus\04_cabezas\objetos\modelos\yolo11n.pt" set M_YOLO=horus\04_cabezas\objetos\modelos\yolo11n.pt
 set HAY_YOLO=0
 if exist "%M_YOLO%" set HAY_YOLO=1
-if "!HAY_YOLO!"=="1" python -c "import ultralytics, onnxruntime" >nul 2>&1 || set HAY_YOLO=2
+if "!HAY_YOLO!"=="1" %HORUS_PY% -c "import ultralytics, onnxruntime" >nul 2>&1 || set HAY_YOLO=2
 if "!HAY_YOLO!"=="2" echo  Instalando YOLO11 y onnxruntime, una sola vez...
-if "!HAY_YOLO!"=="2" python -m pip install -q ultralytics onnxruntime
-if "!HAY_YOLO!"=="2" python -c "import ultralytics, onnxruntime" >nul 2>&1 && set HAY_YOLO=1
+if "!HAY_YOLO!"=="2" %HORUS_PY% -m pip install -q ultralytics onnxruntime
+if "!HAY_YOLO!"=="2" %HORUS_PY% -c "import ultralytics, onnxruntime" >nul 2>&1 && set HAY_YOLO=1
 if "!HAY_YOLO!"=="1" echo    [SI] yolo11         personas, cuchillos y celulares, preentrenado
 if "!HAY_YOLO!"=="1" set HAY_VISION=1
 if "!HAY_YOLO!"=="0" echo    [NO] yolo11         falta %M_YOLO%
@@ -126,15 +142,15 @@ rem es peor que uno que avisa mal.
 set FALTA_CAIDAS=
 if not exist "%M_FALL%" set FALTA_CAIDAS=%M_FALL%
 if not defined FALTA_CAIDAS if not exist "%M_POSE%" set FALTA_CAIDAS=pose_landmarker.task - opcion 5
-if not defined FALTA_CAIDAS python -c "import mediapipe" >nul 2>&1 || set FALTA_CAIDAS=mediapipe - opcion 5
+if not defined FALTA_CAIDAS %HORUS_PY% -c "import mediapipe" >nul 2>&1 || set FALTA_CAIDAS=mediapipe - opcion 5
 if defined FALTA_CAIDAS (
   echo    [NO] caidas         falta !FALTA_CAIDAS!
 ) else (
   echo    [SI] caidas         desmayos y caidas
-  rem Sin --caidas-checkpoint: el default de ConfigCaidas es
-  rem modelo_demo_todo.pt, que es EL de despliegue ("entrenado con
-  rem todo"). Aca decia modelo_stgcn.pt, que es otro archivo y no
-  rem figura como opcion de despliegue en ningun lado.
+  rem Sin --caidas-checkpoint: el default de ConfigCaidas elige solo,
+  rem igual que M_FALL arriba (modelo_caidas_ens3.pt si esta, si no
+  rem modelo_demo_todo.pt). Aca decia modelo_stgcn.pt, que es otro
+  rem archivo y no figura como opcion de despliegue en ningun lado.
   set FLAGS=!FLAGS! --caidas
 )
 

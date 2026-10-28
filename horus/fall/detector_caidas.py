@@ -137,7 +137,7 @@ for _p in (os.path.join(_AQUI, "src"),
 from contratos import CABEZA_ACCION, CABEZA_POSE, AccionObs  # noqa: E402
 # solo numpy: esta cabeza se tiene que poder importar sin torch ni mediapipe
 from compuertas_caida import (  # noqa: E402
-    PuertaCaida, cobertura, duracion_ventana, remuestrear_clip,
+    PuertaCaida, cobertura, duracion_ventana, margen_buffer, remuestrear_clip,
 )
 from preproceso import normalizar_frame  # noqa: E402,F401  (la misma que vio el entrenamiento)
 
@@ -170,13 +170,32 @@ MP_A_COCO: Tuple[int, ...] = (
 # --------------------------------------------------------------------------- #
 # Configuración
 # --------------------------------------------------------------------------- #
+# El primero que exista. modelo_caidas_ens3.pt es un ensamble de 3 semillas
+# (18_entrenar.py --semillas 3) en un solo archivo. Medido a 10 fps contra
+# modelo_demo_todo.pt, una semilla sola: LOSO en Le2i a umbral 0,50 sube el
+# recall 72,3 -> 73,8 % y baja las falsas 39 -> 36 por hora; con los
+# checkpoints de despliegue, 70,0 -> 73,8 % y 19,5 -> 18,0 (resultados/README.md,
+# filas mej_*). Sobre todo: una semilla sola movia el recall hasta 13 puntos
+# segun la suerte, y el ensamble no. modelo_demo_todo.pt queda de respaldo
+# hasta que el ensamble este en el release de GitHub (bin/bajar_modelos.py).
+CHECKPOINTS_POR_PREFERENCIA = ("modelo_caidas_ens3.pt", "modelo_demo_todo.pt")
+
+
+def checkpoint_por_defecto() -> str:
+    for nombre in CHECKPOINTS_POR_PREFERENCIA:
+        ruta = os.path.join(_AQUI, "checkpoints", nombre)
+        if os.path.exists(ruta):
+            return ruta
+    # ninguno: se devuelve el de respaldo para que el error diga cual falta
+    return os.path.join(_AQUI, "checkpoints", CHECKPOINTS_POR_PREFERENCIA[-1])
+
 @dataclass
 class ConfigCaidas:
     """Los valores por defecto son los medidos en `fall/`; los que agrega
     Horus están marcados."""
 
     # --- modelo ---
-    checkpoint: str = os.path.join(_AQUI, "checkpoints", "modelo_demo_todo.pt")
+    checkpoint: str = field(default_factory=lambda: checkpoint_por_defecto())
     modelo_pose: str = os.path.join(_AQUI, "pose_landmarker.task")
     canales: int = 4                 # posición + velocidad, como el checkpoint
     device: Optional[str] = None     # None = cuda si hay
@@ -281,7 +300,7 @@ class _EstadoTrack:
         anterior = self.buffer[-1][1] if self.buffer else None
         vel = kp_norm - anterior if anterior is not None else np.zeros_like(kp_norm)
         self.buffer.append((ts, kp_norm))
-        limite = ts - self._cfg.ventana_s
+        limite = ts - margen_buffer(self._cfg.ventana, self._cfg.fps_canonica)
         while len(self.buffer) > 2 and self.buffer[1][0] < limite:
             self.buffer.popleft()
         return vel
@@ -385,13 +404,9 @@ class ClasificadorSTGCN:
     def __init__(self, checkpoint: str, canales: int = 4,
                  device: Optional[str] = None) -> None:
         import torch
-        from grafo_mediapipe import construir_matriz_adyacencia
-        from modelo_stgcn import STGCN
 
         self._torch = torch
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        A = construir_matriz_adyacencia(N_PUNTOS_MP)
-        self.modelo = STGCN(A, canales_entrada=canales).to(self.device)
 
         if not os.path.exists(checkpoint):
             raise FileNotFoundError(
@@ -417,8 +432,12 @@ class ClasificadorSTGCN:
                     f"canales_entrada={esperados} y se está pidiendo "
                     f"{canales}. Con 2 son solo posiciones; con 4 es posición "
                     f"+ velocidad. No son intercambiables.")
-        self.modelo.load_state_dict(estado)
-        self.modelo.eval()
+        # Un STGCN o un ensamble de semillas guardado en el mismo .pt: el
+        # mismo cargador que usa el harness (17_evaluar_evento.py), asi lo
+        # medido es lo que corre. Para afuera se usan igual.
+        from ensamble import cargar_checkpoint
+        self.modelo, _ = cargar_checkpoint(checkpoint, self.device, canales_entrada=canales)
+        self.n_modelos = len(getattr(self.modelo, "modelos", [self.modelo]))
 
     def __call__(self, clips: np.ndarray) -> np.ndarray:
         torch = self._torch
@@ -549,7 +568,9 @@ class DetectorCaidas:
                     origen = "calibrado, subido al piso de ReglaCaida"
                 self.cfg.umbral_reporte = calibrado
             if self._verboso:
-                print(f"[caidas] ST-GCN en {self._clf.device} · "
+                n = getattr(self._clf, "n_modelos", 1)
+                print(f"[caidas] ST-GCN{f' x{n} (ensamble)' if n > 1 else ''} "
+                      f"en {self._clf.device} · "
                       f"{os.path.basename(self.cfg.checkpoint)} · "
                       f"umbral {self.cfg.umbral_reporte:.2f} ({origen})")
 

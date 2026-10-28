@@ -42,3 +42,9 @@ Una fila por corrida. Detalle completo en `evento_{tag}.json`.
 | var_semilla_3 | 41ab036 | le2i | 10 | semilla_3.pt | 84/130 | 64.6% | 2.27 | 3.09 | 7.49 | 0.87 |  |
 | ensamble4_10 | 41ab036 | le2i | 10 | ensamble x4 | 98/130 | 75.4% | 2.12 | 2.66 | 17.98 | 0.87 |  |
 | refactor_10 | 5422165 | le2i | 10 | LOSO | 81/130 | 62.3% | 2.26 | 2.76 | 10.49 | 0.85 |  |
+| mej_base_loso_10 | 4ddd0de | le2i | 10 | LOSO | 86/130 | 66.2% | 2.19 | 2.71 | 26.97 | 0.85 | 27/10 linea base en esta PC (CPU). 12 de 18 falsas en stand_up de Home_01: MediaPipe invierte el esqueleto |
+| mej_vel0_loso_10 | 4ddd0de | le2i | 10 | LOSO | 86/130 | 66.2% | 2.19 | 2.76 | 26.97 | 0.85 | vel[0] real en el remuestreo (app == entrenamiento, dif 3e-14). Neutro a nivel evento; se queda por correccion |
+| mej_desmayo_loso_10 | 4ddd0de | le2i | 10 | LOSO | 95/130 | 73.1% | 1.81 | 2.38 | 128.86 | 0.83 | todos_con_desmayo.npy (caidas estiradas x1.5-3). DESCARTADO: a <=27 falsas/h recall 53% vs 66% base; AUC baja |
+| mej_ens3_loso_10 | 4ddd0de | le2i | 10 | LOSO | 89/130 | 68.5% | 2.26 | 2.91 | 22.48 | 0.86 | ensamble 3 semillas por fold. Gana a u=0.5/0.6/0.7 en recall y falsas; a 18/h calibrado empata con la base |
+| mej_desplegar_modelo_demo_todo_10 | 4ddd0de | le2i | 10 | modelo_demo_todo.pt | 91/130 | 70.0% | 2.17 | 2.67 | 19.48 | 0.87 | el desplegado hasta el 27/10; reproduce g1_modelo_demo_todo_10 |
+| mej_desplegar_modelo_caidas_ens3_10 | 4ddd0de | le2i | 10 | modelo_caidas_ens3.pt | 96/130 | 73.8% | 2.15 | 2.66 | 17.98 | 0.88 | NUEVO desplegado: 18_entrenar.py --semillas 3 con todos.npy. Optimista (vio a todos los sujetos) |

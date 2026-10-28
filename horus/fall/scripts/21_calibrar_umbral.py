@@ -118,19 +118,13 @@ if __name__ == "__main__":
         print(f"    TOTAL: recall {num_det/max(num_ev,1):.1%}  |  {falsas_tot/max(horas_tot,1e-9):.1f} falsas/h")
 
     if args.checkpoint:
-        modelo_sd, meta = ckpt.cargar(args.checkpoint)
-        config = dict(meta.get("config", {}))
-        config["umbral"] = mejor["umbral"]
-        config["umbral_calibrado_con"] = dict(cache=args.cache, origen=args.origen,
-                                              objetivo_falsas_hora=args.objetivo,
-                                              persistencia=args.persistencia)
-        metricas = dict(meta.get("metricas", {}))
-        metricas.update({f"calib_{k}": v for k, v in mejor.items()})
-
-        class _Envoltorio(torch.nn.Module):
-            def __init__(self, sd): super().__init__(); self._sd = sd
-            def state_dict(self, *a, **k): return self._sd
-
-        ckpt.guardar(args.checkpoint, _Envoltorio(modelo_sd), config=config, metricas=metricas)
+        # solo metadatos: re-guardar con ckpt.guardar perdia los miembros de
+        # un ensamble y pisaba el git/fecha del entrenamiento
+        ckpt.guardar_umbral(
+            args.checkpoint, mejor["umbral"],
+            config=dict(umbral_calibrado_con=dict(cache=args.cache, origen=args.origen,
+                                                  objetivo_falsas_hora=args.objetivo,
+                                                  persistencia=args.persistencia)),
+            metricas={f"calib_{k}": v for k, v in mejor.items()})
         print(f"\n  umbral {mejor['umbral']:.2f} escrito en {args.checkpoint}")
         print(f"  {ckpt.describir(args.checkpoint)}")

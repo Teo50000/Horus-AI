@@ -47,10 +47,16 @@ if __name__ == "__main__":
     ap.add_argument("--semilla", type=int, default=0)
     ap.add_argument("--salida", help="ruta del checkpoint (default segun el modo)")
     ap.add_argument("--tag", help="nombre para el csv de la corrida")
+    ap.add_argument("--datos", default=TODOS,
+                    help="npy de entrenamiento (ej. ../data/processed/todos_con_desmayo.npy)")
+    ap.add_argument("--semillas", type=int, default=1,
+                    help="solo despliegue: N semillas (semilla, semilla+1000, ...) guardadas "
+                         "como ensamble en UN archivo. Una semilla sola es una tirada: el "
+                         "recall de eventos se movia 13 puntos entre semillas")
     args = ap.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    todos = list(np.load(TODOS, allow_pickle=True))
+    todos = list(np.load(args.datos, allow_pickle=True))
     grupos = sorted({d["grupo"] for d in todos})
     receta = dict(epocas=args.epocas, batch=args.batch, lr=args.lr)
 
@@ -65,6 +71,27 @@ if __name__ == "__main__":
         items_train, items_val = todos, None
         tag = args.tag or "despliegue"
         salida = args.salida or os.path.join(CHECKPOINTS, "modelo_demo_todo.pt")
+
+    if args.semillas > 1:
+        if items_val:
+            raise SystemExit("--semillas es para el checkpoint de despliegue; "
+                             "para medir un ensamble: 17_evaluar_evento.py --loso --semillas N")
+        semillas = [args.semilla + 1000 * k for k in range(args.semillas)]
+        print(f"Usando: {device} | ensamble de {len(semillas)} semillas {semillas} | "
+              f"datos: {os.path.basename(args.datos)} | receta: {receta}")
+        miembros = []
+        for k, s in enumerate(semillas):
+            print(f"  semilla {s} ({k + 1}/{len(semillas)})...", flush=True)
+            m, historia, _, _ = entrenar(
+                items_train, device, s, receta=receta,
+                ruta_csv=os.path.join(RESULTADOS, f"entrenamiento_{tag}_s{s}.csv"))
+            miembros.append(m)
+        checkpoint.guardar(salida, miembros[0], miembros=miembros,
+                           config=dict(receta, semillas=semillas, datos=os.path.basename(args.datos),
+                                       n_train=len(items_train), seleccion="ultima epoca"),
+                           metricas=dict(historia[-1]))
+        print(f"  ensamble x{len(semillas)} -> {salida}")
+        raise SystemExit(0)
 
     print(f"Usando: {device} | semilla: {args.semilla} | receta: {receta}")
     print(f"train: {len(items_train)} secuencias"
@@ -94,6 +121,7 @@ if __name__ == "__main__":
         print(f"  mejor epoca  -> {ruta_mejor}")
 
     checkpoint.guardar(salida, modelo, config=dict(receta, semilla=args.semilla,
+                       datos=os.path.basename(args.datos),
                        dejado_afuera=args.dejar_afuera, epoca=args.epocas,
                        n_train=len(items_train), seleccion="ultima epoca"),
                        metricas=metricas)

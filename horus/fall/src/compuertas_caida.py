@@ -51,11 +51,19 @@ def remuestrear_clip(ts, poses, t_fin, ventana, fps_canonica):
     ultima pose repetida, asi que interpolar entre dos valores iguales da una
     meseta: el hueco no se rellena inventando movimiento.
 
+    Se interpola UNA muestra de mas a la izquierda y se tira despues de sacar
+    las velocidades. En entrenamiento la ventana se recorta de una secuencia
+    mas larga a la que ya se le calcularon las velocidades, asi que su primer
+    frame trae la velocidad real contra el anterior; si aca fuera 0, el modelo
+    veria un frame de quietud que nunca vio entrenando (medido: hasta 0.52 de
+    diferencia en P(caida) en un clip de Le2i). Por eso los buffers guardan un
+    paso canonico de mas (ver `margen_buffer`).
+
     ts: (n,) creciente   poses: (n, 33, 2)   -> (ventana, 33, 4) = x, y, vx, vy
     """
     ts = np.asarray(ts, dtype=float)
     poses = np.asarray(poses, dtype=float)
-    objetivo = np.linspace(t_fin - duracion_ventana(ventana, fps_canonica), t_fin, ventana)
+    objetivo = np.linspace(t_fin - duracion_ventana(ventana + 1, fps_canonica), t_fin, ventana + 1)
 
     if len(ts) == 1:
         xy = np.repeat(poses[:1], ventana, axis=0)
@@ -68,7 +76,13 @@ def remuestrear_clip(ts, poses, t_fin, ventana, fps_canonica):
 
     vel = np.zeros_like(xy)
     vel[1:] = xy[1:] - xy[:-1]
-    return np.concatenate([xy, vel], axis=2)
+    return np.concatenate([xy, vel], axis=2)[1:]
+
+
+def margen_buffer(ventana, fps_canonica):
+    """Cuanto tiempo tiene que cubrir un buffer para que `remuestrear_clip`
+    tenga la muestra extra de la izquierda: la ventana mas un paso canonico."""
+    return duracion_ventana(ventana + 1, fps_canonica)
 
 
 def cobertura(ts_buffer, ventana, fps_canonica):

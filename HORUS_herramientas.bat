@@ -4,6 +4,8 @@ setlocal enabledelayedexpansion
 set PYTHONIOENCODING=utf-8
 cd /d "%~dp0"
 title Horus - herramientas
+rem `python` a secas es el primero del PATH: ver bin\elegir_python.bat
+call "%~dp0bin\elegir_python.bat"
 
 :menu
 cls
@@ -112,7 +114,7 @@ goto menu
 
 :suite
 pushd "%~1"
-python "%~2" > "%SALIDA%" 2>&1
+%HORUS_PY% "%~2" > "%SALIDA%" 2>&1
 set RC=!ERRORLEVEL!
 set RESUMEN=
 for /f "usebackq delims=" %%L in (`findstr /R /V "^$" "%SALIDA%"`) do set RESUMEN=%%L
@@ -139,7 +141,7 @@ set ESC=
 set /p ESC=  Cual (Enter = incendio):
 if "%ESC%"=="" set ESC=incendio
 pushd FASTAPI
-python enviar_alerta_prueba.py %ESC%
+%HORUS_PY% enviar_alerta_prueba.py %ESC%
 popd
 echo.
 pause
@@ -148,7 +150,7 @@ goto menu
 rem ===============================================================
 :chequeo
 cls
-python chequeo_pruebas.py
+%HORUS_PY% chequeo_pruebas.py
 echo.
 pause
 goto menu
@@ -175,7 +177,7 @@ if not exist "horus\04_cabezas\objetos\modelos\head_best_solo.pt" (
 pushd horus\04_cabezas\objetos
 echo.
 echo  En CPU tarda un rato. Paciencia.
-python objects_engine.py "%CARPETA%" --imagenes --n 40 --precision fp32 --pesos modelos\head_best_solo.pt --salida revision
+%HORUS_PY% objects_engine.py "%CARPETA%" --imagenes --n 40 --precision fp32 --pesos modelos\head_best_solo.pt --salida revision
 popd
 echo.
 echo  Listo. Las fotos con cajas quedaron en:
@@ -213,7 +215,7 @@ set CAM=0
 set /p CAM=  Camara [0]:
 if "%CAM%"=="" set CAM=0
 pushd horus\04_cabezas\objetos
-python grabar_propio.py --escena %ESC% --minutos %MIN% --camara %CAM%
+%HORUS_PY% grabar_propio.py --escena %ESC% --minutos %MIN% --camara %CAM%
 popd
 echo.
 echo  Los frames quedan en:
@@ -245,7 +247,7 @@ echo  solo no alcanzaba.
 echo.
 echo  Esto hace las dos, y despues prueba que carguen de verdad.
 echo.
-python bin\instalar_caidas.py
+%HORUS_PY% bin\instalar_caidas.py
 echo.
 pause
 goto menu
@@ -267,7 +269,7 @@ if not exist "horus\06_fusion_decision\topologia.json" (
   echo  Primero el archivo base, con el tamano de tu cuadro.
   echo.
   pushd horus\06_fusion_decision
-  python crear_topologia.py
+  %HORUS_PY% crear_topologia.py
   popd
   echo.
 )
@@ -280,7 +282,7 @@ echo.
 set /p DIBUJAR=  Dibujarla ahora? [S/n]: 
 if /i "%DIBUJAR%"=="n" goto menu
 echo.
-python bin\dibujar_zona.py
+%HORUS_PY% bin\dibujar_zona.py
 if errorlevel 2 echo.
 if errorlevel 2 echo  Quedo a medias: la zona esta escrita pero no alerta. Mira arriba.
 echo.
@@ -299,7 +301,7 @@ echo  El 22/09, medido en tu base: 41 alertas de severidad 2 guardadas,
 echo  5 eventos, CERO mails. Faltaba el archivo .env con las
 echo  credenciales y no lo decia nadie.
 echo.
-python bin\probar_mail.py
+%HORUS_PY% bin\probar_mail.py
 echo.
 echo  --------------------------------------------------------------
 if not exist "FASTAPI\.env" (
@@ -315,7 +317,7 @@ if not exist "FASTAPI\.env" (
   set /p CONF=  Lo configuramos ahora? [S/n]: 
   if /i not "!CONF!"=="n" (
     echo.
-    python bin\configurar_mail.py
+    %HORUS_PY% bin\configurar_mail.py
   )
 ) else (
   echo  Para mandar uno de prueba de verdad:
@@ -337,7 +339,7 @@ echo  de GitHub, unos 270 MB en total. Cada uno se verifica contra
 echo  modelos.sha256.json antes de quedar instalado, y los que ya
 echo  tengas bien se saltean.
 echo.
-python bin\bajar_modelos.py
+%HORUS_PY% bin\bajar_modelos.py
 echo.
 pause
 goto menu
@@ -356,7 +358,7 @@ echo  Y ojo con torch: `pip install torch` en Windows baja la version
 echo  de CPU. El sistema arranca, no tira ningun error, y corre todo
 echo  por procesador aunque tengas la placa al lado.
 echo.
-python bin\preparar_pc.py
+%HORUS_PY% bin\preparar_pc.py
 echo.
 pause
 goto menu
@@ -378,7 +380,7 @@ if not exist "horus\04_cabezas\objetos\modelos\head_best_solo.pt" (
 pushd horus\04_cabezas\objetos
 if not exist "checkpoints" mkdir checkpoints
 copy /y "modelos\head_best_solo.pt" "checkpoints\head_best_solo_completo.pt" >nul
-python exportar_objetos.py --adelgazar "modelos\head_best_solo.pt"
+%HORUS_PY% exportar_objetos.py --adelgazar "modelos\head_best_solo.pt"
 if exist "modelos\head_best_solo_deploy.pt" (
   move /y "modelos\head_best_solo_deploy.pt" "modelos\head_best_solo.pt" >nul
   echo.
@@ -409,7 +411,7 @@ rem ===============================================================
 cls
 echo  Tene los modelos corriendo ^(opcion M, o HORUS.bat^).
 echo.
-python bin\que_ve.py
+%HORUS_PY% bin\que_ve.py
 echo.
 pause
 goto menu
@@ -449,7 +451,7 @@ rem     .task, prendia --caidas sobre una cabeza que no puede cargar.
 set FALTA_CAIDAS=
 if not exist "horus\fall\checkpoints\modelo_demo_todo.pt" set FALTA_CAIDAS=modelo_demo_todo.pt
 if not defined FALTA_CAIDAS if not exist "horus\fall\pose_landmarker.task" set FALTA_CAIDAS=pose_landmarker.task
-if not defined FALTA_CAIDAS python -c "import mediapipe" >nul 2>&1 || set FALTA_CAIDAS=mediapipe
+if not defined FALTA_CAIDAS %HORUS_PY% -c "import mediapipe" >nul 2>&1 || set FALTA_CAIDAS=mediapipe
 if defined FALTA_CAIDAS (
   echo  [caidas apagada: falta !FALTA_CAIDAS! - opcion 5]
 ) else (
@@ -473,7 +475,7 @@ rem Tambien al log: si arrancas los modelos por aca, la opcion L tiene que
 rem mostrar ESTO y no lo de la corrida anterior. Un log viejo que parece
 rem nuevo es peor que no tener log.
 pushd horus\00_servicio
-python -u servicio.py!FLAGS! 2>&1 | python -u "%~dp0bin\tee.py" "%~dp0logs\modelos.txt"
+%HORUS_PY% -u servicio.py!FLAGS! 2>&1 | %HORUS_PY% -u "%~dp0bin\tee.py" "%~dp0logs\modelos.txt"
 popd
 echo.
 echo ==============================================================
@@ -534,7 +536,7 @@ echo  Si alguna otra cosa tiene la camara agarrada (Zoom, Discord, la app
 echo  Camara de Windows, o la ventana "Horus modelos"), cerrala primero.
 echo.
 pushd FASTAPI
-python diagnostico_camaras.py
+%HORUS_PY% diagnostico_camaras.py
 popd
 echo.
 pause
@@ -586,7 +588,7 @@ echo.
 echo  Ctrl+C para cortar.
 echo.
 pushd FASTAPI
-python -m uvicorn src.main:app --host 127.0.0.1 --port 8000 --reload
+%HORUS_PY% -m uvicorn src.main:app --host 127.0.0.1 --port 8000 --reload
 popd
 pause
 goto menu

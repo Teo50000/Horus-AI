@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
-from compuertas_caida import PuertaCaida, cobertura, duracion_ventana, remuestrear_clip
+from compuertas_caida import PuertaCaida, cobertura, duracion_ventana, margen_buffer, remuestrear_clip
 
 # Maquina de estados de la alarma de caida para UNA persona. La usan los
 # scripts de webcam (12_webcam.py, 07_alerta/webcam_integrado.py) y el harness
@@ -154,7 +154,7 @@ class MaquinaCaida:
                 self.buffer.append((t, kp_norm))
                 # me guardo un poco mas que la ventana para tener el punto de apoyo
                 # anterior al borde izquierdo al interpolar
-                while len(self.buffer) > 2 and self.buffer[1][0] < t - self.ventana_seg:
+                while len(self.buffer) > 2 and self.buffer[1][0] < t - margen_buffer(c.ventana, c.fps_canonica):
                     self.buffer.popleft()
 
                 if deteccion_real_este_frame:

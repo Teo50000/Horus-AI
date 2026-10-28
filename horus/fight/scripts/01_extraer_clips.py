@@ -13,11 +13,8 @@ CLASES = {"Fight": "fight", "NonFight": "nofight"}
 
 
 def muestrear_frames(ruta_video, n_frames=N_FRAMES, lado=LADO):
-    """Lee el video una sola vez, secuencial (buscar con CAP_PROP_POS_FRAMES
-    es poco confiable en .avi), y me quedo con n_frames repartidos uniforme
-    a lo largo de todo el clip. Si el clip tiene menos frames que n_frames,
-    los indices quedan repetidos solos -- no hace falta rellenar aparte.
-    """
+    #Lee el video una sola vez, secuencial (buscar con CAP_PROP_POS_FRAMES es poco confiable en .avi), y me quedo con n_frames repartidos uniformea lo largo de todo el clip. Si el clip tiene menos frames que n_frames,
+    #los indices quedan repetidos solos -- no hace falta rellenar aparte.
     cap = cv2.VideoCapture(ruta_video)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     if total <= 0:

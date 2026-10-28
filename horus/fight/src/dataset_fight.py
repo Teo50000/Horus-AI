@@ -10,8 +10,8 @@ LADO_FINAL = 112
 
 
 class RWFDataset(Dataset):
-    """Lee los .npz de horus/fight/data/processed/frames/<split>/<clase>/*.npz
-    (uno por clip, frames=(T,128,128,3) uint8 RGB, label="fight"/"nofight")."""
+    #Lee los .npz de horus/fight/data/processed/frames/<split>/<clase>/*.npz
+    #(uno por clip, frames=(T,128,128,3) uint8 RGB, label="fight"/"nofight").
 
     def __init__(self, carpeta, entrenamiento=False):
         self.archivos = sorted(glob.glob(os.path.join(carpeta, "*", "*.npz")))

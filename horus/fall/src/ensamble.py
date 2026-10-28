@@ -34,6 +34,23 @@ class Ensamble(nn.Module):
         return torch.log(p.clamp_min(1e-12))
 
 
+def cargar_checkpoint(ruta, device, canales_entrada=4):
+    """Un .pt puede traer un modelo o varios (`state_dicts`, ver
+    checkpoint.guardar). Devuelve (modelo, meta) listo para eval: un STGCN o
+    un Ensamble, que se usan igual. Es lo que carga la app y lo que mide el
+    harness, asi que lo que se evalua es lo que corre."""
+    estado, meta = checkpoint.cargar(ruta, device=device)
+    A = construir_matriz_adyacencia()
+    modelos = []
+    for sd in meta.get("state_dicts") or [estado]:
+        m = STGCN(A, canales_entrada=canales_entrada).to(device)
+        m.load_state_dict(sd)
+        modelos.append(m.eval())
+    if len(modelos) == 1:
+        return modelos[0], meta
+    return Ensamble(modelos).to(device).eval(), meta
+
+
 def cargar_ensamble(rutas, device, canales_entrada=4):
     A = construir_matriz_adyacencia()
     modelos = []

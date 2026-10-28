@@ -38,7 +38,7 @@ from grafo_mediapipe import construir_matriz_adyacencia
 from preproceso import normalizar_frame, visibilidad_confiable
 from maquina_caida import MaquinaCaida, ConfigMaquina
 from entrenamiento import entrenar
-from ensamble import cargar_ensamble
+from ensamble import Ensamble, cargar_ensamble
 
 STREAMS = "../data/keypoints/streams"
 TODOS = "../data/processed/todos.npy"
@@ -56,10 +56,10 @@ NOMBRES = {0: "walk", 1: "fall", 2: "fallen", 3: "sit_down", 4: "sitting", 5: "l
 # ------------------------------------------------------------------ modelos
 
 def cargar_modelo(ruta, A, device):
-    import checkpoint
-    m = STGCN(A, canales_entrada=4).to(device)
-    checkpoint.cargar(ruta, modelo=m, device=device)   # acepta checkpoints viejos y nuevos
-    return m.eval()
+    # el mismo cargador que la app: acepta checkpoints viejos, nuevos y
+    # ensambles guardados en un solo archivo
+    from ensamble import cargar_checkpoint
+    return cargar_checkpoint(ruta, device, canales_entrada=4)[0]
 
 
 def entrenar_sin(grupo, todos, A, device, seed):
@@ -72,23 +72,33 @@ def entrenar_sin(grupo, todos, A, device, seed):
     return modelo.eval()
 
 
-def modelos_loso(grupos, A, device):
-    os.makedirs(LOSO_DIR, exist_ok=True)
+def modelos_loso(grupos, A, device, loso_dir=LOSO_DIR, datos=TODOS, semillas=1):
+    """Un modelo por sujeto dejado afuera, cacheado en `loso_dir`.
+
+    Con `semillas` > 1 cada fold es un ensamble de esa cantidad de semillas.
+    La semilla 0 de cada fold es la de siempre (seed=i, archivo {g}.pt), asi
+    que una carpeta vieja se reusa tal cual y solo se entrenan las que faltan.
+    Una carpeta por juego de datos: mezclar en el mismo cache modelos
+    entrenados con datos distintos daria un numero que no es de ninguno."""
+    os.makedirs(loso_dir, exist_ok=True)
     todos = None
     modelos = {}
     for i, g in enumerate(sorted(grupos)):
-        ruta = os.path.join(LOSO_DIR, f"{g}.pt")
-        if os.path.exists(ruta):
-            modelos[g] = cargar_modelo(ruta, A, device)
-            continue
-        if todos is None:
-            todos = list(np.load(TODOS, allow_pickle=True))
-        print(f"  entrenando LOSO sin {g} ({i + 1}/{len(grupos)})...", flush=True)
-        t0 = time.perf_counter()
-        m = entrenar_sin(g, todos, A, device, seed=i)
-        torch.save(m.state_dict(), ruta)
-        print(f"    {time.perf_counter() - t0:.0f}s -> {ruta}")
-        modelos[g] = m
+        miembros = []
+        for k in range(semillas):
+            ruta = os.path.join(loso_dir, f"{g}.pt" if k == 0 else f"{g}_s{k}.pt")
+            if os.path.exists(ruta):
+                miembros.append(cargar_modelo(ruta, A, device))
+                continue
+            if todos is None:
+                todos = list(np.load(datos, allow_pickle=True))
+            print(f"  entrenando LOSO sin {g} ({i + 1}/{len(grupos)}), semilla {k}...", flush=True)
+            t0 = time.perf_counter()
+            m = entrenar_sin(g, todos, A, device, seed=i + 1000 * k)
+            torch.save(m.state_dict(), ruta)
+            print(f"    {time.perf_counter() - t0:.0f}s -> {ruta}")
+            miembros.append(m)
+        modelos[g] = miembros[0] if semillas == 1 else Ensamble(miembros).to(device).eval()
     return modelos
 
 
@@ -246,6 +256,12 @@ if __name__ == "__main__":
     g.add_argument("--loso", action="store_true", help="un modelo por sujeto dejado afuera")
     g.add_argument("--ensamble", nargs="+", metavar="CKPT",
                    help="varios checkpoints: promedia sus probabilidades (reduce la varianza entre semillas)")
+    ap.add_argument("--loso-dir", default=LOSO_DIR,
+                    help="cache de los modelos LOSO; una carpeta por juego de datos")
+    ap.add_argument("--datos", default=TODOS,
+                    help="npy con el que se entrenan los LOSO (ej. todos_con_desmayo.npy)")
+    ap.add_argument("--semillas", type=int, default=1,
+                    help="con --loso: ensamble de N semillas por fold")
     ap.add_argument("--origen", default="le2i", choices=["le2i", "upfall"])
     ap.add_argument("--fps", default="nativo", help="'nativo' o un numero (ej. 10)")
     ap.add_argument("--tag", required=True, help="nombre de la corrida (archivo de resultados)")
@@ -287,9 +303,11 @@ if __name__ == "__main__":
 
     A = construir_matriz_adyacencia()
     if args.loso:
-        modelos = modelos_loso(grupos, A, device)
+        modelos = modelos_loso(grupos, A, device, loso_dir=args.loso_dir,
+                               datos=args.datos, semillas=args.semillas)
         modelo_de = lambda s: modelos[s["sujeto"]]
-        desc_modelo = f"LOSO ({LOSO_DIR})"
+        desc_modelo = (f"LOSO ({args.loso_dir}, {os.path.basename(args.datos)}"
+                       + (f", ensamble x{args.semillas}" if args.semillas > 1 else "") + ")")
     elif args.ensamble:
         ens = cargar_ensamble(args.ensamble, device)
         modelo_de = lambda s: ens

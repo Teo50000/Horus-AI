@@ -33,8 +33,11 @@ set R_PY=
 goto :eof
 
 :probar
-rem 9009 = el comando no existe; py devuelve 103 si no tiene esa
-rem version. Todo lo que pase de 50 es "este no", no un puntaje.
+rem Primero se valida el runtime. El lanzador `py` puede devolver exito
+rem aunque una version no este instalada y escribir el error en stderr.
+set PY_VERSION=
+for /f "tokens=1" %%V in ('%~1 --version 2^>^&1') do if /i "%%V"=="Python" set PY_VERSION=1
+if not defined PY_VERSION goto :eof
 %~1 "%~dp0puntaje_python.py" >nul 2>&1
 set R_PY=%errorlevel%
 if %R_PY% GEQ 50 goto :eof

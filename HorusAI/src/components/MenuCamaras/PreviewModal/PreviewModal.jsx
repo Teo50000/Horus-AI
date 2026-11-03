@@ -1,28 +1,33 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import VideoStream from "../../VideoStream/VideoStream";
 import "./PreviewModal.css";
 
-import { API_VIDEO } from "../../../config";
-// Recibe una lista de cámaras del sector y navega entre ellas
-export default function PreviewModal({ camaras = [],urlBase = `${API_VIDEO}/video_feed`,urlStop = `${API_VIDEO}/stop_feed`, onClose }) {
-  const [indice, setIndice] = useState(0);
+export default function PreviewModal({
+  camaras = [],
+  onClose,
+  urlBase = "http://localhost:8000/video/video_feed",
+}) {
+  const [indice, setIndice]       = useState(0);
+  const [streamKey, setStreamKey] = useState(Date.now());
 
-  // Sin useEffect de cleanup — el stop lo maneja el handler de cierre
+  if (!camaras.length) return null;
+
   const detenerStream = (camaraId) => {
-  fetch(`${urlStop}/${camaraId}`, { method: 'POST' })
-    .catch(err => console.error('Error al detener stream:', err));
+    fetch(`http://localhost:8000/video/stop_feed/${camaraId}`, { method: "POST" })
+      .catch((err) => console.error("Error al detener stream:", err));
   };
+
   const handleClose = () => {
-    detenerStream(camara.id);
+    detenerStream(camaras[indice].id);
     onClose();
   };
 
-  const [streamKey, setStreamKey] = useState(Date.now());
-
-  const anterior = () =>{
+  const anterior = () => {
     detenerStream(camaras[indice].id);
     setIndice((prev) => (prev === 0 ? camaras.length - 1 : prev - 1));
     setStreamKey(Date.now());
-  }
+  };
+
   const siguiente = () => {
     detenerStream(camaras[indice].id);
     setIndice((prev) => (prev === camaras.length - 1 ? 0 : prev + 1));
@@ -40,13 +45,12 @@ export default function PreviewModal({ camaras = [],urlBase = `${API_VIDEO}/vide
         )}
 
         <div className="preview-modal__screen">
-          <span className="preview-modal__label">{camara.nombre}</span>
-          <img
+          <VideoStream
             key={streamKey}
             src={`${urlBase}/${camara.id}?t=${streamKey}`}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             alt={camara.nombre}
           />
+          <span className="preview-modal__label">{camara.nombre}</span>
         </div>
 
         {camaras.length > 1 && (

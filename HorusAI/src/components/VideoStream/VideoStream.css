@@ -1,0 +1,70 @@
+.video-stream {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #060d1c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* ── Stream ── */
+.video-stream__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 0.3s ease;
+}
+
+.video-stream__img--oculta {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── Spinner ── */
+.video-stream__loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.video-stream__spinner {
+  width: 32px;
+  height: 32px;
+  border: 2.5px solid rgba(255, 255, 255, 0.08);
+  border-top-color: #ff8427;
+  border-radius: 50%;
+  animation: vs-spin 0.8s linear infinite;
+}
+
+@keyframes vs-spin {
+  to { transform: rotate(360deg); }
+}
+
+.video-stream__loader-text {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  letter-spacing: 0.04em;
+}
+
+/* ── Error / sin señal ── */
+.video-stream__error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.video-stream__error-icon {
+  font-size: 20px;
+  color: rgba(255, 132, 39, 0.5);
+}
+
+.video-stream__error-text {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.25);
+}

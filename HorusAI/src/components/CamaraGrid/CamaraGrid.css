@@ -9,7 +9,8 @@
     "pos6 pos7 pos8";
   background: radial-gradient(circle 70vh, #000000 20%, #070930 47%, #000000 75%);
   gap: 2%;
-  padding: 4PX;
+  padding: 2vh 1vw;
+  box-sizing: border-box;
   min-height: 0; /* evita que el grid se expanda más allá del flex parent */
   height: 100%;
 }
@@ -17,6 +18,8 @@
 .camara-grid__celda {
   min-height: 0;
   min-width: 0;
+  width: 100%;
+  height: 100%;
 }
 
 /* ── Logo central ── */

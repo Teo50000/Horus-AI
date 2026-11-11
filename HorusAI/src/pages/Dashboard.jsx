@@ -11,6 +11,8 @@ import { useWebSocketEventos } from "../hooks/useWebSocketEventos";
 import { useServicioVideo } from "../hooks/useServicioVideo";
 import { useEstadoBackend } from "../hooks/useEstadoBackend";
 import { WS_ALERTAS } from "../config";
+import AlertModal from "../components/AlertModal/AlertModal";
+import { useAlertaActiva } from "../hooks/useAlertaActiva";
 import "./Dashboard.css";
 
 export default function Dashboard() {
@@ -29,6 +31,7 @@ export default function Dashboard() {
 
   const historial = useHistorial(eventos, limpiarEnVivo);
   const ajustes   = useAjustes();
+  const { alerta, cerrarAlerta } = useAlertaActiva(eventos, ajustes.alertaEnPantalla);
   const grid      = useGrid();
 
   const handleSectionChange = (section) => {
@@ -155,6 +158,8 @@ export default function Dashboard() {
         onVaciar={grid.vaciarSlot}
         servicio={servicio}
       />
+      
+      <AlertModal alerta={alerta} onClose={cerrarAlerta} />
 
     </div>
   );

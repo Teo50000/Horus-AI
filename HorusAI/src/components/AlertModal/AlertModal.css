@@ -1,0 +1,146 @@
+/* z-index mayor que PreviewModal (100) y CreacionModal (50):
+   una alerta tiene que verse por encima de todo */
+.alert-modal__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  animation: alert-fade-in 0.2s ease;
+}
+
+.alert-modal {
+  position: relative;
+  width: 340px;
+  background: #090326;
+  border: 2px solid #ff4444;
+  border-radius: 16px;
+  padding: 28px 24px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  animation:
+    alert-pop-in 0.25s ease,
+    alert-pulse 1.6s ease-in-out infinite;
+}
+
+/* ── Cerrar (✕) ── */
+.alert-modal__close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.alert-modal__close:hover {
+  background: rgba(255, 68, 68, 0.2);
+  color: #fff;
+}
+
+/* ── Ícono ── */
+.alert-modal__icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255, 68, 68, 0.15);
+  border: 2px solid #ff4444;
+  color: #ff4444;
+  font-size: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Textos ── */
+.alert-modal__label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.alert-modal__tipo {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  color: #ff8427;
+}
+
+/* ── Detalle (cámara / hora) ── */
+.alert-modal__detalle {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+
+.alert-modal__fila {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(80, 100, 255, 0.25);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.alert-modal__fila-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.alert-modal__fila-valor {
+  font-size: 13px;
+  color: #fff;
+}
+
+/* ── Botón cerrar ── */
+.alert-modal__btn {
+  width: 100%;
+  background: #ff8427;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 0;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.alert-modal__btn:hover { opacity: 0.85; }
+
+/* ── Animaciones ── */
+@keyframes alert-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes alert-pop-in {
+  from { transform: scale(0.92); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+
+@keyframes alert-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(255, 68, 68, 0.35); }
+  50%      { box-shadow: 0 0 28px rgba(255, 68, 68, 0.7); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alert-modal { animation: none; box-shadow: 0 0 16px rgba(255, 68, 68, 0.5); }
+}

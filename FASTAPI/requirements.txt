@@ -11,5 +11,6 @@ sqlmodel
 pydantic
 python-multipart    # los formularios de las rutas de camara
 opencv-python       # video_rutas: preview y feed de las camaras
+pygrabber           # nombres de webcams DirectShow en Windows
 # email_service lo importa al arrancar: sin esto el backend no levanta.
 python-dotenv

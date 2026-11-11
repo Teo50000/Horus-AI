@@ -41,6 +41,7 @@ class CamaraConfig(SQLModel, table=True):
     rtsp_url: Optional[str] = None
     #usuario, clave, ip, params, puerto, ruta, tipo de camara (ip o local)
     usb_index: Optional[int] = None
+    device_id: Optional[int]
     nombre: Optional[str]
 
 class NumeroEmergencia(SQLModel, table=True):

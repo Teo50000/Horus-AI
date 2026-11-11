@@ -233,14 +233,44 @@ def _probar(indice: int) -> Optional[dict]:
                     "nombre": f"C?mara {indice}",
                     "resolucion": f"{frame.shape[1]}x{frame.shape[0]}",
                 }
-        return {"usb_index": indice, "_sin_imagen": True}
+        return {
+            "usb_index": indice,
+            "nombre": f"C?mara {indice}",
+            "_sin_imagen": True,
+        }
     finally:
         cap.release()
+
+
+def _nombres_directshow() -> Tuple[Dict[int, str], Optional[str]]:
+    """Devuelve los nombres DirectShow en el orden de los índices de OpenCV.
+
+    PyGrabber enumera los filtros de entrada de video de DirectShow, mientras
+    OpenCV necesita todavía un índice numérico para abrir una webcam. En esta
+    primera etapa el índice se conserva como dato operativo y el nombre se
+    usa para mostrar la cámara correctamente en el panel. Si PyGrabber no
+    está instalado o Windows no permite enumerar los dispositivos, la
+    búsqueda por índices sigue funcionando.
+    """
+    if os.name != "nt":
+        return {}, None
+    try:
+        from pygrabber.dshow_graph import FilterGraph
+
+        nombres = FilterGraph().get_input_devices()
+    except Exception as exc:  # noqa: BLE001
+        return {}, f"no se pudieron leer los nombres DirectShow: {type(exc).__name__}"
+    return {
+        indice: str(nombre)
+        for indice, nombre in enumerate(nombres)
+        if nombre
+    }, None
 
 
 def _buscar_camaras() -> None:
     t0 = time.time()
     encontradas, sin_imagen, vacios = [], [], 0
+    nombres, _motivo_nombres = _nombres_directshow()
     fase, estado = estado_servicio()
     if fase == "ocupado":
         with _CACHE_LOCK:
@@ -257,7 +287,7 @@ def _buscar_camaras() -> None:
             vacios = 0
             encontradas.append({
                 "usb_index": i,
-                "nombre": f"C?mara {i}",
+                "nombre": nombres.get(i, f"C?mara {i}"),
                 "en_uso": "servicio de modelos",
             })
             continue
@@ -268,6 +298,7 @@ def _buscar_camaras() -> None:
                 break
             continue
         vacios = 0
+        r["nombre"] = nombres.get(i, r["nombre"])
         (sin_imagen if r.get("_sin_imagen") else encontradas).append(r)
 
     if encontradas:
@@ -282,7 +313,6 @@ def _buscar_camaras() -> None:
         )
     else:
         motivo = "no se encontro ninguna camara conectada"
-
     with _CACHE_LOCK:
         _CACHE.update(
             lista=encontradas,

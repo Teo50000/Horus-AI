@@ -75,6 +75,10 @@ set HAY_VISION=0
 
 set M_OBJ=horus\04_cabezas\objetos\modelos\head_best_solo.pt
 set M_SEG=horus\04_cabezas\segmentacion\checkpoints\head_v4_produccion.pt
+rem 07/11: la v5 (afinada con el cuarto vacio como negativo). Si esta, se usa
+rem esa: la v4 marcaba humo falso en el cuarto con poca luz (06/11 18:32).
+rem Para volver a la v4: renombrar o sacar checkpoints\head_v5_casa.pt.
+set M_SEG5=horus\04_cabezas\segmentacion\checkpoints\head_v5_casa.pt
 set M_FIGHT=horus\fight\checkpoints\modelo_fight.pt
 rem Mismo orden que detector_caidas.checkpoint_por_defecto(): el ensamble de
 rem 3 semillas si esta, y si no el de una semilla, que es el del release.
@@ -121,6 +125,10 @@ if exist "%M_SEG%" (
   echo    [SI] segmentacion   fuego y humo, la que mejor anda
   set FLAGS=!FLAGS! --segmentacion
   set HAY_VISION=1
+  if exist "%M_SEG5%" (
+    echo                        version v5, la del cuarto
+    set FLAGS=!FLAGS! --segmentacion-checkpoint ..\04_cabezas\segmentacion\checkpoints\head_v5_casa.pt
+  )
 ) else (
   echo    [NO] segmentacion   falta %M_SEG%
 )

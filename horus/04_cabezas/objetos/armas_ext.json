@@ -1,0 +1,103 @@
+{
+ "_nota": "06/11 · v4 del YOLO4. Train: Sohas (pistolas + manos con celular/billetera/billete/tarjeta/cuchillo), Monash (pistolas en CCTV) y el handgun de Granada. Prueba (nunca se entrena): Gunmen (CCTV real de ataques; 'Gun' incluye rifles), el sintético de Simuletic y los celulares/billeteras de muzraza.",
+ "fuentes": [
+  {
+   "alias": "sohas",
+   "ruta": "datasets/mehmetcubukcu/weapon-detection",
+   "formato": "yolo",
+   "mapa": {
+    "pistol": "pistola",
+    "smartphone": "celular",
+    "knife": "cuchillo"
+   },
+   "ignorar": [
+    "monedero",
+    "billete",
+    "tarjeta"
+   ],
+   "video": true,
+   "licencia": "CC BY-SA 4.0 (OD-WeaponDetection, Universidad de Granada)"
+  },
+  {
+   "alias": "monash",
+   "ruta": "datasets/muzraza/cctv-gun-detection",
+   "formato": "coco",
+   "filtro": "^monash_gun/",
+   "mapa": {
+    "gun": "pistola",
+    "guns": "pistola",
+    "pistol": "pistola",
+    "pistols": "pistola",
+    "handgun": "pistola",
+    "handguns": "pistola"
+   },
+   "ignorar": [
+    "person",
+    "people",
+    "human"
+   ],
+   "video": true,
+   "tope_pos": 5000,
+   "licencia": "Monash Guns (MIT en el original); el mirror de Kaggle dice 'Other'",
+   "_ojo": "Es un mix de Roboflow (CCTV de Monash + fotos de catálogo). Sus fotos sin cajas NO son negativos: la revisión del 06/11 encontró pistolas sin anotar entre ellas."
+  },
+  {
+   "alias": "granada",
+   "ruta": "datasets/andrewmvd/handgun-detection",
+   "formato": "coco",
+   "mapa": {
+    "pistol": "pistola",
+    "pistols": "pistola",
+    "handgun": "pistola",
+    "gun": "pistola",
+    "guns": "pistola"
+   },
+   "tope_pos": 1500,
+   "licencia": "CC0 (Kaggle, Larxel)"
+  },
+  {
+   "alias": "gunmen",
+   "ruta": "datasets/ugorjiir/gun-detection",
+   "formato": "yolo",
+   "rol": "prueba",
+   "mapa": {
+    "gun": "pistola"
+   },
+   "ignorar": [
+    "human",
+    "person"
+   ],
+   "licencia": "DbCL (Kaggle)"
+  },
+  {
+   "alias": "sintetico",
+   "ruta": "datasets/simuletic/cctv-weapon-dataset",
+   "formato": "yolo",
+   "rol": "prueba",
+   "nombres": [
+    "person",
+    "gun"
+   ],
+   "mapa": {
+    "gun": "pistola"
+   },
+   "ignorar": [
+    "person"
+   ],
+   "licencia": "CC BY-SA 4.0 (Simuletic)"
+  },
+  {
+   "alias": "celus",
+   "ruta": "datasets/muzraza/cctv-gun-detection",
+   "rol": "prueba",
+   "filtro": "^(wallet|mobile)/",
+   "mapa": {
+    "mobile phone": "celular"
+   },
+   "ignorar": [
+    "*"
+   ],
+   "licencia": "Datacluster Labs / Roboflow (vía muzraza, 'Other')"
+  }
+ ]
+}

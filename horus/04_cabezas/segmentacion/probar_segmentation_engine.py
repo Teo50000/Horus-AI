@@ -186,6 +186,28 @@ def caso_seg_inyectada_tiene_prioridad() -> Tuple[bool, str]:
     return ok, f"el motor corrió {m.stats['frames']} frame(s) (esperado 0)"
 
 
+def caso_colores_bgr() -> Tuple[bool, str]:
+    """El servicio pasa cuadros de cv2 (BGR) y la cabeza se entrenó en RGB.
+
+    05/11, medido sobre los 31 cuadros crudos del 1/10: con el BGR tal cual,
+    fuego en 8 (LEDs azules leídos como naranjas); dados vuelta, en 0.
+    """
+    vistos: List[List[int]] = []
+
+    def falso(frames: Sequence[Any], camera_ids: Optional[Sequence[str]]):
+        vistos.append(np.asarray(frames[0])[0, 0].tolist())
+        return [SegFalso() for _ in frames]
+
+    azul_bgr = np.zeros((4, 4, 3), np.uint8)
+    azul_bgr[..., 0] = 255
+    MotorSegmentacion(ConfigSegmentacion(verboso=False),
+                      motor_falso=falso).infer_batch([azul_bgr])
+    MotorSegmentacion(ConfigSegmentacion(verboso=False, entrada_bgr=False),
+                      motor_falso=falso).infer_batch([azul_bgr])
+    ok = vistos == [[0, 0, 255], [255, 0, 0]] and azul_bgr[0, 0, 0] == 255
+    return ok, f"recibió {vistos[0]} (BGR->RGB) y {vistos[1]} (entrada_bgr=False)"
+
+
 def caso_hasta_el_backend() -> Tuple[bool, str]:
     """El evento llega hasta un mensaje válido para el backend, con
     `segmentacion` entre los modelos que aportaron."""
@@ -211,6 +233,7 @@ CASOS: Dict[str, Callable[[], Tuple[bool, str]]] = {
     "checkpoint": caso_checkpoint_ausente,
     "seg_inyectada": caso_seg_inyectada_tiene_prioridad,
     "hasta_el_backend": caso_hasta_el_backend,
+    "colores_bgr": caso_colores_bgr,
 }
 
 

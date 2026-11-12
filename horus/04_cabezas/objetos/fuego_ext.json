@@ -1,0 +1,25 @@
+{
+ "_lado_min": "0,02 = 8 px a 416. Más chico es un punto brillante, igual que un LED. El encendedor del 06/11 midió 0,12 y los fósforos 0,05.",
+ "_por_que": "07/11. El 06/11 a la tarde el encendedor dio llama 0,37 y los fósforos 0,38: apenas arriba de 0,35, el umbral con que nace un track. El fuego de mezcla_v1 es casi todo D-Fire (incendios de afuera, grandes). Esto suma llamas chicas de casa: velas, encendedores, fósforos, fuegos de interior y cámaras de seguridad de casas.",
+ "fuentes": [
+  {"alias": "velas", "ruta": "datasets/sreemantabarman/flame-dataset-candlelightermatch-stick-flames",
+   "formato": "yolo", "mapa": {"fire": "llama"}, "video": true, "bloque": 30, "tope_neg": 3500, "lado_min": 0.02,
+   "licencia": "CC BY-NC-SA 4.0",
+   "_que": "velas, encendedores y fósforos de cerca; cuadros de video aumentados por Roboflow (rotados, con bordes negros). Las copias de un mismo cuadro van juntas al split (bloque de 30 cuadros)."},
+  {"alias": "hogar", "ruta": "datasets/pengbo00/home-fire-dataset",
+   "formato": "yolo", "nombres": ["fire", "smoke"], "mapa": {"fire": "llama", "smoke": "humo"},
+   "vacias": "negativo", "lado_min": 0.02,
+   "licencia": "CC BY-NC 4.0",
+   "_que": "fuegos chicos dentro de casas, muchas cámaras de seguridad. Sin data.yaml: 0=fire, 1=smoke (visto en la hoja del relevamiento). Las 135 fotos sin cajas son casas sin fuego (livings, oficinas, lámparas): negativos a propósito."},
+  {"alias": "iw", "ruta": "datasets/ironwolf437/fire-detection-dataset",
+   "formato": "yolo", "mapa": {"fire": "llama", "smoke": "humo"},
+   "ignorar": ["light", "nonfire"], "siempre": ["light", "nonfire"], "video": true, "tope_neg": 4000,
+   "vacias": "negativo", "lado_min": 0.02,
+   "licencia": "Apache 2.0",
+   "_que": "mezcla de CCTV (oficinas, negocios, casas), fuegos de prueba y AI-Hub. light/nonfire son negativos difíciles anotados a propósito (luces, cosas que parecen fuego): la caja se tira y la foto entra entera, sin tope. Las 497 sin cajas son cuadros de CCTV sin fuego (negocios, cajeros): negativos."},
+  {"alias": "interior", "ruta": "datasets/sinchanashivanand/indoor-fire-and-smoke-detection-with-yolov8",
+   "formato": "yolo", "rol": "prueba", "mapa": {"fire": "llama", "smoke": "humo"}, "tope_neg": 1500,
+   "licencia": "CC0",
+   "_que": "fuegos de interior a 256 px. PRUEBA: el modelo no la ve. Ojo: comparte videos de origen con iw (part*_mp4); lo que se parezca a train se saca por dHash, pero las copias aumentadas pueden pasar."}
+ ]
+}

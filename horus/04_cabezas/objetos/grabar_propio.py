@@ -12,6 +12,8 @@ Dos escenas
     vacia     cuarto vacío, sin nada.       Seguro NO hay: ninguna de las 7 clases
               (dejá afuera celular, cajas y paquetes; ver abajo)
     conmigo   estás vos, sin armas.         Seguro NO hay: pistola, cuchillo
+    manos     vos con cosas en la mano      Seguro NO hay: pistola, cuchillo,
+              que no son armas (06/11)      humo, llama, paquete
 
 Todo lo demás (humo, llama, celular, paquete, y persona en "conmigo") queda
 como "no sé": el entrenamiento no lo toca. Así no se le enseña que tu celular
@@ -29,6 +31,7 @@ Uso (con HORUS CERRADO: en Windows la cámara la abre un solo programa)
 ---
     python grabar_propio.py --escena vacia   --minutos 3
     python grabar_propio.py --escena conmigo --minutos 5
+    python grabar_propio.py --escena manos   --minutos 5 --cada 1
 
 Qué hacer mientras graba, para que sirva:
   - vacia:   salí del cuadro. Prendé y apagá la luz, abrí la cortina, dejá
@@ -36,6 +39,10 @@ Qué hacer mientras graba, para que sirva:
   - conmigo: hacé lo de siempre. Agarrá el celular, el mouse, el control, una
              botella; lo que en el panel salga como "pistola". Movete, sentate,
              acercate y alejate.
+  - manos:   de a una, cosas que no son armas ni paquetes ni fuego: celular,
+             control, billetera, llaves, taza, media, mouse, cargador, cepillo.
+             Cerca y lejos de la cámara, de frente y de costado, apuntando como
+             si fueran un arma también. Nada de cajas, encendedores ni velas.
 
 Sale en datasets/propio/. Después: zip de esa carpeta -> dataset de Kaggle ->
 adjuntalo al notebook. sumar_propio.py lo mete en el entrenamiento.
@@ -68,6 +75,12 @@ ESCENAS: Dict[str, Tuple[str, ...]] = {
     # "no sé" y nunca se corregía. En un cuarto vacío no hay ninguna de las 7.
     "vacia": CLASES,
     "conmigo": ("pistola", "cuchillo"),
+    # 06/11: el YOLO de 4 clases vio una media en la mano como pistola (0,65) y
+    # saltó una ALERTA de arma. Vos con cosas en la mano que NO son armas, ni
+    # paquetes, ni fuego: celular, control, billetera, llaves, taza, media,
+    # mouse, cargador, cepillo. Declara ausentes las 4 clases del YOLO, así que
+    # entrenar_yolo.py la usa como negativo (persona y celular quedan "no sé").
+    "manos": ("humo", "llama", "pistola", "cuchillo", "paquete"),
 }
 
 MANIFIESTO = "horus_propio.json"
@@ -98,6 +111,21 @@ def abrir_camara(fuente: str):
     return cap
 
 
+def pesos_por_defecto() -> str:
+    """El modelo que usa el servicio: el YOLO de 4 clases si está en modelos/
+    (06/11), y si no la cabeza propia. Hay que minar los errores del que corre."""
+    if str(_AQUI) not in sys.path:
+        sys.path.insert(0, str(_AQUI))
+    try:
+        from motor_yolo import pesos_horus_por_defecto
+        ruta = pesos_horus_por_defecto()
+        if ruta:
+            return ruta
+    except Exception:                                    # noqa: BLE001
+        pass
+    return str(_AQUI / "modelos" / "head_best_solo.pt")
+
+
 def cargar_motor(pesos: Optional[str]):
     """El modelo actual, en CPU, con umbral bajo: queremos ver los disparos
     débiles también, porque el tracker los usa para sostener tracks."""
@@ -110,6 +138,13 @@ def cargar_motor(pesos: Optional[str]):
     for p in (_RAIZ / "03_backbone", _AQUI):
         if str(p) not in sys.path:
             sys.path.insert(0, str(p))
+    nombre = Path(pesos).name.lower()
+    if nombre.endswith(".onnx") or nombre.startswith(("horus_yolo", "yolo")):
+        # El YOLO de 4 clases: mismo contrato (detections con class_id de
+        # Horus), así que el resto del minado no cambia.
+        from motor_yolo import ConfigYolo, MotorYolo
+        print(f"[minado] cargando {Path(pesos).name}…")
+        return MotorYolo(ConfigYolo(pesos=pesos, conf=0.15, verboso=False))
     from objects_engine import EngineConfig, ObjectsEngine
     import torch
     cfg = EngineConfig(pesos=pesos, score_thresh=0.15, max_batch=1, warmup=1,
@@ -173,7 +208,7 @@ def grabar(a: argparse.Namespace) -> int:
     dir_img.mkdir(parents=True, exist_ok=True)
     actualizar_manifiesto(salida, a.escena, ausentes)
 
-    motor = None if a.sin_minar else cargar_motor(a.pesos)
+    motor = None if a.sin_minar else cargar_motor(a.pesos or pesos_por_defecto())
     cap = abrir_camara(a.camara)
 
     print()
@@ -317,7 +352,9 @@ def main() -> int:
                          "frame de variedad; evita 200 copias del mismo cuadro")
     ap.add_argument("--espera", type=int, default=8,
                     help="segundos de cuenta regresiva (para salir del cuadro)")
-    ap.add_argument("--pesos", default=str(_AQUI / "modelos" / "head_best_solo.pt"))
+    ap.add_argument("--pesos", default=None,
+                    help="modelo para minar; por defecto el que usa el servicio "
+                         "(YOLO de 4 clases si está, si no head_best_solo.pt)")
     ap.add_argument("--sin-minar", action="store_true",
                     help="no cargar el modelo: solo frames periódicos")
     ap.add_argument("--salida", default=str(_AQUI / "datasets" / "propio"))

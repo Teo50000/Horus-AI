@@ -88,6 +88,14 @@ class ConfigSegmentacion:
     tf32: bool = True
     max_batch: int = 4
 
+    # cv2 entrega BGR y la cabeza se entrenó en RGB (PIL). Hasta el 05/11 el
+    # servicio y pipeline.py le pasaban el cuadro de cv2 tal cual, y el modelo
+    # veía los LEDs azules como naranjas. Medido sobre los 31 cuadros crudos
+    # del 1/10 (47 incendios falsos): fuego en 8 con BGR, en 0 con RGB. Las
+    # otras cabezas ya lo hacían (objetos `entrada_bgr`, agresión y caídas
+    # convierten adentro). False solo si quien llama ya pasa RGB.
+    entrada_bgr: bool = True
+
     # Overrides opcionales. None = los calibrados que trae el checkpoint.
     area_thresh: Optional[Sequence[float]] = None
     prob_thresh: Optional[float] = None
@@ -239,6 +247,10 @@ class MotorSegmentacion:
             return []
         ts = time.time() if ts is None else float(ts)
         t0 = time.perf_counter()
+        if self.cfg.entrada_bgr:
+            frames = [np.ascontiguousarray(f[..., ::-1])
+                      if getattr(f, "ndim", 0) == 3 and f.shape[-1] == 3 else f
+                      for f in frames]
 
         if self._falso is not None:
             out = list(self._falso(frames, camera_ids))
@@ -362,7 +374,7 @@ def main() -> int:
             ok, frame = cap.read()
             if not ok:
                 break
-            r = motor.infer(frame[:, :, ::-1], camera_id="cam-0", frame_idx=i)
+            r = motor.infer(frame, camera_id="cam-0", frame_idx=i)  # BGR: ver entrada_bgr
             activas = r.clases_activas
             print(f"  frame {i:>3}  {activas or '-'}  "
                   + "  ".join(f"{k} area={v:.4f} score={r.score[k]:.2f}"

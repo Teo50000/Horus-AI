@@ -12,6 +12,24 @@
   flex-direction: column;
   gap: 4vh;
   flex-shrink: 0;
+  animation: camaras-panel-entrada 0.28s ease-out both;
+}
+
+@keyframes camaras-panel-entrada {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .camaras-panel {
+    animation: none;
+  }
 }
 
 /* Lista scrolleable */
@@ -55,6 +73,10 @@
   text-align: center;
   color: rgba(255, 255, 255, 0.5);
   font-size: 18px;
+}
+
+.camaras-panel__vacio {
+  color: #fff;
 }
 
 .camaras-panel__camara-row {

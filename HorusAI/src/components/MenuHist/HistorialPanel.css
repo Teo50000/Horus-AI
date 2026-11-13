@@ -12,6 +12,24 @@
   flex-direction: column;
   gap: 4vh;
   flex-shrink: 0;
+  animation: panel-entrada 0.28s ease-out both;
+}
+
+@keyframes panel-entrada {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .historial-panel {
+    animation: none;
+  }
 }
 
 /* ─── Botón cerrar (compartido con AjustesPanel) ─────────────── */

@@ -59,8 +59,8 @@ export default function MailConfig({ mail, onGuardar, guardando, resultado }) {
           sistema puede mandar y no tiene a quien. */}
       {mail?.ok && !mail.hay_destinos && (
         <p className="mailcfg__motivo">
-          Puede mandar, pero no hay ningun contacto con direccion cargada.
-          Agregalos aca arriba.
+          No hay ningún contacto con dirección cargada 
+          <p>Agregalos arriba</p>
         </p>
       )}
 

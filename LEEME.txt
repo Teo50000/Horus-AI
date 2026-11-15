@@ -14,6 +14,14 @@ secas baja la version de CPU y nadie avisa), las dependencias de python, los
 pesos de los modelos (del release de GitHub), la cabeza de caidas y el panel.
 Al final muestra en verde y rojo que quedo y que no.
 
+El instalador empaquetado de Tauri incluye `backend.exe` y
+`servicio_modelos.exe`. Este último es el proceso que carga los pesos; en una
+instalación empaquetada los pesos se guardarán en
+`%LOCALAPPDATA%\com.tauri-app.horusai\modelos` y se descargará allí el
+contenido público de S3 en el primer arranque. Horus verifica tamaño y
+SHA-256 antes de instalar cada archivo; si una descarga se corta, queda un
+temporal que no se carga y el siguiente arranque la vuelve a intentar.
+
 Antes hace falta tener instalados:
 
     Python 3.12    python.org  (marcar "Add python.exe to PATH")
@@ -79,6 +87,10 @@ la ventana carga el panel desde localhost:1420 igual que el navegador. Solo
 hace falta si se toca HorusAI\src-tauri o HorusAI\splash. Con Rust
 instalado (rustup.rs):
 
+    cd HorusAI
+    cd ..
+    pyinstaller horus\00_servicio\servicio_modelos.spec
+    copy dist\servicio_modelos.exe HorusAI\src-tauri\binaries\servicio_modelos-x86_64-pc-windows-msvc.exe
     cd HorusAI
     npx tauri build
     copy src-tauri\target\release\horusai.exe ..\Horus.exe

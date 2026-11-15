@@ -26,6 +26,8 @@ tauri-plugin-shell = "2"
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+sha2 = "0.10"
 
 # Job object (que todo lo que arranca Horus muera con Horus), la tabla TCP
 # (para apagar lo que el job no atrapa) y el cartel de "¿apagar?" al cerrar. Solo Windows: en otro sistema la app compila igual,

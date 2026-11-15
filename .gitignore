@@ -56,6 +56,7 @@ horus/fall/data/keypoints/streams/
 horus/fall/data/processed/streams_probs/
 
 # --- salidas y temporales -------------------------------------------
+build/
 diag*.txt
 captura_*.png
 *_horus.png

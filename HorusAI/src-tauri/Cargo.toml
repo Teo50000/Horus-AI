@@ -1,6 +1,6 @@
 [package]
 name = "horusai"
-version = "0.2.0"
+version = "0.3.0"
 description = "Horus: la ventana de escritorio que arranca todo y muestra el panel"
 authors = ["Teo"]
 edition = "2021"

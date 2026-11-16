@@ -1,0 +1,50 @@
+.input-contrasena {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+/* Lugar para el botón a la derecha, sin tapar lo que se escribe. */
+.input-contrasena .input-contrasena__campo {
+  width: 100%;
+  padding-right: 40px;
+}
+
+/* El botón nativo de Edge/WebView2: se oculta para que no haya dos ojos. */
+.input-contrasena__campo::-ms-reveal,
+.input-contrasena__campo::-ms-clear {
+  display: none;
+}
+
+.input-contrasena__ojo {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--c-texto-3);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.input-contrasena__ojo svg {
+  width: 100%;
+  height: 100%;
+}
+
+.input-contrasena__ojo:hover {
+  color: var(--c-acento);
+  background: var(--c-acento-suave);
+}
+
+.input-contrasena__ojo[aria-pressed="true"] {
+  color: var(--c-acento);
+}

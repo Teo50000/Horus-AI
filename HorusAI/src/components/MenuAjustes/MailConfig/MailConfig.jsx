@@ -1,3 +1,4 @@
+import InputContrasena from "../../InputContrasena/InputContrasena";
 import { useState } from "react";
 import "./MailConfig.css";
 
@@ -91,9 +92,8 @@ export default function MailConfig({ mail, onGuardar, guardando, resultado }) {
 
           <label className="mailcfg__label">
             Contrasena de aplicacion
-            <input
+            <InputContrasena
               className="mailcfg__input"
-              type="password"
               value={clave}
               onChange={(e) => setClave(e.target.value)}
               placeholder="16 letras"

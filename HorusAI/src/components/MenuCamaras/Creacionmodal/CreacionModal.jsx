@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import "./CreacionModal.css";
 import iconPreview from "../../../assets/PreView.svg";
+import InputContrasena from "../../InputContrasena/InputContrasena";
 import { API_VIDEO } from "../../../config";
 
 // ── Marcas de cámaras IP ─────────────────────────────────────
@@ -217,9 +218,8 @@ function FormIP({ nombre, setNombre, onConfirmar, onCancelar }) {
           placeholder="Usuario"
           autoComplete="off"
         />
-        <input
+        <InputContrasena
           className="creacion-modal__ip-input"
-          type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Contraseña"

@@ -29,10 +29,16 @@
   filter: grayscale(0.6);
 }
 
-/* ── Skeleton ── */
-.video-stream__skeleton {
+/* ── Skeleton ──
+   16/11: con doble clase a propósito. `.skeleton` (App.css) se carga
+   DESPUÉS que este archivo y su `position: relative` le ganaba al
+   `absolute` de acá: el skeleton quedaba como una franja arriba de la celda
+   en vez de ocuparla entera. */
+.video-stream .video-stream__skeleton.skeleton {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   border-radius: 0;
   display: flex;
   flex-direction: column;

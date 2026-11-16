@@ -34,7 +34,14 @@ for package in ("cv2", "numpy", "torch", "torchvision", "ultralytics",
     datas += collected[0]
     binaries += collected[1]
     hiddenimports += collected[2]
-hiddenimports.append("modelo_fight")
+# Módulos que el servicio importa adentro de funciones o después de tocar
+# sys.path: el análisis estático de PyInstaller no siempre los ve, y sin ellos
+# el .exe se cae al arrancar con "No module named ..." (pasó con
+# detector_agresion al usar --agresion).
+for modulo in ("modelo_fight", "detector_agresion", "segmentation_engine",
+               "segmentation_head", "detector_caidas", "motor_yolo",
+               "guarda_armas", "objects_engine", "objects_head"):
+    hiddenimports.append(modulo)
 
 
 a = Analysis(

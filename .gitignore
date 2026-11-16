@@ -121,3 +121,8 @@ horus/fall/pose_landmarker.task
 
 # permisos de Claude Code de cada maquina (rutas y comandos propios), no se comparten
 .claude/settings.local.json
+
+# --- instalador listo para subir a AWS ---------------------------------
+# horus-setup.exe pesa ~440 MB: GitHub rechaza archivos de mas de 100 MB.
+# Se rehace con `npx tauri build` (ver docs/mejoras-2026-11-16/INFORME.md).
+instalador/

@@ -362,7 +362,64 @@ en `App.css`.
 `PreviewModal` pide el video a 960 px y el backend pasa ese ancho al
 redirigir al servicio: etiquetas legibles y menos datos.
 
-## 9. Cómo probarlo
+## 9. Tercera ronda: contraseña con ojito, skeleton e instalador
+
+### Ojito en la contraseña
+
+El ojito que se veía antes era el botón **nativo de Edge**: la app de
+escritorio corre sobre WebView2. En Chrome no aparece y en Edge se va
+apenas el campo pierde el foco. Ahora hay un componente propio,
+`components/InputContrasena`, que anda igual en todos lados, se usa con el
+teclado y oculta el botón nativo para que no haya dos. Se usa en la
+contraseña de la cámara IP y en la del mail.
+
+### "Esperando video…" en toda la celda
+
+`.skeleton` (App.css) se carga después de `VideoStream.css` y su
+`position: relative` le ganaba al `absolute` del skeleton, que quedaba como
+una franja arriba. Con doble clase ocupa la celda entera.
+
+### Instalador `horus-setup.exe` (v0.3.0)
+
+El instalador anterior tenía un `backend.exe` del 5/11, sin ninguno de los
+arreglos del backend. Se rehicieron los dos binarios y el paquete:
+
+```bash
+cd FASTAPI
+python -m PyInstaller backend.spec --noconfirm --workpath <fuera-del-repo> --distpath <dist>
+```
+
+```bash
+cd horus/00_servicio
+python -m PyInstaller servicio_modelos.spec --noconfirm --workpath <fuera-del-repo> --distpath <dist>
+```
+
+Copiarlos a `HorusAI/src-tauri/binaries/` como
+`backend-x86_64-pc-windows-msvc.exe` y
+`servicio_modelos-x86_64-pc-windows-msvc.exe`, y después:
+
+```bash
+cd HorusAI
+npx tauri build
+```
+
+El `--workpath` va fuera del repo porque `FASTAPI/build/` tiene archivos
+versionados que PyInstaller pisaría.
+
+- `servicio_modelos.spec`: se agregaron como `hiddenimports` los módulos que
+  se cargan de forma dinámica (`detector_agresion`, `segmentation_engine`,
+  `detector_caidas`, `guarda_armas`, …). Sin `detector_agresion` el `.exe`
+  se caía al arrancar con `--agresion`.
+- La versión pasa de 0.2.0 a 0.3.0 (`tauri.conf.json`, `Cargo.toml`).
+- Verificado antes de empaquetar, con los `.exe` corriendo como en la app
+  instalada (mismos argumentos y carpeta `%LOCALAPPDATA%`): el servicio
+  carga **YOLO11 + YOLO de Horus** (antes `cabeza propia`), la cabeza de
+  agresión carga, y una cámara dada de alta en `backend.exe` se ve a
+  24,4 fps.
+- Resultado: `instalador/horus-setup.exe` (≈ 423 MB), ignorado por Git. No
+  se probó instalarlo en esta PC.
+
+## 10. Cómo probarlo
 
 ```bash
 git checkout mejoras-ia-video-ui

@@ -164,6 +164,13 @@ class ConfigServicio:
     yolo_tam: int = 416
     yolo_bolsos: bool = False
 
+    # 16/11: clases del detector que se tiran apenas salen del modelo: no se
+    # trackean, no se dibujan, no van a la evidencia ni a las reglas. Celular
+    # no lo usa ninguna regla, y en una sala con mesas tapaba el video de
+    # cajas verdes ("aparecen muchísimos y no se entiende nada"). Una tupla
+    # vacía deja pasar todo. Desde la consola: --ignorar-clases.
+    clases_ignoradas: Tuple[str, ...] = ("celular",)
+
     # --- evidencia (07_alerta/evidencia.py) ------------------------------
     # 26/09: cada alerta que abre o sube de severidad lleva la captura del
     # momento y un clip de los `clip_s` segundos anteriores.
@@ -678,7 +685,8 @@ class Servicio:
             cfg_tracker=cfg_tracker,
             motor_objetos=motor, motor_segmentacion=motor_seg,
             device=c.device, detector_agresion=detector_agresion,
-            detector_caidas=det_caidas, verboso=c.verboso)
+            detector_caidas=det_caidas, verboso=c.verboso,
+            clases_ignoradas=c.clases_ignoradas)
 
         cfg_al = ConfigAlerta(
             url=c.url(c.ruta_alertas), token=c.token, spool=c.spool,
@@ -700,6 +708,9 @@ class Servicio:
                 ("caídas      ", self.pipe.caidas is not None, "--caidas")):
             _log(c, f"  cabeza {nombre} {'SI' if prendida else 'no'}"
                     + ("" if prendida else f"  (se prende con {porque})"))
+        if self.pipe.objetos is not None and self.pipe.clases_ignoradas:
+            _log(c, f"  ignoradas: {', '.join(sorted(self.pipe.clases_ignoradas))}"
+                    "  (ni track ni caja; --ignorar-clases ninguna las muestra)")
 
         self.listo_en_s = time.time() - self.arranque
         self.fase = "listo"
@@ -1437,6 +1448,11 @@ def main() -> int:
     ap.add_argument("--yolo-bolsos", dest="yolo_bolsos", action="store_true",
                     help="mochila/cartera/valija cuentan como paquete (apagado: "
                          "en una casa hay bolsos por todos lados)")
+    ap.add_argument("--ignorar-clases", dest="ignorar_clases", default="celular",
+                    help='clases que se tiran apenas salen del detector, '
+                         'separadas por coma: ni track, ni caja, ni alerta. '
+                         'Default "celular" (ninguna regla lo usa y tapaba el '
+                         'video). "ninguna" deja pasar todas')
     ap.add_argument("--sin-evidencia", dest="sin_evidencia", action="store_true",
                     help="no adjuntar captura ni clip a las alertas")
     ap.add_argument("--clip", type=float, default=8.0,
@@ -1456,7 +1472,10 @@ def main() -> int:
         caidas=args.caidas, caidas_checkpoint=args.caidas_checkpoint,
         caidas_max_personas=args.caidas_max_personas,
         evidencia=not args.sin_evidencia, clip_s=args.clip,
-        yolo=args.yolo, yolo_tam=args.yolo_tam, yolo_bolsos=args.yolo_bolsos)
+        yolo=args.yolo, yolo_tam=args.yolo_tam, yolo_bolsos=args.yolo_bolsos,
+        clases_ignoradas=tuple(
+            x.strip() for x in str(args.ignorar_clases or "").split(",")
+            if x.strip() and x.strip().lower() != "ninguna"))
 
     hay_yolo = cfg.yolo != "no" and (cfg.yolo != "auto" or _hay_pesos_yolo())
     if not cfg.simular and not cfg.pesos and not cfg.segmentacion and not hay_yolo:

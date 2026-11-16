@@ -102,7 +102,8 @@ class PipelineHorus:
                  detector_agresion: Any = None,
                  detector_caidas: Any = None,
                  device: Optional[str] = None,
-                 verboso: bool = True) -> None:
+                 verboso: bool = True,
+                 clases_ignoradas: Sequence[str] = ()) -> None:
         if isinstance(topologia, str):
             topologia = Topologia.cargar(topologia)
         self.topo: Optional[Topologia] = topologia
@@ -112,6 +113,10 @@ class PipelineHorus:
         if self.objetos is None and pesos is not None:
             self.objetos = self._crear_motor(pesos, pesos_backbone, max_batch,
                                              device, verboso)
+
+        # 16/11: clases que se tiran apenas salen del detector (ver
+        # `_sacar_ignoradas`). Vacío = pasa todo, como siempre.
+        self.clases_ignoradas = frozenset(str(c) for c in (clases_ignoradas or ()))
 
         # Cabeza de segmentación. Se puede correr SOLA: `ReglaIncendio` declara
         # `requiere_alguna = {objetos, segmentacion}`, y el fuego de
@@ -209,6 +214,27 @@ class PipelineHorus:
         cfg = pedido if isinstance(pedido, ConfigCaidas) else ConfigCaidas()
         return DetectorCaidas(cfg)
 
+    def _sacar_ignoradas(self, res: Any) -> None:
+        """Saca de un resultado del detector las clases de `clases_ignoradas`.
+
+        16/11: "sacá los recuadros de celular, aparecen muchísimos y no se
+        entiende nada". En una sala con mesas el video quedaba tapado de
+        tracks verdes de celular, y ninguna regla usa esa clase. Se corta acá,
+        a la salida del detector, así no llega a ningún lado: ni al tracker,
+        ni al video, ni a la evidencia, ni a la fusión. Sirve igual para el
+        YOLO de COCO, el motor mixto y la cabeza propia.
+        """
+        if res is None:
+            return
+        fuera = self.clases_ignoradas
+        for attr in ("detections", "detecciones_crudas"):
+            dets = getattr(res, attr, None)
+            if dets is not None:
+                setattr(res, attr, [
+                    d for d in dets
+                    if (getattr(d, "label", None) or getattr(d, "clase", None))
+                    not in fuera])
+
     def procesar(self,
                  frames: Dict[str, np.ndarray],
                  seg: Optional[Dict[str, Any]] = None,
@@ -226,6 +252,9 @@ class PipelineHorus:
         if self.objetos is not None:
             resultados = self.objetos.infer_batch([frames[c] for c in cams],
                                                   camera_ids=cams)
+            if self.clases_ignoradas:
+                for r in resultados:
+                    self._sacar_ignoradas(r)
         else:
             resultados = [None] * len(cams)
 

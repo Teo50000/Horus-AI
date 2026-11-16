@@ -239,12 +239,78 @@ def caso_las_camaras_se_enganchan_solas() -> Tuple[bool, str]:
                 f"sin recargar modelos")
 
 
+def caso_celular_no_llega_al_video() -> Tuple[bool, str]:
+    """16/11: "sacá los recuadros de celular, aparecen muchísimos y no se
+    entiende nada". Con lo que el servicio trae por defecto, un celular que el
+    detector ve en cada cuadro no deja track ni caja suelta para dibujar, y la
+    persona del mismo cuadro sigue pasando. Con la lista vacía el mismo
+    celular sí arma track: lo saca el filtro y no otra cosa. Y el servicio de
+    verdad se lo pasa al pipeline.
+    """
+    import numpy as np
+    from servicio import ConfigServicio, Servicio, _Det, _Resultado
+    from pipeline import PipelineHorus
+
+    class MotorConCelulares:
+        def __init__(self) -> None:
+            self.n = 0
+
+        def infer_batch(self, frames, camera_ids=None, frame_idxs=None):
+            salida = []
+            for frame, cam in zip(frames, camera_ids):
+                n, t = self.n, self.n / 10.0
+                self.n += 1
+                dets = [_Det((300, 100, 380, 400), 0.80, "persona", 2, cam, n, t)]
+                for k in range(6):                  # seis celulares quietos
+                    x = 20 + 45 * k
+                    dets.append(_Det((x, 420, x + 30, 460), 0.60, "celular", 5,
+                                     cam, n, t))
+                salida.append(_Resultado(dets, cam, n, frame.shape[:2]))
+            return salida
+
+    def correr(ignoradas):
+        pipe = PipelineHorus(motor_objetos=MotorConCelulares(), fps=10.0,
+                             verboso=False, clases_ignoradas=ignoradas)
+        frame = np.zeros((480, 640, 3), np.uint8)
+        for _ in range(10):
+            pipe.procesar({"cam-1": frame})
+        tracks = pipe.tracking.tracker("cam-1").tracks     # lo que se dibuja
+        sueltas = pipe.ultimas_detecciones.get("cam-1", [])
+        return (sum(t.clase == "celular" for t in tracks),
+                sum(d.label == "celular" for d in sueltas),
+                sum(t.clase == "persona" for t in tracks))
+
+    defecto = ConfigServicio().clases_ignoradas
+    sin_filtro = correr(())
+    con_filtro = correr(defecto)
+
+    b = BackendFalso([])
+    try:
+        srv = Servicio(ConfigServicio(backend=b.url, simular=True, fps=10.0,
+                                      sondeo_s=1.0, verboso=False,
+                                      puerto_stream=0, evidencia=False))
+        srv.iniciar()
+        try:
+            cableado = set(srv.pipe.clases_ignoradas)
+        finally:
+            srv.parar()
+    finally:
+        b.cerrar()
+
+    ok = (sin_filtro[0] > 0 and sin_filtro[1] > 0
+          and con_filtro[0] == 0 and con_filtro[1] == 0 and con_filtro[2] >= 1
+          and cableado == {"celular"})
+    return ok, (f"celular {sin_filtro[0]} track(s) sin filtro -> {con_filtro[0]} · "
+                f"persona {con_filtro[2]} · servicio ignora {sorted(cableado)}")
+
+
 CASOS: Dict[str, Callable[[], Tuple[bool, str]]] = {
     "avisa": caso_el_servicio_avisa,
     "alerta_entera": caso_la_alerta_llega_entera,
     "backend_caido": caso_backend_caido_no_pierde_la_alerta,
     "transporte_url": caso_el_transporte_recibe_una_url,
     "camara_en_caliente": caso_las_camaras_se_enganchan_solas,
+    "sin_celular": caso_celular_no_llega_al_video,
 }
 
 

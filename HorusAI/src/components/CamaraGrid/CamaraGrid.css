@@ -1,18 +1,38 @@
-.camara-grid {
+/* La zona toma todo el ancho que deja el menú y es un "container" de
+   tamaño: la grilla de adentro se dimensiona contra ella con cqw/cqh. */
+.camara-grid-zona {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  container-type: size;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(10px, 2vh, 24px) clamp(10px, 1.4vw, 24px);
+  box-sizing: border-box;
+  background: radial-gradient(circle 70vh, #000000 20%, #070930 47%, #000000 75%);
+}
+
+/* 16/11 — la grilla mantiene 16:9 (el de las cámaras) en vez de estirarse a
+   lo que sobre. Antes, al abrir el menú las celdas pasaban de apaisadas a
+   casi cuadradas y el video con `cover` se recortaba distinto: se "perdía"
+   media escena de golpe. Ahora la grilla entera se escala y se centra. */
+.camara-grid {
+  --gap: clamp(8px, 1.2cqw, 18px);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
   grid-template-areas:
     "pos0 pos1 pos2"
     "pos3 pos4 pos5"
     "pos6 pos7 pos8";
-  background: radial-gradient(circle 70vh, #000000 20%, #070930 47%, #000000 75%);
-  gap: 2%;
-  padding: 2vh 1vw;
+  gap: var(--gap);
+  /* el más grande que entre en la zona con proporción 16:9 */
+  width: min(100cqw, calc(100cqh * 16 / 9));
+  aspect-ratio: 16 / 9;
+  max-height: 100cqh;
   box-sizing: border-box;
-  min-height: 0; /* evita que el grid se expanda más allá del flex parent */
-  height: 100%;
 }
 
 .camara-grid__celda {
@@ -30,7 +50,7 @@
 }
 
 .camara-grid__logo-img {
-  width: 55%;
+  width: 45%;
   max-width: 120px;
   aspect-ratio: 1;
   object-fit: contain;

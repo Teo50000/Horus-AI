@@ -154,6 +154,15 @@ class ConfigServicio:
     # --- streaming propio -------------------------------------------------
     puerto_stream: int = 8010              # 0 = no levantar el servidor MJPEG
     dibujar: bool = True
+    # 16/11 — el video del panel ya no va al ritmo de los modelos. Ver
+    # `_difundir`: se manda cada cuadro NUEVO de la cámara (hasta fps_video)
+    # con las últimas cajas encima, al ancho que pide la celda del panel.
+    fps_video: float = 25.0
+    calidad_video: int = 75
+    ancho_video_max: int = 1280
+    # Las detecciones sueltas (gris) y los tracks tentativos sirven para
+    # calibrar, no para vigilar: en pantalla son ruido. --crudas las prende.
+    dibujar_crudas: bool = False
 
     # --- detector preentrenado (04_cabezas/objetos/motor_yolo.py) --------
     # 26/09: YOLO11 de COCO para persona, cuchillo y celular. La cabeza propia
@@ -219,7 +228,11 @@ class FuenteCamara:
 
         self._frame: Optional[np.ndarray] = None
         self._ts = 0.0
+        self._seq = 0                      # sube con cada cuadro nuevo
         self._lock = threading.Lock()
+        # Despierta al video del panel apenas hay un cuadro nuevo (sin
+        # sondear): comparte el lock de arriba.
+        self._nuevo = threading.Condition(self._lock)
         self._parar = threading.Event()
         self._hilo: Optional[threading.Thread] = None
 
@@ -243,6 +256,23 @@ class FuenteCamara:
     def frame(self) -> Tuple[Optional[np.ndarray], float]:
         with self._lock:
             return (None if self._frame is None else self._frame.copy()), self._ts
+
+    def ultimo(self) -> Tuple[Optional[np.ndarray], float, int]:
+        """(cuadro, ts, número) SIN copiar. Cada lectura de la cámara crea un
+        array nuevo y nadie escribe sobre uno ya publicado, así que el que
+        lo recibe lo puede leer tranquilo. Lo usa el video del panel, que
+        pide un cuadro 25 veces por segundo y no tiene por qué copiarlo."""
+        with self._lock:
+            return self._frame, self._ts, self._seq
+
+    def esperar(self, visto: int, timeout: float = 1.0
+                ) -> Tuple[Optional[np.ndarray], float, int]:
+        """Como `ultimo()`, pero espera hasta que haya un cuadro distinto de
+        `visto` (o se cumpla el timeout)."""
+        with self._nuevo:
+            self._nuevo.wait_for(lambda: self._seq != visto or self._parar.is_set(),
+                                 timeout=timeout)
+            return self._frame, self._ts, self._seq
 
     # ------------------------------------------------------------------ #
     def _abrir(self):
@@ -341,6 +371,8 @@ class FuenteCamara:
             with self._lock:
                 self._frame = frame
                 self._ts = time.time()
+                self._seq += 1
+                self._nuevo.notify_all()
             self.frames_leidos += 1
             self.estado = "ok"
 
@@ -527,6 +559,13 @@ class Servicio:
         self._hilos: List[threading.Thread] = []
         self._anotados: Dict[str, bytes] = {}
         self._lock_anotados = threading.Lock()
+        # Video del panel (ver `_difundir`). Lo que dibujar por cámara, el
+        # último JPEG por (cámara, ancho) y cuántos lo están mirando.
+        self._prim: Dict[str, Dict[str, Any]] = {}
+        self._video: Dict[Tuple[str, int], Tuple[int, bytes]] = {}
+        self._cond_video = threading.Condition()
+        self._espectadores: Dict[Tuple[str, int], int] = {}
+        self._difusores: Dict[str, threading.Thread] = {}
         self._srv_http: Any = None
         # Los últimos segundos de cada cámara, para adjuntarlos a la alerta.
         self.grabadora: Optional[Grabadora] = (
@@ -854,10 +893,12 @@ class Servicio:
         while not self._parar.is_set():
             t0 = time.perf_counter()
             lote: Dict[str, np.ndarray] = {}
+            ts_lote: Dict[str, float] = {}
             for cam, fuente in list(self.fuentes.items()):
                 frame, ts = fuente.frame
                 if frame is not None and time.time() - ts < 5.0:
                     lote[cam] = frame
+                    ts_lote[cam] = ts
                 if len(lote) >= self.cfg.max_batch:
                     break
 
@@ -868,7 +909,7 @@ class Servicio:
                     # Dibujar ANTES de emitir: la captura que viaja con la
                     # alerta tiene que ser el cuadro que la disparó, con las
                     # cajas encima, no el del tick anterior.
-                    self._grabar(lote)
+                    self._grabar(lote, ts_lote)
                     for ev in eventos:
                         _log(self.cfg, "  " + ev.linea())
                         # 18/09, MEDIDO: acá el bucle imprimía el evento y
@@ -934,14 +975,15 @@ class Servicio:
         "agua":  (255, 170, 0),     # celeste
     }
 
-    def _grabar(self, lote: Dict[str, np.ndarray]) -> None:
+    def _grabar(self, lote: Dict[str, np.ndarray],
+                ts_lote: Optional[Dict[str, float]] = None) -> None:
         """El video anotado para el panel y, de paso, para la evidencia."""
         try:
             if self.grabadora is not None:
                 for cam, frame in lote.items():
                     self.grabadora.guardar_crudo(cam, frame)
             if self.cfg.dibujar and (self.cfg.puerto_stream or self.grabadora is not None):
-                self._anotar(lote)
+                self._anotar(lote, ts_lote or {})
             elif self.grabadora is not None:
                 for cam, frame in lote.items():
                     self.grabadora.agregar_cuadro(cam, frame)
@@ -1018,131 +1060,350 @@ class Servicio:
             salida.append(t)
         return salida
 
-    def _anotar(self, lote: Dict[str, np.ndarray]) -> None:
-        """Dibuja en el video TODO lo que las cabezas vieron, no solo lo que
-        llegó a alerta.
+    # Color por clase de los tracks confirmados y visibles (BGR). Las armas en
+    # rojo y el fuego en naranja: es lo primero que tiene que encontrar el ojo.
+    _COLOR_CLASE = {
+        "persona":  (90, 220, 90),
+        "pistola":  (60, 60, 255),
+        "cuchillo": (60, 60, 255),
+        "llama":    (0, 140, 255),
+        "humo":     (200, 200, 200),
+        "celular":  (255, 200, 0),
+        "paquete":  (255, 170, 60),
+    }
 
-        18/09 — por qué esto creció tanto. "No detecta el fuego, detecta
-        personas y paquetes." El dibujo mostraba únicamente los tracks
-        CONFIRMADOS, así que quedaban invisibles:
+    def _primitivas(self, cam: str, alto: int, ancho: int,
+                    ts_frame: float) -> Dict[str, Any]:
+        """Lo que hay que dibujar sobre esta cámara, en coordenadas del cuadro
+        analizado. Se arma UNA vez por tick de los modelos y después se dibuja
+        sobre todos los cuadros que la cámara entregue hasta el próximo.
 
-          - el fuego de la cabeza de segmentación, que es la que mejor anda
-            (F1 99,1 %) y que no produce cajas ni tracks, solo máscara;
-          - una llama detectada con score 0,30, por debajo del 0,35 que hace
-            falta para que nazca el track;
-          - un track todavía tentativo, que no llegó a sus 0,40 s.
-
-        O sea: "el modelo no ve nada" y "el modelo lo ve pero no llega al
-        umbral" se veían igual — una pantalla sin cajas. Sin poder
-        distinguirlos no hay forma de calibrar, y tampoco de saber si el
-        problema es el modelo, el umbral o la escena.
-
-        Ahora se dibuja en tres capas, de más débil a más fuerte:
-          1. la máscara de segmentación, translúcida, con el % de área;
-          2. las detecciones crudas que no llegaron a track, punteadas;
-          3. los tracks, como siempre.
+        18/09 — por qué se dibujan tres capas y no solo los tracks: "no
+        detecta el fuego" y "lo detecta pero no llega al umbral" se veían
+        igual. Las tres siguen, pero 16/11: las detecciones sueltas y los
+        tracks tentativos solo con --crudas. En el panel de un operador son
+        cajas grises que aparecen y desaparecen encima de la gente, y se leen
+        como "el sistema no sabe dónde está la persona".
         """
+        pipe = self.pipe
+        cajas: List[Dict[str, Any]] = []
+        tracker = pipe.tracking.tracker(cam)
+        fps = float(getattr(tracker, "fps_efectivo", self.cfg.fps) or self.cfg.fps)
+        tracks = tracker.tracks
+
+        for tr in self._tracks_para_dibujar(tracks):
+            tentativo = tr.estado == "tentativo"
+            if tentativo and not self.cfg.dibujar_crudas:
+                continue
+            visible = tr.frames_sin_ver == 0
+            if tentativo:
+                color, grosor = (0, 200, 255), 1
+                texto = f"{tr.clase} {tr.score:.2f}?"
+            elif visible:
+                color, grosor = self._COLOR_CLASE.get(tr.clase, (90, 220, 90)), 2
+                texto = f"#{tr.track_id} {tr.clase} {int(round(tr.score * 100))}%"
+            else:
+                # Perdido: el tracker lo sostiene por si reaparece. Fino y sin
+                # etiqueta, para que no se lea como una segunda persona.
+                color, grosor, texto = (60, 160, 255), 1, ""
+            vx, vy = getattr(tr, "velocidad", (0.0, 0.0)) or (0.0, 0.0)
+            cajas.append({
+                "id": tr.track_id,
+                "caja": tuple(float(v) for v in tr.bbox_xyxy),
+                "color": color, "grosor": grosor, "texto": _ascii(texto),
+                # px/s del centro. Solo para lo que se está viendo: lo perdido
+                # ya viene extrapolado por el Kalman.
+                "v": (float(vx) * fps, float(vy) * fps) if visible else (0.0, 0.0),
+            })
+
+        if self.cfg.dibujar_crudas:
+            for d in self._crudas_para_dibujar(
+                    tracker, tracks,
+                    getattr(pipe, "ultimas_detecciones", {}).get(cam, [])):
+                try:
+                    caja = tuple(float(v) for v in d.bbox_xyxy)
+                except Exception:                        # noqa: BLE001
+                    continue
+                lbl = getattr(d, "label", None) or getattr(d, "clase", "?")
+                cajas.append({"id": None, "caja": caja, "color": (150, 150, 150),
+                              "grosor": 1, "texto": _ascii(f"{lbl} {d.score:.2f}"),
+                              "v": (0.0, 0.0)})
+
+        # La máscara de segmentación, como mapa de clases chico + paleta.
+        seg_dib = None
+        lineas: List[Tuple[str, Tuple[int, int, int]]] = []
+        clases_seg = list(getattr(getattr(pipe, "segmentacion", None),
+                                  "clases", ()) or ())
+        seg = getattr(pipe, "ultimo_seg", {}).get(cam)
+        if seg is not None and clases_seg and getattr(seg, "mask", None) is not None:
+            try:
+                m = seg.mask
+                m = m.cpu().numpy() if hasattr(m, "cpu") else np.asarray(m)
+                m = m.astype(np.uint8)
+                lut = np.zeros((256, 3), np.uint8)
+                partes = []
+                total = float(m.size) or 1.0
+                for idx, nombre in enumerate(clases_seg):
+                    if nombre == "fondo" or idx > 255:
+                        continue
+                    n = int((m == idx).sum())
+                    if n == 0:
+                        continue
+                    lut[idx] = self._COLOR_SEG.get(nombre, (0, 255, 255))
+                    # El % se muestra SIEMPRE, aunque no llegue al umbral.
+                    partes.append(f"{nombre} {100.0 * n / total:.2f}%")
+                if partes:
+                    seg_dib = (m, lut)
+                    lineas.append((_ascii("seg: " + "  ".join(partes)), (0, 200, 255)))
+            except Exception:                            # noqa: BLE001
+                seg_dib = None
+
+        for ev in pipe.fusion.abiertos:
+            if getattr(ev, "camera_id", cam) != cam and cam not in (
+                    getattr(ev, "camaras", None) or ()):
+                continue
+            lineas.append((_ascii(ev.linea())[:90], (80, 80, 255)))
+            if len(lineas) >= 3:
+                break
+
+        return {"ts": ts_frame, "tam": (alto, ancho), "cajas": cajas,
+                "seg": seg_dib, "lineas": lineas, "_cache": {}}
+
+    @staticmethod
+    def _dibujar(img: np.ndarray, prim: Dict[str, Any],
+                 cajas: Optional[List[Dict[str, Any]]] = None,
+                 con_lineas: bool = True) -> None:
+        """Dibuja `prim` sobre `img` (en el lugar). `img` puede estar
+        achicada: las coordenadas se escalan contra el tamaño analizado.
+
+        `con_lineas`: los textos de arriba (eventos abiertos, % de
+        segmentación). Van en la evidencia del mail, donde explican la
+        captura; en el video en vivo no (16/11): el panel ya muestra la alerta,
+        y la franja tapaba la esquina de la escena."""
+        import cv2
+        h, w = img.shape[:2]
+        alto0, ancho0 = prim["tam"]
+        ex, ey = w / float(max(ancho0, 1)), h / float(max(alto0, 1))
+
+        # 1. segmentación (cacheada por tamaño: se repite 25 veces por tick)
+        if prim.get("seg") is not None:
+            cache = prim["_cache"]
+            clave = (w, h)
+            if clave not in cache:
+                m, lut = prim["seg"]
+                mr = cv2.resize(m, (w, h), interpolation=cv2.INTER_NEAREST)
+                pix = mr > 0
+                cache.clear()
+                cache[clave] = (pix, lut[mr][pix].astype(np.float32))
+            pix, color = cache[clave]
+            if pix.any():
+                img[pix] = (img[pix].astype(np.float32) * 0.65 + color * 0.35).astype(np.uint8)
+
+        # 2. cajas con etiqueta legible (fondo del color de la caja)
+        # 16/11: la letra se escala con el ancho de SALIDA. Con un tope fijo
+        # de 0,38 una celda de 480 px mostraba etiquetas de 5 px de alto.
+        fs = float(min(0.7, max(0.42, w / 900.0)))
+        for c in (prim["cajas"] if cajas is None else cajas):
+            x1, y1, x2, y2 = c["caja"]
+            p1 = (int(x1 * ex), int(y1 * ey))
+            p2 = (int(x2 * ex), int(y2 * ey))
+            cv2.rectangle(img, p1, p2, c["color"], c["grosor"], cv2.LINE_AA)
+            if c["texto"]:
+                (tw, th), base = cv2.getTextSize(c["texto"], cv2.FONT_HERSHEY_SIMPLEX, fs, 1)
+                ty = p1[1] - 4 if p1[1] - th - 6 > 0 else p1[1] + th + 6
+                # que la etiqueta no se salga por la derecha del cuadro
+                tx = max(0, min(p1[0], w - tw - 7))
+                cv2.rectangle(img, (tx, ty - th - 3), (tx + tw + 6, ty + base - 1),
+                              c["color"], -1)
+                cv2.putText(img, c["texto"], (tx + 3, ty - 1), cv2.FONT_HERSHEY_SIMPLEX,
+                            fs, (15, 15, 15), 1, cv2.LINE_AA)
+
+        # 3. textos de arriba sobre una franja oscura
+        y = 0
+        for texto, color in (prim.get("lineas", ()) if con_lineas else ()):
+            (tw, th), base = cv2.getTextSize(texto, cv2.FONT_HERSHEY_SIMPLEX, fs, 1)
+            sub = img[y:y + th + 10, 0:min(w, tw + 16)]
+            sub[:] = (sub.astype(np.float32) * 0.4).astype(np.uint8)
+            cv2.putText(img, texto, (8, y + th + 4), cv2.FONT_HERSHEY_SIMPLEX,
+                        fs, color, 1, cv2.LINE_AA)
+            y += th + 10
+
+    def _anotar(self, lote: Dict[str, np.ndarray],
+                ts_lote: Dict[str, float]) -> None:
+        """Una vez por tick: arma lo que hay que dibujar (para el video del
+        panel, que lo pinta sobre cada cuadro nuevo) y el cuadro anotado de la
+        evidencia (la captura y el clip del mail)."""
         try:
             import cv2
         except ImportError:
             return
-
-        pipe = self.pipe
-        clases_seg = list(getattr(getattr(pipe, "segmentacion", None),
-                                  "clases", ()) or ())
-
         for cam, frame in lote.items():
+            alto, ancho = frame.shape[:2]
+            prim = self._primitivas(cam, alto, ancho, ts_lote.get(cam, time.time()))
+            self._prim[cam] = prim                       # asignación atómica
+            if self.grabadora is None and not self.cfg.puerto_stream:
+                continue
             img = frame.copy()
-            alto, ancho = img.shape[:2]
-
-            # --- 1. la máscara de segmentación ---------------------------
-            seg = getattr(pipe, "ultimo_seg", {}).get(cam)
-            linea_seg = ""
-            if seg is not None and clases_seg and getattr(seg, "mask", None) is not None:
-                try:
-                    m = seg.mask
-                    m = m.cpu().numpy() if hasattr(m, "cpu") else np.asarray(m)
-                    if m.shape[:2] != (alto, ancho):
-                        m = cv2.resize(m.astype(np.uint8), (ancho, alto),
-                                       interpolation=cv2.INTER_NEAREST)
-                    capa = np.zeros_like(img)
-                    partes = []
-                    for idx, nombre in enumerate(clases_seg):
-                        if nombre == "fondo":
-                            continue
-                        pix = (m == idx)
-                        n = int(pix.sum())
-                        if n == 0:
-                            continue
-                        capa[pix] = self._COLOR_SEG.get(nombre, (0, 255, 255))
-                        # El % se muestra SIEMPRE, aunque no llegue al umbral
-                        # de alerta: ver ahí un 0,08 % de fuego es la
-                        # diferencia entre "no lo ve" y "le falta poco".
-                        partes.append(f"{nombre} {100.0 * n / (alto * ancho):.2f}%")
-                    if partes:
-                        img = cv2.addWeighted(img, 1.0, capa, 0.35, 0)
-                        linea_seg = "seg: " + "  ".join(partes)
-                except Exception:                        # noqa: BLE001
-                    pass                                 # dibujar no puede tumbar el servicio
-
-            # --- 2. detecciones crudas que no llegaron a track ------------
-            tracker = pipe.tracking.tracker(cam)
-            tracks = tracker.tracks
-            crudas = self._crudas_para_dibujar(
-                tracker, tracks,
-                getattr(pipe, "ultimas_detecciones", {}).get(cam, []))
-            for d in crudas:
-                try:
-                    x1, y1, x2, y2 = (int(v) for v in d.bbox_xyxy)
-                except Exception:                        # noqa: BLE001
-                    continue
-                cv2.rectangle(img, (x1, y1), (x2, y2), (120, 120, 120), 1)
-                # 25/09: era `d.clase`, pero la Detection del motor de objetos
-                # la llama `label` (los tracks sí tienen `.clase`). Tiraba en
-                # casi todos los ticks y el video del panel solo se renovaba
-                # en el tick raro sin detecciones sueltas: 1 frame por minuto
-                # con los modelos andando a 2 por segundo.
-                lbl = getattr(d, "label", None) or getattr(d, "clase", "?")
-                cv2.putText(img, f"{lbl} {d.score:.2f}", (x1, max(12, y1 - 4)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (160, 160, 160), 1,
-                            cv2.LINE_AA)
-
-            # --- 3. los tracks -------------------------------------------
-            for tr in self._tracks_para_dibujar(tracks):
-                x1, y1, x2, y2 = (int(v) for v in tr.bbox_xyxy)
-                if tr.estado == "tentativo":
-                    color, grosor = (0, 200, 255), 1     # amarillo, fino
-                elif tr.frames_sin_ver == 0:
-                    color, grosor = (60, 220, 60), 2     # verde
-                else:
-                    color, grosor = (60, 160, 255), 2    # naranja: sin ver
-                cv2.rectangle(img, (x1, y1), (x2, y2), color, grosor)
-                etiqueta = f"#{tr.track_id} {tr.clase} {tr.score:.2f}"
-                if tr.estado == "tentativo":
-                    etiqueta = f"{tr.clase} {tr.score:.2f} (tentativo)"
-                cv2.putText(img, _ascii(etiqueta), (x1, max(14, y1 - 5)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
-
-            # --- 4. los textos de arriba ---------------------------------
-            y = 20
-            if linea_seg:
-                cv2.putText(img, _ascii(linea_seg), (8, y), cv2.FONT_HERSHEY_SIMPLEX,
-                            0.5, (0, 200, 255), 1, cv2.LINE_AA)
-                y += 20
-            for ev in pipe.fusion.abiertos[:4]:
-                cv2.putText(img, _ascii(ev.linea())[:90], (8, y),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (60, 60, 255), 1,
-                            cv2.LINE_AA)
-                y += 20
-
-            ok, jpg = cv2.imencode(".jpg", img,
-                                   [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+            self._dibujar(img, prim)
+            ok, jpg = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
             if ok:
                 datos = jpg.tobytes()
                 with self._lock_anotados:
                     self._anotados[cam] = datos
                 if self.grabadora is not None:
                     self.grabadora.agregar(cam, datos)
+
+    # ------------------------------------------------------------------ #
+    # Video del panel
+    # ------------------------------------------------------------------ #
+    _ANCHOS = (320, 480, 640, 960, 1280, 1920)
+
+    def _ancho_valido(self, pedido: int) -> int:
+        """El ancho pedido redondeado a un escalón (para que dos celdas casi
+        iguales compartan la misma codificación)."""
+        tope = int(self.cfg.ancho_video_max or 1280)
+        if pedido <= 0:
+            return tope
+        for a in self._ANCHOS:
+            if a >= pedido:
+                return min(a, tope)
+        return tope
+
+    def _mirar(self, clave: Tuple[str, int], delta: int) -> None:
+        with self._cond_video:
+            n = self._espectadores.get(clave, 0) + delta
+            if n > 0:
+                self._espectadores[clave] = n
+            else:
+                self._espectadores.pop(clave, None)
+                self._video.pop(clave, None)
+        if delta > 0:
+            self._asegurar_difusor(clave[0])
+
+    def _asegurar_difusor(self, cam: str) -> None:
+        with self._cond_video:
+            h = self._difusores.get(cam)
+            if h is not None and h.is_alive():
+                return
+            h = threading.Thread(target=self._difundir, args=(cam,),
+                                 name=f"video-{cam}", daemon=True)
+            self._difusores[cam] = h
+        h.start()
+
+    @staticmethod
+    def _suavizar(prim: Optional[Dict[str, Any]], ts_cuadro: float,
+                  estado: Dict[int, np.ndarray]) -> List[Dict[str, Any]]:
+        """Las cajas del último tick, llevadas al instante de ESTE cuadro.
+
+        Los modelos ven ~3-4 cuadros por segundo y el video muestra 25. Sin
+        esto las cajas saltarían 3 veces por segundo y quedarían atrás de una
+        persona que camina. Dos pasos:
+          1. extrapolar con la velocidad del Kalman el tiempo que pasó desde
+             el cuadro analizado (con freno y tope: nunca más de media caja);
+          2. suavizar contra lo dibujado en el cuadro anterior, para que el
+             salto de un tick al siguiente sea un deslizamiento corto.
+        """
+        if prim is None:
+            estado.clear()
+            return []
+        dt = min(max(ts_cuadro - float(prim["ts"]), 0.0), 0.6)
+        salida: List[Dict[str, Any]] = []
+        vivos = set()
+        for c in prim["cajas"]:
+            x1, y1, x2, y2 = c["caja"]
+            vx, vy = c["v"]
+            bw, bh = max(x2 - x1, 1.0), max(y2 - y1, 1.0)
+            dx = float(np.clip(vx * dt * 0.7, -0.5 * bw, 0.5 * bw))
+            dy = float(np.clip(vy * dt * 0.7, -0.5 * bh, 0.5 * bh))
+            obj = np.array([x1 + dx, y1 + dy, x2 + dx, y2 + dy], np.float64)
+            k = c["id"]
+            if k is not None:
+                vivos.add(k)
+                prev = estado.get(k)
+                if prev is not None:
+                    # Solo se suaviza si es "la misma caja": un id que saltó
+                    # lejos (reasignación) se dibuja donde está, sin barrido.
+                    sx = max(0.0, min(prev[2], obj[2]) - max(prev[0], obj[0]))
+                    sy = max(0.0, min(prev[3], obj[3]) - max(prev[1], obj[1]))
+                    if sx * sy > 0.1 * bw * bh:
+                        obj = prev + 0.5 * (obj - prev)
+                estado[k] = obj
+            salida.append({**c, "caja": tuple(obj)})
+        for k in list(estado):
+            if k not in vivos:
+                del estado[k]
+        return salida
+
+    def _difundir(self, cam: str) -> None:
+        """Un hilo por cámara MIRADA: cada cuadro nuevo de la cámara (hasta
+        `fps_video`) sale al panel con las últimas cajas encima.
+
+        16/11 — "el video se arma cuadro por cuadro, muy poco fluido". El
+        stream mandaba el cuadro ANOTADO, que solo existe cuando terminan los
+        modelos: en esta PC, ~3-4 por segundo. Ahora el video y el análisis
+        van separados: la cámara entrega 25-30 cuadros, el video los muestra
+        todos, y los modelos siguen a su ritmo. Lo que se dibuja encima se
+        lleva al instante de cada cuadro (`_suavizar`).
+
+        Barato a propósito: se codifica al ancho que pide la celda (una celda
+        de 480 px no necesita un JPEG de 1280), una sola vez por ancho aunque
+        miren varios, y si nadie mira el hilo se apaga solo.
+        """
+        import cv2
+        periodo = 1.0 / max(self.cfg.fps_video, 1.0)
+        calidad = [int(cv2.IMWRITE_JPEG_QUALITY), int(self.cfg.calidad_video)]
+        visto = -1
+        sin_nadie: Optional[float] = None
+        suave: Dict[int, np.ndarray] = {}
+        try:
+            while not self._parar.is_set():
+                fuente = self.fuentes.get(cam)
+                with self._cond_video:
+                    anchos = sorted({a for (c, a), n in self._espectadores.items()
+                                     if c == cam and n > 0})
+                if fuente is None:
+                    return
+                if not anchos:
+                    sin_nadie = sin_nadie or time.time()
+                    if time.time() - sin_nadie > 10.0:
+                        return
+                    self._parar.wait(0.2)
+                    continue
+                sin_nadie = None
+
+                frame, ts, seq = fuente.esperar(visto, timeout=1.0)
+                if frame is None or seq == visto:
+                    continue
+                t0 = time.perf_counter()
+                visto = seq
+                prim = self._prim.get(cam) if self.cfg.dibujar else None
+                cajas = self._suavizar(prim, ts, suave)
+                alto, ancho = frame.shape[:2]
+                for a in anchos:
+                    if a < ancho:
+                        img = cv2.resize(frame, (a, max(2, int(round(alto * a / ancho)))),
+                                         interpolation=cv2.INTER_AREA)
+                    else:
+                        img = frame.copy()
+                    if prim is not None:
+                        self._dibujar(img, prim, cajas,
+                                      con_lineas=self.cfg.dibujar_crudas)
+                    ok, jpg = cv2.imencode(".jpg", img, calidad)
+                    if not ok:
+                        continue
+                    with self._cond_video:
+                        self._video[(cam, a)] = (seq, jpg.tobytes())
+                        self._cond_video.notify_all()
+                resto = periodo - (time.perf_counter() - t0)
+                if resto > 0:
+                    self._parar.wait(resto)
+        except Exception as exc:                         # noqa: BLE001
+            _log(self.cfg, f"  [{cam}] video del panel: {type(exc).__name__}: {exc}")
+        finally:
+            with self._cond_video:
+                if self._difusores.get(cam) is threading.current_thread():
+                    self._difusores.pop(cam, None)
+                self._cond_video.notify_all()
 
     # ------------------------------------------------------------------ #
     def _levantar_http(self) -> None:
@@ -1159,10 +1420,16 @@ class Servicio:
 
         class Manejador(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
-                if self.path.startswith("/camaras/") and self.path.endswith("/stream"):
-                    cam = self.path[len("/camaras/"):-len("/stream")]
-                    return self._stream(cam)
-                if self.path in ("/estado", "/"):
+                ruta, _, consulta = self.path.partition("?")
+                if ruta.startswith("/camaras/") and ruta.endswith("/stream"):
+                    cam = ruta[len("/camaras/"):-len("/stream")]
+                    ancho = 0
+                    for par in consulta.split("&"):
+                        k, _, v = par.partition("=")
+                        if k == "ancho" and v.isdigit():
+                            ancho = int(v)
+                    return self._stream(cam, ancho)
+                if ruta in ("/estado", "/"):
                     return self._json(servicio.estado())
                 self.send_response(404); self.end_headers()
 
@@ -1175,23 +1442,51 @@ class Servicio:
                 self.end_headers()
                 self.wfile.write(cuerpo)
 
-            def _stream(self, cam):
+            def _stream(self, cam, ancho=0):
+                """MJPEG del difusor. 16/11: antes mandaba el último cuadro
+                ANOTADO cada 1/fps segundos: como el anotado solo cambia
+                cuando terminan los modelos (~3-4 veces por segundo en CPU),
+                el panel recibía 10 fps de cuadros repetidos. Ahora espera a
+                que haya un cuadro nuevo de verdad y lo manda al toque."""
+                import socket
+                if cam not in servicio.fuentes:
+                    self.send_response(404); self.end_headers()
+                    return
+                ancho = servicio._ancho_valido(ancho)
+                clave = (cam, ancho)
                 self.send_response(200)
                 self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Cache-Control", "no-store")
                 self.send_header("Content-Type",
                                  "multipart/x-mixed-replace; boundary=frame")
                 self.end_headers()
                 try:
-                    while not servicio._parar.is_set():
-                        with servicio._lock_anotados:
-                            jpg = servicio._anotados.get(cam)
-                        if jpg:
-                            self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\n\r\n")
-                            self.wfile.write(jpg)
-                            self.wfile.write(b"\r\n")
-                        time.sleep(1.0 / max(servicio.cfg.fps, 1.0))
-                except (BrokenPipeError, ConnectionResetError):
+                    self.connection.setsockopt(socket.IPPROTO_TCP,
+                                               socket.TCP_NODELAY, 1)
+                except OSError:
                     pass
+                servicio._mirar(clave, +1)
+                visto = -1
+                try:
+                    while not servicio._parar.is_set() and cam in servicio.fuentes:
+                        with servicio._cond_video:
+                            servicio._cond_video.wait_for(
+                                lambda: servicio._video.get(clave, (visto,))[0] != visto
+                                or servicio._parar.is_set(), timeout=2.0)
+                            seq, jpg = servicio._video.get(clave, (visto, b""))
+                        if not jpg:
+                            continue
+                        visto = seq
+                        self.wfile.write(
+                            b"--frame\r\nContent-Type: image/jpeg\r\n"
+                            + f"Content-Length: {len(jpg)}\r\n\r\n".encode()
+                            + jpg + b"\r\n")
+                        self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError,
+                        ConnectionAbortedError, OSError):
+                    pass
+                finally:
+                    servicio._mirar(clave, -1)
 
             def log_message(self, *a):
                 pass
@@ -1441,6 +1736,12 @@ def main() -> int:
                     help="no adjuntar captura ni clip a las alertas")
     ap.add_argument("--clip", type=float, default=8.0,
                     help="segundos de video ANTERIORES a la alerta que se adjuntan")
+    ap.add_argument("--fps-video", dest="fps_video", type=float, default=25.0,
+                    help="tope de cuadros por segundo del video del panel "
+                         "(independiente del ritmo de los modelos)")
+    ap.add_argument("--crudas", action="store_true",
+                    help="dibujar también las detecciones que no llegaron a "
+                         "track y los tracks tentativos (para calibrar)")
     args = ap.parse_args()
 
     cfg = ConfigServicio(
@@ -1456,8 +1757,18 @@ def main() -> int:
         caidas=args.caidas, caidas_checkpoint=args.caidas_checkpoint,
         caidas_max_personas=args.caidas_max_personas,
         evidencia=not args.sin_evidencia, clip_s=args.clip,
-        yolo=args.yolo, yolo_tam=args.yolo_tam, yolo_bolsos=args.yolo_bolsos)
+        yolo=args.yolo, yolo_tam=args.yolo_tam, yolo_bolsos=args.yolo_bolsos,
+        fps_video=args.fps_video, dibujar_crudas=args.crudas)
 
+    # 16/11: en la instalación (servicio_modelos.exe) los pesos NO están al
+    # lado del código sino en %LOCALAPPDATA%\com.tauri-app.horusai\modelos,
+    # con la misma estructura que el proyecto. motor_yolo buscaba solo en su
+    # propia carpeta (adentro del .exe), no encontraba yolo11n.pt y el
+    # servicio caía en silencio a la cabeza propia para TODO: personas con
+    # cajas malas y cuchillos en las luces. Se le dice dónde mirar: la misma
+    # carpeta de --pesos, que es donde la app deja los demás modelos.
+    if cfg.pesos and not os.environ.get("HORUS_MODELOS_DIR"):
+        os.environ["HORUS_MODELOS_DIR"] = os.path.dirname(os.path.abspath(cfg.pesos))
     hay_yolo = cfg.yolo != "no" and (cfg.yolo != "auto" or _hay_pesos_yolo())
     if not cfg.simular and not cfg.pesos and not cfg.segmentacion and not hay_yolo:
         print("hace falta al menos una cabeza: --pesos (objetos) o "

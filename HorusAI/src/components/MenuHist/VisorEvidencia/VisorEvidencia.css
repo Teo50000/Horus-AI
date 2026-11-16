@@ -29,12 +29,12 @@
 }
 
 .visor-evidencia__tipo {
-  font-size: 16px;
+  font-size: var(--fs-xl);
   font-weight: 500;
 }
 
 .visor-evidencia__donde {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: rgba(255, 255, 255, 0.55);
   flex: 1;
   min-width: 0;
@@ -78,14 +78,14 @@
 }
 
 .visor-evidencia__figura figcaption {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: rgba(255, 255, 255, 0.55);
 }
 
 .visor-evidencia__pie {
   display: flex;
   gap: 16px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .visor-evidencia__pie a {
@@ -116,5 +116,5 @@
 
 .visor-evidencia__nota {
   color: rgba(255, 255, 255, 0.55);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }

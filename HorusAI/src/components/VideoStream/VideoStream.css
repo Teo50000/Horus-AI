@@ -2,69 +2,90 @@
   position: relative;
   width: 100%;
   height: 100%;
-  background: #060d1c;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: #04081a;
   overflow: hidden;
 }
 
-/* ── Stream ── */
+/* ── Video ──
+   contain y no cover: en vigilancia recortar la imagen es esconder parte
+   de la escena. La celda ya mantiene 16:9 (ver CamaraGrid.css), así que con
+   una cámara 16:9 no queda borde. */
 .video-stream__img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  transition: opacity 0.3s ease;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  user-select: none;
 }
 
-.video-stream__img--oculta {
-  opacity: 0;
+.video-stream--ok .video-stream__img { opacity: 1; }
+
+/* Cortado: el último cuadro queda, atenuado, mientras se reconecta. */
+.video-stream--reconectando .video-stream__img {
+  opacity: 0.45;
+  filter: grayscale(0.6);
+}
+
+/* ── Skeleton ── */
+.video-stream__skeleton {
+  position: absolute;
+  inset: 0;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(160, 175, 255, 0.35);
+}
+
+.video-stream__icono {
+  width: 28px;
+  height: 28px;
+}
+
+.video-stream__texto {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── Aviso (reconectando / cámara caída) ── */
+.video-stream__aviso {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(10, 8, 30, 0.82);
+  border: 1px solid rgba(255, 169, 77, 0.35);
+  color: var(--c-aviso);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
   pointer-events: none;
 }
 
-/* ── Spinner ── */
-.video-stream__loader {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-
-.video-stream__spinner {
-  width: 32px;
-  height: 32px;
-  border: 2.5px solid rgba(255, 255, 255, 0.08);
-  border-top-color: #ff8427;
+.video-stream__aviso-punto {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  animation: vs-spin 0.8s linear infinite;
+  background: currentColor;
+  animation: vs-latido 1.1s ease-in-out infinite;
 }
 
-@keyframes vs-spin {
-  to { transform: rotate(360deg); }
+@keyframes vs-latido {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.2; }
 }
 
-.video-stream__loader-text {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.3);
-  letter-spacing: 0.04em;
-}
-
-/* ── Error / sin señal ── */
-.video-stream__error {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-
-.video-stream__error-icon {
-  font-size: 20px;
-  color: rgba(255, 132, 39, 0.5);
-}
-
-.video-stream__error-text {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.25);
+@media (prefers-reduced-motion: reduce) {
+  .video-stream__img { transition: none; }
+  .video-stream__aviso-punto { animation: none; }
 }

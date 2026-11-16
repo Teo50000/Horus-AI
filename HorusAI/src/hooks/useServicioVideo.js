@@ -21,6 +21,16 @@ export function useServicioVideo(cadaMs = 4000) {
   const [activo, setActivo]   = useState(false);
   const [fase, setFase]       = useState(null); // "cargando" | "listo" | null
   const [camaras, setCamaras] = useState({});   // config_id -> {camara, estado, error}
+  // 16/11: true despues de la PRIMERA respuesta (o falla). Sin esto la celda
+  // arrancaba pidiendo el video al backend (activo=false al montar) y a los
+  // 4 s lo volvia a pedir al servicio: dos conexiones y un parpadeo.
+  const [consultado, setConsultado] = useState(false);
+  // 16/11: sube cada vez que el servicio (re)arranca. Un <img> MJPEG al que
+  // le cortan la conexión NO dispara onError: se queda congelado en el
+  // último cuadro, en silencio. La celda usa este número en la URL, así que
+  // cuando el servicio vuelve, el video se reconecta solo.
+  const [generacion, setGeneracion] = useState(0);
+  const arranque = useRef(null);
   const vivo = useRef(true);
 
   useEffect(() => {
@@ -41,6 +51,14 @@ export function useServicioVideo(cadaMs = 4000) {
         setCamaras(porId);
         setFase(e.fase ?? "listo");
         setActivo(true);
+        setConsultado(true);
+        // Hora (aprox.) en que arrancó el servicio. Si se corre más de 5 s,
+        // es otro proceso: reconectar los videos.
+        const inicio = Date.now() - (Number(e.arriba_s) || 0) * 1000;
+        if (arranque.current !== null && Math.abs(inicio - arranque.current) > 5000) {
+          setGeneracion((g) => g + 1);
+        }
+        arranque.current = inicio;
       } catch {
         // Que el servicio no este es normal: se puede usar el panel solo para
         // ver camaras. No es un error, es otro modo.
@@ -48,6 +66,11 @@ export function useServicioVideo(cadaMs = 4000) {
         setActivo(false);
         setFase(null);
         setCamaras({});
+        setConsultado(true);
+        if (arranque.current !== null) {
+          arranque.current = null;
+          setGeneracion((g) => g + 1);
+        }
       }
     };
 
@@ -70,5 +93,5 @@ export function useServicioVideo(cadaMs = 4000) {
     return { url: null, conIA: false, estado: null, error: null };
   };
 
-  return { activo, fase, camaras, urlDe };
+  return { activo, fase, camaras, consultado, generacion, urlDe };
 }

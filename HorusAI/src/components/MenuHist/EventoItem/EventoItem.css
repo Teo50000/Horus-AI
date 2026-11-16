@@ -11,7 +11,7 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   list-style: none;
 }
 
@@ -37,7 +37,7 @@
 .evento-item__camara {
   grid-area: camara;
   color: rgba(255, 255, 255, 0.55);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -83,7 +83,7 @@
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
   pointer-events: none;
 }

@@ -17,7 +17,7 @@
 }
 
 .sector-item__nombre {
-  font-size: 13px;
+  font-size: var(--fs-md);
   font-weight: 600;
   color: #fff;
   flex: 1;
@@ -29,7 +29,7 @@
   border: none;
   border-bottom: 1px solid #ff8427;
   color: #fff;
-  font-size: 13px;
+  font-size: var(--fs-md);
   font-weight: 600;
   outline: none;
   padding: 0 2px;

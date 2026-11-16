@@ -1,0 +1,103 @@
+.estado-sistema {
+  list-style: none;
+  margin: 0;
+  padding: 10px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.estado-sistema__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 5px;
+  border-radius: 6px;
+  font-size: var(--fs-xs);
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: default;
+  outline-offset: 1px;
+  transition: background 0.15s;
+}
+
+.estado-sistema__item:hover,
+.estado-sistema__item:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.estado-sistema__punto {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.estado-sistema__corto {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Niveles: en calma discreto, con problemas imposible de ignorar. */
+.estado-sistema__item--ok       { color: rgba(120, 220, 150, 0.75); }
+.estado-sistema__item--nose     { color: rgba(170, 170, 185, 0.7); }
+.estado-sistema__item--cargando { color: rgba(130, 175, 245, 0.9); }
+.estado-sistema__item--aviso    { color: var(--c-aviso); font-weight: 600; background: rgba(255, 169, 77, 0.10); }
+.estado-sistema__item--error    { color: var(--c-error); font-weight: 600; background: rgba(255, 107, 107, 0.12); }
+
+.estado-sistema__item--aviso .estado-sistema__punto,
+.estado-sistema__item--error .estado-sistema__punto,
+.estado-sistema__item--cargando .estado-sistema__punto {
+  animation: estado-latido 1.2s ease-in-out infinite;
+}
+
+@keyframes estado-latido {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.2; }
+}
+
+/* ── Detalle: globo a la derecha del sidebar ── */
+.estado-sistema__tip {
+  position: absolute;
+  left: calc(100% + 14px);
+  bottom: -4px;
+  z-index: 200;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radio);
+  background: #0d0a33;
+  border: 1px solid var(--c-borde-panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  color: var(--c-texto-2);
+  font-size: var(--fs-xs);
+  font-weight: normal;
+  line-height: 1.45;
+  white-space: normal;
+  opacity: 0;
+  transform: translateX(-4px);
+  pointer-events: none;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.estado-sistema__tip strong {
+  color: var(--c-texto);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.estado-sistema__item:hover .estado-sistema__tip,
+.estado-sistema__item:focus-visible .estado-sistema__tip {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .estado-sistema__punto { animation: none !important; }
+  .estado-sistema__tip { transition: none; }
+}

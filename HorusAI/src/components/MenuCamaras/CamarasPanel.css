@@ -1,16 +1,20 @@
 
 .camaras-panel {
   position: relative;
-  width: 22vw;
+  /* 16/11: misma caja para los tres paneles (ver Dashboard.css). El ancho
+     lo da el contenedor animado: var(--panel-ancho), un poco más que el
+     22vw de antes, que en 1366 px dejaba 300 px para listas con 3 botones. */
+  width: var(--panel-ancho);
   height: 100vh;
-  background: #090326;
-  border: 7px solid rgba(26, 63, 142, 0.78);
-  border-radius: 0 12px 12px 0;
-  padding: 3vh 1vw;
+  background: var(--c-panel);
+  border: 6px solid var(--c-borde-panel);
+  border-left: none;
+  border-radius: 0 14px 14px 0;
+  padding: var(--panel-pad) 18px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 4vh;
+  gap: 16px;
   flex-shrink: 0;
   animation: camaras-panel-entrada 0.28s ease-out both;
 }
@@ -38,14 +42,12 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding-right: 2px;
+  gap: var(--gap-lista);
+  padding-right: 4px;
+  min-height: 0;
 }
 
-/* Scrollbar sutil */
-.camaras-panel__lista::-webkit-scrollbar { width: 4px; }
-.camaras-panel__lista::-webkit-scrollbar-track { background: transparent; }
-.camaras-panel__lista::-webkit-scrollbar-thumb { background: rgba(255,132,39,0.3); border-radius: 4px; }
+/* (la scrollbar ahora es global: App.css) */
 
 /* Botón de acción principal (placeholder) */
 .camaras-panel__action-btn {
@@ -71,12 +73,16 @@
 
 .camaras-panel__pending{
   text-align: center;
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 18px;
+  color: var(--c-texto-3);
+  font-size: var(--fs-md);
 }
 
 .camaras-panel__vacio {
-  color: #fff;
+  margin: 24px 0 0;
+  text-align: center;
+  color: var(--c-texto-3);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
 }
 
 .camaras-panel__camara-row {
@@ -106,7 +112,7 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   padding: 5px 12px;
   cursor: pointer;
   transition: border-color 0.15s;
@@ -119,7 +125,7 @@
   border: none;
   border-radius: 8px;
   color: #fff;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   padding: 5px 12px;
   cursor: pointer;

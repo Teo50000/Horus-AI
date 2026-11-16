@@ -30,6 +30,20 @@
       "bytes": 1392325,
       "sha256": "e5f7daab9ff30364e603aa76bbeeecca3bc518085db1458e269ec2167966a697",
       "para": "desmayos y caidas (ST-GCN, ensamble de 3 semillas)"
+    },
+    "yolo_personas": {
+      "ruta": "horus/04_cabezas/objetos/modelos/yolo11n.pt",
+      "bytes": 5613764,
+      "sha256": "0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1",
+      "para": "personas, cuchillos y celulares (YOLO11n de COCO): cajas de persona bien encuadradas",
+      "opcional": true
+    },
+    "yolo_horus": {
+      "ruta": "horus/04_cabezas/objetos/modelos/horus_yolo4.pt",
+      "bytes": 5467994,
+      "sha256": "3f553e42367ebfc176974e0001f26899680a3702fa9eca0789bda7b57a2d31cf",
+      "para": "pistola, humo, llama y paquete (YOLO11 reentrenado); reemplaza a la cabeza propia",
+      "opcional": true
     }
   }
 }

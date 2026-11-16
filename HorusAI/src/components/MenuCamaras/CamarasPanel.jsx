@@ -7,6 +7,7 @@ import RemoveButton from "../RemoveButton/RemoveButton";
 import PreviewModal from "./PreviewModal/PreviewModal";
 import CreacionModal from "./Creacionmodal/CreacionModal";
 import CloseButton from "../CloseButton/CloseButton";
+import SkeletonLista from "../Skeleton/SkeletonLista";
 import { useCamaras } from "./useCamaras";
 import "./CamarasPanel.css";
 
@@ -45,6 +46,8 @@ export default function CamarasPanel({ onClose, onPinearCamara, onPinearSector }
       <div className="camaras-panel" role="region" aria-label="Cámaras">
         <CloseButton onClick={onClose} />
 
+        <h2 className="panel-titulo">Cámaras</h2>
+
         <SearchBar
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -53,9 +56,13 @@ export default function CamarasPanel({ onClose, onPinearCamara, onPinearSector }
 
         <div className="camaras-panel__lista">
           {cargando ? (
-            <p className="camaras-panel__cargando">Cargando cámaras...</p>
+            <SkeletonLista filas={4} texto="Cargando cámaras" />
           ) : items.length === 0 ? (
-            <p className="camaras-panel__vacio">No hay cámaras configuradas.</p>
+            <p className="camaras-panel__vacio">
+              {query.trim()
+                ? "Ninguna cámara coincide con la búsqueda."
+                : "Todavía no hay cámaras. Agregá una con el botón +."}
+            </p>
           ) : (
             items.map((item) =>
               item.tipo === "sector" ? (

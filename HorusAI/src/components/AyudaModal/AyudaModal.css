@@ -1,0 +1,114 @@
+.ayuda-modal__fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(2, 2, 12, 0.7);
+  backdrop-filter: blur(3px);
+  animation: ayuda-fade 0.18s ease-out both;
+}
+
+.ayuda-modal {
+  width: min(560px, 100%);
+  max-height: min(80vh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: var(--c-panel);
+  border: 1px solid var(--c-borde-panel);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  animation: ayuda-sube 0.22s ease-out both;
+}
+
+.ayuda-modal__cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--c-borde-sutil);
+}
+
+.ayuda-modal__titulo {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  color: var(--c-texto);
+}
+
+.ayuda-modal__cerrar {
+  width: var(--boton-icono);
+  height: var(--boton-icono);
+  border-radius: 50%;
+  border: 1px solid var(--c-borde-sutil);
+  background: transparent;
+  color: var(--c-texto-2);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.ayuda-modal__cerrar:hover {
+  border-color: var(--c-acento);
+  color: var(--c-acento);
+}
+
+.ayuda-modal__cuerpo {
+  overflow-y: auto;
+  padding: 8px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--c-texto-2);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+}
+
+.ayuda-modal__cuerpo h3 {
+  margin: 12px 0 6px;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--c-acento);
+}
+
+.ayuda-modal__cuerpo p { margin: 0 0 6px; }
+
+.ayuda-modal__cuerpo ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ayuda-modal__cuerpo b { color: var(--c-texto); font-weight: 600; }
+
+.ayuda-modal__leyenda {
+  list-style: none;
+  padding-left: 0 !important;
+}
+
+.ayuda-modal__leyenda li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ayuda-modal__muestra {
+  width: 22px;
+  height: 14px;
+  border: 2px solid;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.ayuda-modal__muestra--fina { border-width: 1px; }
+
+@keyframes ayuda-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ayuda-sube { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ayuda-modal__fondo, .ayuda-modal { animation: none; }
+}

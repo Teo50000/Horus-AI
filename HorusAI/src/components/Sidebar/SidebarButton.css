@@ -1,6 +1,8 @@
 .sidebar-button {
-  /* El truco: width 100% del padre, y se convierte en cuadrado con aspect-ratio */
+  /* Cuadrado con aspect-ratio; con tope para que no crezca en pantallas
+     anchas (antes era el 100% de un sidebar de 7vw). */
   width: 100%;
+  max-width: 52px;
   aspect-ratio: 1;
   height: auto;  /* se ignora por aspect-ratio, pero es bueno para el fallback */
 
@@ -21,6 +23,7 @@
   cursor: pointer;
   padding: 0;
   box-sizing: border-box;
+  transition: background-color 0.15s, box-shadow 0.15s;
 }
 
 .sidebar-button img {

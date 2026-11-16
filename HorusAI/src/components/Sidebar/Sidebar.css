@@ -1,45 +1,62 @@
 .sidebar {
-  /* Ancho fijo pequeño; el padding lateral define el espacio interior */
-  width: 7vw;
+  position: relative;
+  z-index: 30;              /* el globo de estado tiene que pasar por encima del panel */
+  width: var(--sidebar-ancho);
   height: 100vh;
-
-  padding: 1vh 2vw;
+  flex-shrink: 0;
+  padding: 14px 8px;
   box-sizing: border-box;
-
   display: flex;
   flex-direction: column;
-  align-items: stretch;   /* los hijos se estiran al ancho completo */
-  gap: 0;
-
-  background-color: #090326;
+  align-items: stretch;
+  gap: 10px;
+  background-color: var(--c-panel);
 }
 
 /* ── Logo ──────────────────────────────────────────────────── */
 .sidebar-logo {
-  width: 100%;
+  width: 70%;
+  max-width: 48px;
   aspect-ratio: 1;
   display: block;
   flex-shrink: 0;
+  align-self: center;
 }
 
 /* ── Contenedor de botones ─────────────────────────────────── */
 .sidebar-buttons {
-  flex: 1;              /* ocupa todo el espacio entre logo y ayuda */
+  flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  justify-content: center;   /* centra verticalmente el grupo de botones */
-  gap: clamp(12px, 3vh, 40px);  /* gap responsive */
+  align-items: center;
+  justify-content: center;
+  gap: clamp(12px, 3vh, 32px);
   padding: 2vh 0;
 }
 
-/* ── Ayuda ─────────────────────────────────────────────────── */
+/* ── Ayuda: ícono de pregunta ──────────────────────────────── */
 .help-button {
-  background: transparent;
-  border: none;
-  color: #ff8427;
-  font-size: 12px;
-  cursor: pointer;
+  align-self: center;
+  width: 34px;
+  height: 34px;
   flex-shrink: 0;
-  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--c-acento);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.help-button svg {
+  width: 100%;
+  height: 100%;
+}
+
+.help-button:hover {
+  background: var(--c-acento-suave);
 }

@@ -82,6 +82,7 @@ from tracker_local import (  # noqa: E402
     ConfigTracker, TrackerMultiCamara, config_motor_para_tracking,
 )
 from tracker_global import ConfigGlobal, TrackerGlobal  # noqa: E402
+from guarda_armas import GuardaArmas  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -102,7 +103,8 @@ class PipelineHorus:
                  detector_agresion: Any = None,
                  detector_caidas: Any = None,
                  device: Optional[str] = None,
-                 verboso: bool = True) -> None:
+                 verboso: bool = True,
+                 guarda_armas: Any = True) -> None:
         if isinstance(topologia, str):
             topologia = Topologia.cargar(topologia)
         self.topo: Optional[Topologia] = topologia
@@ -139,6 +141,13 @@ class PipelineHorus:
         # defecto, y cuando está se declara por estar INSTALADA. Los pesos son
         # un ST-GCN de 103.074 parámetros sobre los 33 puntos de MediaPipe.
         self.caidas = self._crear_caidas(detector_caidas)
+
+        # 16/11: filtro de falsos positivos de pistola/cuchillo (luces del
+        # techo, reflejos, brillos). Ver 04_cabezas/objetos/guarda_armas.py.
+        # True = la de por defecto; False/None = sin guarda (pruebas).
+        if guarda_armas is True:
+            guarda_armas = GuardaArmas()
+        self.guarda_armas = guarda_armas or None
 
         self.frames = 0
         self.latencias: List[float] = []
@@ -228,6 +237,18 @@ class PipelineHorus:
                                                   camera_ids=cams)
         else:
             resultados = [None] * len(cams)
+
+        # 1.a Guarda de armas: antes del tracker, para que un brillo nunca
+        #     llegue a nacer como track de "cuchillo". Necesita el cuadro
+        #     (mira la fotometría de la caja), por eso va acá y no en el motor.
+        if self.guarda_armas is not None:
+            for cam, r in zip(cams, resultados):
+                if r is None:
+                    continue
+                r.detections = self.guarda_armas.filtrar(
+                    cam, frames[cam], getattr(r, "detections", []) or [], ts)
+                if getattr(r, "detecciones_crudas", None) is not None:
+                    r.detecciones_crudas = r.detections
 
         # 1.b Segmentación — también batcheada, y también antes de la fusión.
         seg = dict(seg or {})
@@ -320,6 +341,14 @@ class PipelineHorus:
             if hay_reid:
                 cabezas.add(CABEZA_REID)
 
+            # 16/11: el humo de la máscara que cae ENCIMA de una persona
+            # confirmada no cuenta (piel, pelo y desenfoque de movimiento
+            # salían "humo"). El fuego sí: una persona en llamas es lo más
+            # grave que puede pasar.
+            if sr is not None:
+                sr = self._seg_sin_personas(sr, tracks, tam)
+                seg[cam] = sr
+
             observaciones.append(ObservacionCamara(
                 camera_id=cam,
                 frame_idx=res.frame_idx if res is not None else self.frames,
@@ -341,6 +370,54 @@ class PipelineHorus:
         if len(self.latencias) > 600:
             del self.latencias[:300]
         return eventos
+
+    # ------------------------------------------------------------------ #
+    _CLASES_SEG_SIN_PERSONAS = ("humo",)
+
+    def _seg_sin_personas(self, sr: Any, tracks: Sequence[Any],
+                          tam: Tuple[int, int]) -> Any:
+        """Recalcula el área de humo sin los píxeles que caen dentro de las
+        personas confirmadas y visibles. Devuelve una COPIA de `sr` (la
+        máscara no se toca: el dibujo la sigue mostrando entera)."""
+        area = dict(getattr(sr, "area", {}) or {})
+        if not any(c in area for c in self._CLASES_SEG_SIN_PERSONAS):
+            return sr
+        personas = [t.bbox_xyxy for t in tracks
+                    if t.clase == "persona" and t.frames_sin_ver == 0
+                    and t.estado != "tentativo"]
+        mask = getattr(sr, "mask", None)
+        clases = list(getattr(self.segmentacion, "clases", ()) or ())
+        if not personas or mask is None or not clases:
+            return sr
+        try:
+            m = mask.cpu().numpy() if hasattr(mask, "cpu") else np.asarray(mask)
+            mh, mw = m.shape[:2]
+            alto, ancho = (tam if tam and tam[0] else (mh, mw))
+            fuera = np.ones((mh, mw), dtype=bool)
+            for x1, y1, x2, y2 in personas:
+                bw, bh = (x2 - x1) * 0.05, (y2 - y1) * 0.05
+                a = int(max(0, (x1 - bw) * mw / ancho))
+                b = int(max(0, (y1 - bh) * mh / alto))
+                c = int(min(mw, (x2 + bw) * mw / ancho + 1))
+                d = int(min(mh, (y2 + bh) * mh / alto + 1))
+                fuera[b:d, a:c] = False
+            head = getattr(self.segmentacion, "head", None)
+            for clase in self._CLASES_SEG_SIN_PERSONAS:
+                if clase not in area or clase not in clases:
+                    continue
+                k = clases.index(clase)
+                frac = float(((m == k) & fuera).sum()) / float(max(m.size, 1))
+                umbral = float(head.umbral(k)) if head is not None else 0.0
+                if frac < umbral or frac <= 0.0:
+                    area.pop(clase, None)
+                else:
+                    area[clase] = frac
+        except Exception:                                # noqa: BLE001
+            return sr
+        import copy as _copy
+        nuevo = _copy.copy(sr)
+        nuevo.area = area
+        return nuevo
 
     # ------------------------------------------------------------------ #
     @property

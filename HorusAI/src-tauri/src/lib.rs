@@ -117,6 +117,11 @@ struct InfoModelo {
     ruta: String,
     bytes: u64,
     sha256: String,
+    /// 16/11: un modelo opcional que no se puede bajar (todavía no subido al
+    /// bucket, sin internet) se avisa y se sigue. Los YOLO van así: sin
+    /// ellos el servicio usa la cabeza propia, peor pero funcional.
+    #[serde(default)]
+    opcional: bool,
 }
 
 impl Estado {
@@ -723,10 +728,29 @@ fn preparar_modelos(est: &Estado) -> Result<(), String> {
         .map_err(|e| format!("no pude preparar la conexión: {e}"))?;
 
     for (nombre, info) in manifiesto.pesos {
+        match bajar_modelo(est, &cliente, &raiz, &nombre, &info) {
+            Ok(()) => {}
+            Err(e) if info.opcional => {
+                est.linea(format!("Modelo {nombre} (opcional) no disponible: {e}. Sigo sin él."));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
+}
+
+fn bajar_modelo(
+    est: &Estado,
+    cliente: &reqwest::blocking::Client,
+    raiz: &Path,
+    nombre: &str,
+    info: &InfoModelo,
+) -> Result<(), String> {
+    {
         let destino = raiz.join(&info.ruta);
-        if modelo_valido(&destino, &info) {
+        if modelo_valido(&destino, info) {
             est.linea(format!("Modelo {nombre}: ya estaba verificado."));
-            continue;
+            return Ok(());
         }
         let parent = destino
             .parent()

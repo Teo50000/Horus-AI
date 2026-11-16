@@ -35,7 +35,7 @@
   background: transparent;
   border: none;
   color: #FFFFFF;
-  font-size: 13px;
+  font-size: var(--fs-md);
   padding: 6px 0 10px;
   cursor: pointer;
   transition: color 0.15s;
@@ -76,7 +76,7 @@
   padding: 12px 10px;
   border: 1px solid rgba(255, 255, 255, 0.68);
   color: rgba(255, 255, 255, 1);
-  font-size: 13px;
+  font-size: var(--fs-md);
   outline: none;
 }
 .creacion-modal__nombre-input:focus {
@@ -85,7 +85,7 @@
 
 /* ── Subtítulo (modo agregar a sector) ── */
 .creacion-modal__subtitulo {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: rgba(255, 255, 255, 0.55);
   margin: 0;
 }
@@ -137,7 +137,7 @@
 }
 
 .creacion-modal__row-nombre {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: rgba(255, 255, 255, 0.8);
   flex: 1;
   white-space: nowrap;
@@ -181,7 +181,7 @@
 
 /* ── Empty state ── */
 .creacion-modal__empty {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: rgba(255, 255, 255, 0.3);
   text-align: center;
   padding: 12px 0;
@@ -200,7 +200,7 @@
   padding: 8px 20px;
   border-radius: 8px;
   border: none;
-  font-size: 13px;
+  font-size: var(--fs-md);
   cursor: pointer;
   transition: opacity 0.15s;
 }
@@ -236,17 +236,17 @@
   gap: 8px;
   padding: 16px 12px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: rgba(255, 255, 255, 0.55);
 }
 
 .creacion-modal__motivo {
   color: #ff6b6b;
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .creacion-modal__ayuda {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   line-height: 1.5;
   color: rgba(255, 255, 255, 0.4);
 }
@@ -273,7 +273,7 @@
   background: transparent;
   border: none;
   color: rgba(255, 255, 255, 0.35);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   padding: 5px 0 8px;
   cursor: pointer;
   position: relative;
@@ -309,7 +309,7 @@
   border: 1px solid rgba(80, 100, 255, 0.3);
   border-radius: 8px;
   color: #fff;
-  font-size: 13px;
+  font-size: var(--fs-md);
   padding: 8px 12px;
   box-sizing: border-box;
   outline: none;
@@ -330,7 +330,7 @@
   border: 1px solid rgba(80, 100, 255, 0.3);
   border-radius: 8px;
   color: #fff;
-  font-size: 13px;
+  font-size: var(--fs-md);
   padding: 8px 12px;
   box-sizing: border-box;
   outline: none;

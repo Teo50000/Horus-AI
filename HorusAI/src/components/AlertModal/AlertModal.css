@@ -38,7 +38,7 @@
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: transparent;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -67,7 +67,7 @@
 
 /* ── Textos ── */
 .alert-modal__label {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.45);
@@ -100,12 +100,12 @@
 }
 
 .alert-modal__fila-label {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: rgba(255, 255, 255, 0.45);
 }
 
 .alert-modal__fila-valor {
-  font-size: 13px;
+  font-size: var(--fs-md);
   color: #fff;
 }
 
@@ -116,7 +116,7 @@
   border: none;
   border-radius: 8px;
   color: #fff;
-  font-size: 13px;
+  font-size: var(--fs-md);
   font-weight: 600;
   padding: 9px 0;
   cursor: pointer;

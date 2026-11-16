@@ -58,6 +58,17 @@ PESOS = [
     # si es lo unico que hay, asi una instalacion vieja no se rompe.
     ("caidas",       "horus/fall/checkpoints/modelo_caidas_ens3.pt",
      "desmayos y caidas (ST-GCN, ensamble de 3 semillas)"),
+    # 16/11: los YOLO. Sin ellos la app instalada usaba la cabeza propia para
+    # TODO (personas mal encuadradas, cuchillos en las luces). Van como
+    # OPCIONALES: si todavia no estan subidos al bucket, la app arranca igual
+    # (con la cabeza propia) en vez de quedarse en "No pude preparar los
+    # modelos".
+    ("yolo_personas", "horus/04_cabezas/objetos/modelos/yolo11n.pt",
+     "personas, cuchillos y celulares (YOLO11n de COCO): cajas de persona bien encuadradas",
+     True),
+    ("yolo_horus",   "horus/04_cabezas/objetos/modelos/horus_yolo4.pt",
+     "pistola, humo, llama y paquete (YOLO11 reentrenado); reemplaza a la cabeza propia",
+     True),
 ]
 
 
@@ -76,7 +87,8 @@ def generar() -> int:
                        "correcta."),
               "pesos": {}}
     faltan = []
-    for nombre, rel, qué in PESOS:
+    for nombre, rel, qué, *resto in PESOS:
+        opcional = bool(resto and resto[0])
         ruta = os.path.join(RAIZ, rel)
         if not os.path.exists(ruta):
             faltan.append(rel)
@@ -86,6 +98,8 @@ def generar() -> int:
         print("  ...    %-14s %6.1f MB  calculando huella" % (nombre, tam / 1048576))
         salida["pesos"][nombre] = {"ruta": rel, "bytes": tam,
                                    "sha256": sha256(ruta), "para": qué}
+        if opcional:
+            salida["pesos"][nombre]["opcional"] = True
         print("  OK     %-14s %6.1f MB  %s" % (nombre, tam / 1048576,
                                                salida["pesos"][nombre]["sha256"][:16]))
     with open(MANIFIESTO, "w", encoding="utf-8", newline="\n") as fh:
@@ -112,6 +126,9 @@ def verificar(rapido: bool = False) -> int:
     for nombre, info in datos["pesos"].items():
         ruta = os.path.join(RAIZ, info["ruta"])
         if not os.path.exists(ruta):
+            if info.get("opcional"):
+                print("  (falta)   %-14s %s  [opcional]" % (nombre, info["ruta"]))
+                continue
             print("  FALTA     %-14s %s" % (nombre, info["ruta"]))
             problemas += 1
             continue

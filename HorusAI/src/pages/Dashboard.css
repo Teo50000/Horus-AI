@@ -1,9 +1,3 @@
-.dashboard {
-  display: flex;
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-}
 body {
   margin: 0;
   padding: 0;
@@ -17,136 +11,53 @@ body,
   height: 100%;
 }
 
-.dashboard-main {
-  flex: 1;
+.dashboard {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
   overflow: hidden;
+  background: var(--c-fondo);
 }
 
-/* --- estado de la conexion con el backend ------------------------------
-   Ver el comentario en Dashboard.jsx: cuando el websocket se cae, el panel
-   no tiene forma de distinguirse de uno donde simplemente no pasa nada. */
-.dashboard__conexion {
-  position: fixed;
-  top: 10px;
-  right: 14px;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  pointer-events: none;
-  user-select: none;
+/* ─── Menú desplegable ────────────────────────────────────────────────
+   16/11: antes el panel aparecía y la grilla saltaba de tamaño de golpe (y
+   al cerrar desaparecía sin transición). Ahora se anima el ANCHO del
+   contenedor: la grilla, que vive al lado en el mismo flex, se achica en
+   continuado. El panel en sí tiene ancho fijo y queda pegado a la derecha
+   del contenedor, así se ve "salir" de atrás del sidebar. */
+.dashboard__panel {
+  position: relative;
+  z-index: 20;
+  flex-shrink: 0;
+  width: 0;
+  height: 100vh;
+  overflow: clip;
+  /* el botón de cerrar sobresale media pestaña del borde del panel */
+  overflow-clip-margin: 22px;
+  transition: width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.dashboard__conexion-punto {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
+.dashboard__panel--abierto {
+  width: var(--panel-ancho);
 }
 
-.dashboard__conexion--ok {
-  color: rgba(120, 220, 150, 0.55);
-  background: rgba(120, 220, 150, 0.08);
+.dashboard__panel-interior {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--panel-ancho);
+  height: 100%;
 }
 
-.dashboard__conexion--caida {
-  color: #ff6b6b;
-  background: rgba(255, 107, 107, 0.12);
-  font-weight: 600;
+/* Los tres paneles comparten la misma caja (antes cada uno tenía su ancho,
+   su padding y su animación). */
+.dashboard__panel-interior > .camaras-panel,
+.dashboard__panel-interior > .historial-panel,
+.dashboard__panel-interior > .ajustes-panel {
+  width: 100%;
+  animation: none;
 }
 
-/* Parpadea: si nadie esta mirando las alertas, que se note. */
-.dashboard__conexion--caida .dashboard__conexion-punto {
-  animation: dashboard-latido 1.1s ease-in-out infinite;
-}
-
-@keyframes dashboard-latido {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.15; }
-}
-
-/* --- estado del servicio de modelos -----------------------------------
-   Ver el comentario en Dashboard.jsx: que las cámaras se vean no quiere
-   decir que algo las esté mirando. */
-.dashboard__modelos {
-  position: fixed;
-  top: 38px;
-  right: 14px;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  pointer-events: none;
-  user-select: none;
-}
-
-.dashboard__modelos--ok {
-  color: rgba(120, 220, 150, 0.55);
-  background: rgba(120, 220, 150, 0.08);
-}
-
-.dashboard__modelos--no {
-  color: #ffa94d;
-  background: rgba(255, 169, 77, 0.12);
-  font-weight: 600;
-}
-
-/* Todavía subiendo los modelos: ni verde (no está listo) ni rojo (no está
-   roto). Ver el comentario en servicio.py sobre por qué el servidor de
-   estado arranca antes que los modelos. */
-.dashboard__modelos--cargando {
-  color: rgba(120, 170, 240, 0.8);
-  background: rgba(120, 170, 240, 0.12);
-}
-
-.dashboard__modelos--cargando .dashboard__conexion-punto {
-  animation: dashboard-latido 1.6s ease-in-out infinite;
-}
-
-/* Modelos cargados pero sin ninguna cámara llegándoles. No es verde: no
-   están mirando nada. Ver el comentario en Dashboard.jsx. */
-.dashboard__modelos--sin-camaras {
-  color: #ffa94d;
-  background: rgba(255, 169, 77, 0.12);
-  font-weight: 600;
-}
-
-/* El aviso por mail. Tercer canal, mismo criterio que los otros dos: un canal
-   apagado tiene que decir que esta apagado. Se ubica debajo del de modelos. */
-.dashboard__mail {
-  position: fixed;
-  top: 66px;
-  right: 14px;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  pointer-events: none;
-  user-select: none;
-}
-
-/* Naranja y no rojo: las alertas SI se estan guardando y viendo. Lo que no
-   sale es el mail. */
-.dashboard__mail--no {
-  color: #ffa94d;
-  background: rgba(255, 169, 77, 0.12);
-  font-weight: 600;
-}
-
-/* Todavia no se sabe. No es verde: no preguntamos todavia. */
-.dashboard__mail--nose {
-  color: rgba(160, 160, 170, 0.75);
-  background: rgba(160, 160, 170, 0.10);
+@media (prefers-reduced-motion: reduce) {
+  .dashboard__panel { transition: none; }
 }

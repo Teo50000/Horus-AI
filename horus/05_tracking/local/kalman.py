@@ -79,9 +79,15 @@ class FiltroKalman:
                  cov: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Un frame hacia adelante. Se llama SIEMPRE, haya o no detección."""
         h = max(float(media[3]), 1e-3)
+        # 16/11: el aspecto tenía ruido de proceso 1e-2 contra 1e-1 de
+        # medición (el default de ByteTrack, pensado para 30 FPS). A 3-4 FPS
+        # una persona que se agacha o gira cambia mucho de aspecto entre
+        # cuadros y el filtro casi no lo seguía: predicciones con el ancho
+        # viejo, peor IoU, tracks que se cortan. Ahora confía parecido en los
+        # dos.
         std = np.array([
-            self.peso_pos * h, self.peso_pos * h, 1e-2, self.peso_pos * h,
-            self.peso_vel * h, self.peso_vel * h, 1e-5, self.peso_vel * h,
+            self.peso_pos * h, self.peso_pos * h, 3e-2, self.peso_pos * h,
+            self.peso_vel * h, self.peso_vel * h, 1e-3, self.peso_vel * h,
         ])
         Q = np.diag(np.square(std))
 
@@ -94,7 +100,7 @@ class FiltroKalman:
         """Estado -> espacio de medición, con el ruido del detector encima."""
         h = max(float(media[3]), 1e-3)
         std = np.array([
-            self.peso_pos * h, self.peso_pos * h, 1e-1, self.peso_pos * h,
+            self.peso_pos * h, self.peso_pos * h, 4e-2, self.peso_pos * h,
         ])
         R = np.diag(np.square(std))
         return self._H @ media, self._H @ cov @ self._H.T + R

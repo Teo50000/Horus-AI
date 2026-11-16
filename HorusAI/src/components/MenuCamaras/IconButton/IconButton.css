@@ -1,5 +1,6 @@
 .icon-button {
-  width: 1.5vw;
+  /* 16/11: era 1.5vw (16 px en una notebook, 29 en un monitor 2K). */
+  width: var(--boton-icono);
   aspect-ratio: 1;
   flex-shrink: 0;
 

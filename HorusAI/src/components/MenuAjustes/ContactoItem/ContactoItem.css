@@ -15,7 +15,7 @@
 }
 
 .contacto-item__label {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: rgba(255, 255, 255, 0.55);
 }
 
@@ -25,7 +25,7 @@
   border: 1px solid rgba(80, 100, 255, 0.3);
   border-radius: 8px;
   color: #fff;
-  font-size: 13px;
+  font-size: var(--fs-md);
   padding: 8px 12px;
   box-sizing: border-box;
   outline: none;
@@ -33,7 +33,7 @@
 }
 
 .contacto-item__input--nombre {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   padding: 4px 8px;
   width: 100%;
   flex: 1;

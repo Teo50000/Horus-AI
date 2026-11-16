@@ -730,6 +730,56 @@ def caso_caida_en_cama() -> Tuple[bool, str, List[Any]]:
         f"en la cama: {en_cama} caídas · en el piso: {en_piso}"), []
 
 
+# --------------------------------------------------------------------------- #
+# 16/11 — falsos positivos vistos en la prueba del aula
+# --------------------------------------------------------------------------- #
+def caso_humo_parpadeo() -> Tuple[bool, str, List[Any]]:
+    """Humo de segmentación que aparece UN cuadro cada tanto (una cara movida,
+    una pared clara): no es un incendio. Antes daba un aviso por cuadro."""
+    pasos = []
+    for i in range(300):                       # 30 s a 10 ticks/s
+        t = DIA + i * 0.1
+        seg = {"humo": 0.035} if i % 25 == 0 else {}
+        pasos.append([obs("cam-porton", t, [], seg=seg,
+                          cabezas=(CABEZA_OBJETOS, CABEZA_SEGMENTACION))])
+    ev, _ = correr(pasos)
+    inc = [e for e in ev if e.tipo == "incendio"]
+    return len(inc) == 0, f"{len(inc)} evento(s) (esperado 0)", ev
+
+
+def caso_humo_sostenido() -> Tuple[bool, str, List[Any]]:
+    """El mismo humo, pero sostenido 5 s: ahí sí avisa (y no antes de 3 s)."""
+    pasos, primero = [], None
+    for i in range(50):
+        t = DIA + i * 0.1
+        pasos.append([obs("cam-porton", t, [], seg={"humo": 0.035},
+                          cabezas=(CABEZA_OBJETOS, CABEZA_SEGMENTACION))])
+    motor = MotorFusion(topologia=TOPO, cfg=ConfigFusion())
+    ev = []
+    for k, grupo in enumerate(pasos):
+        nuevos = [e for e in motor.procesar(grupo) if e.tipo == "incendio"]
+        if nuevos and primero is None:
+            primero = k * 0.1
+        ev.extend(nuevos)
+    ok = bool(ev) and primero is not None and primero >= 2.9
+    return ok, f"avisó a los {primero if primero is not None else '-'} s", ev
+
+
+def caso_arma_reflejo() -> Tuple[bool, str, List[Any]]:
+    """Un "cuchillo" confirmado que dura 0,6 s (un brillo que pasa) no es un
+    arma. La regla pide 1 s sostenido."""
+    pasos = []
+    for i in range(6):
+        t = DIA + i * 0.1
+        pasos.append([obs("cam-deposito", t, [
+            track("persona", (900, 300, 1100, 900), tid=1, ts=t, visto_s=10.0),
+            track("cuchillo", (1000, 320, 1060, 340), tid=2, ts=t,
+                  score=0.62, visto_s=0.1 + i * 0.1)])])
+    ev, _ = correr(pasos)
+    armas = [e for e in ev if e.tipo == "arma"]
+    return len(armas) == 0, f"{len(armas)} evento(s) (esperado 0)", ev
+
+
 CASOS: Dict[str, Callable[[], Tuple[bool, str, List[Any]]]] = {
     "incendio": caso_incendio_confirmado,
     "humo_solo": caso_humo_solo,
@@ -759,6 +809,9 @@ CASOS: Dict[str, Callable[[], Tuple[bool, str, List[Any]]]] = {
     "entre_camaras": caso_seguimiento_entre_camaras,
     "gate_vlm": caso_gate_vlm,
     "vacio": caso_escena_vacia,
+    "humo_parpadeo": caso_humo_parpadeo,
+    "humo_sostenido": caso_humo_sostenido,
+    "arma_reflejo": caso_arma_reflejo,
 }
 
 

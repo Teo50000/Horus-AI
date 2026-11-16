@@ -1,65 +1,130 @@
+import { useState } from "react";
 import VideoStream from "../../VideoStream/VideoStream";
+import { API_URL, SERVICIO_URL } from "../../../config";
 import "./CeldaCamara.css";
 
-const API = "http://localhost:8000";
+// Escalones de ancho que entiende el servicio (servicio.py `_ANCHOS`).
+const ANCHOS = [320, 480, 640, 960, 1280, 1920];
 
-const detenerStream = (camaraId) => {
-  fetch(`${API}/video/stop_feed/${camaraId}`, { method: "POST" })
-    .catch((err) => console.error("Error al detener stream:", err));
-};
+/** El ancho de video que necesita una celda de la grilla 3x3, en píxeles
+ *  físicos. Se calcula UNA vez al montar con la grilla en su tamaño máximo
+ *  (menú cerrado): achicar la celda al abrir el menú no reconecta el video,
+ *  solo lo escala. */
+function anchoParaCelda() {
+  if (typeof window === "undefined") return 640;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const celda = (window.innerWidth * 0.92) / 3;
+  const necesita = celda * dpr;
+  return ANCHOS.find((a) => a >= necesita) ?? 1280;
+}
 
-export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar }) {
-  if (!slot) {
-    return <div className="celda-camara celda-camara--vacia" />;
+/**
+ * De dónde sale el video de una cámara.
+ *
+ * 16/11: la celda le pedía SIEMPRE el video al backend, que para cada stream
+ * preguntaba al servicio su /estado completo (con 3 s de timeout) y recién
+ * después redirigía. Ahora va directo al servicio, que es el que tiene la
+ * cámara abierta, y pide el tamaño justo para la celda. Si el servicio no
+ * está corriendo, cae al video crudo del backend como antes.
+ */
+function urlVideo(camaraId, servicio, ancho) {
+  if (!servicio?.consultado) return null;            // todavía no sé: skeleton
+  if (servicio.activo) {
+    const cam = servicio.camaras?.[camaraId]?.camara ?? `cam-${camaraId}`;
+    return `${SERVICIO_URL}/camaras/${cam}/stream?ancho=${ancho}&g=${servicio.generacion ?? 0}`;
   }
+  return `${API_URL}/video/video_feed/${camaraId}`;
+}
 
-  if (slot.tipo === "camara") {
+// Si el video sale del backend (servicio apagado), el backend tiene la
+// cámara abierta: hay que avisarle que la suelte al sacarla de la grilla.
+function soltarDelBackend(camaraId, servicio) {
+  if (servicio?.activo) return;
+  fetch(`${API_URL}/video/stop_feed/${camaraId}`, { method: "POST" })
+    .catch(() => {});
+}
+
+function avisoDe(camaraId, servicio) {
+  const c = servicio?.activo ? servicio.camaras?.[camaraId] : null;
+  if (!c) return null;
+  if (c.estado === "caida") return "Sin señal · reintentando";
+  return null;
+}
+
+export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar, onAgregar, servicio }) {
+  const [ancho] = useState(anchoParaCelda);
+
+  if (!slot) {
     return (
-      <div className="celda-camara">
-        <VideoStream
-          key={`${slot.id}`}
-          src={`${API}/video/video_feed/${slot.id}?t=${slot.mountKey ?? slot.id}`}
-          alt={slot.nombre}
-        />
-        <span className="celda-camara__nombre">{slot.nombre}</span>
-        <button
-          className="celda-camara__unpin"
-          onClick={() => { detenerStream(slot.id); onVaciar(slotIdx); }}
-          title="Quitar"
-        >✕</button>
-      </div>
+      <button
+        type="button"
+        className="celda-camara celda-camara--vacia"
+        onClick={onAgregar}
+        aria-label="Agregar una cámara a este espacio"
+      >
+        <span className="celda-camara__vacia-mas" aria-hidden="true">+</span>
+        <span className="celda-camara__vacia-texto">Agregar cámara</span>
+      </button>
     );
   }
 
-  // Sector con carrusel
-  const camaraActual = slot.camaras[slot.indice];
-  const hayVarias    = slot.camaras.length > 1;
+  const esSector     = slot.tipo === "sector";
+  const camaraActual = esSector ? slot.camaras[slot.indice] : slot;
+  const hayVarias    = esSector && slot.camaras.length > 1;
+  const conIA        = Boolean(servicio?.activo);
 
   return (
     <div className="celda-camara">
       <VideoStream
-        key={`${slot.id}-${slot.indice}`}
-        src={`${API}/video/video_feed/${camaraActual.id}?t=${Date.now()}`}
+        key={camaraActual.id}
+        src={urlVideo(camaraActual.id, servicio, ancho)}
         alt={camaraActual.nombre}
+        aviso={avisoDe(camaraActual.id, servicio)}
       />
-      <span className="celda-camara__nombre">{camaraActual.nombre}</span>
-      <span className="celda-camara__sector-tag">{slot.nombre}</span>
+
+      <div className="celda-camara__pie">
+        <span className="celda-camara__nombre" title={camaraActual.nombre}>
+          {camaraActual.nombre}
+        </span>
+        {esSector && (
+          <span className="celda-camara__sector-tag">
+            {slot.nombre}{hayVarias ? ` · ${slot.indice + 1}/${slot.camaras.length}` : ""}
+          </span>
+        )}
+      </div>
+
+      {servicio?.consultado && (
+        <span
+          className={`celda-camara__ia ${conIA ? "" : "celda-camara__ia--no"}`}
+          title={conIA
+            ? "Los modelos están analizando esta cámara"
+            : "El servicio de modelos no está corriendo: video sin análisis"}
+        >
+          {conIA ? "IA" : "SIN IA"}
+        </span>
+      )}
 
       <button
+        type="button"
         className="celda-camara__unpin"
-        onClick={() => { detenerStream(camaraActual.id); onVaciar(slotIdx); }}
-        title="Quitar"
+        onClick={() => { soltarDelBackend(camaraActual.id, servicio); onVaciar(slotIdx); }}
+        title="Quitar de la grilla"
+        aria-label={`Quitar ${camaraActual.nombre} de la grilla`}
       >✕</button>
 
       {hayVarias && (
         <>
           <button
+            type="button"
             className="celda-camara__arrow celda-camara__arrow--left"
-            onClick={() => { detenerStream(camaraActual.id); onNavegar(slotIdx, "anterior"); }}
+            onClick={() => { soltarDelBackend(camaraActual.id, servicio); onNavegar(slotIdx, "anterior"); }}
+            aria-label="Cámara anterior del sector"
           >❮</button>
           <button
+            type="button"
             className="celda-camara__arrow celda-camara__arrow--right"
-            onClick={() => { detenerStream(camaraActual.id); onNavegar(slotIdx, "siguiente"); }}
+            onClick={() => { soltarDelBackend(camaraActual.id, servicio); onNavegar(slotIdx, "siguiente"); }}
+            aria-label="Cámara siguiente del sector"
           >❯</button>
         </>
       )}

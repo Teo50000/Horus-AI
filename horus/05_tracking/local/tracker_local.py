@@ -144,9 +144,13 @@ class ParametrosClase:
 #   persona   iou_alto bajo (0.25) porque se mueve rápido y la predicción no
 #             es perfecta; confirmación corta porque perder una persona en un
 #             robo cuesta más que dibujar una caja de más.
-#   pistola   confirmación cortísima: es la clase donde la latencia mata. Y
-#   cuchillo  el dataset no las tiene desplegables todavía, así que igual las
-#             verifica el VLM aguas abajo — acá conviene ser permisivo.
+#   pistola   16/11: antes confirmaban en 0,20 s con score 0,35 ("acá conviene
+#   cuchillo  ser permisivo, lo verifica el VLM"). Pero el VLM no está
+#             desplegado: lo permisivo llegaba derecho a la alerta, y un
+#             brillo del techo era "Arma" en segundos. Ahora nacen con 0,50 /
+#             0,55 y confirman en 0,5 s; además la guarda de armas
+#             (04_cabezas/objetos/guarda_armas.py) descarta luces y reflejos
+#             antes de que lleguen acá.
 #   humo      SIN Kalman: el humo no se traslada, se expande. Un modelo de
 #             velocidad constante pelea contra eso y empeora la predicción.
 #             iou_alto 0.10 porque la caja de humo cambia de forma sola.
@@ -164,14 +168,14 @@ PARAMETROS_POR_CLASE: Dict[str, ParametrosClase] = {
         dedup_iou=0.60, dedup_contencion=0.85,
         nacer_iou_max=0.55, nacer_contencion_max=0.85),
     "pistola": ParametrosClase(
-        ventana_s=1.0, confirmar_s=0.20, iou_alto=0.20, iou_bajo=0.40,
-        score_alto=0.35, score_bajo=0.15, kalman=True,
+        ventana_s=1.0, confirmar_s=0.50, iou_alto=0.20, iou_bajo=0.40,
+        score_alto=0.50, score_bajo=0.25, kalman=True,
         buffer_recuperacion=1.0, iou_recuperacion=0.20,
         dedup_iou=0.60, dedup_contencion=0.85,
         nacer_iou_max=0.55, nacer_contencion_max=0.85),
     "cuchillo": ParametrosClase(
-        ventana_s=1.0, confirmar_s=0.20, iou_alto=0.20, iou_bajo=0.40,
-        score_alto=0.35, score_bajo=0.15, kalman=True,
+        ventana_s=1.0, confirmar_s=0.50, iou_alto=0.20, iou_bajo=0.40,
+        score_alto=0.55, score_bajo=0.30, kalman=True,
         buffer_recuperacion=1.0, iou_recuperacion=0.20,
         dedup_iou=0.60, dedup_contencion=0.85,
         nacer_iou_max=0.55, nacer_contencion_max=0.85),
@@ -397,9 +401,16 @@ class _Track:
         if self.kf is not None and self.media is not None:
             self.media, self.cov = self.kf.corregir(
                 self.media, self.cov, xyxy_a_cxcyah(caja))
-            self.caja = np.asarray(cxcyah_a_xyxy(self.media), dtype=np.float64)
-        else:
-            self.caja = caja
+        # 16/11 — "marca a la persona pero el recuadro no está bien
+        # encuadrado". Acá se publicaba el estado del Kalman, no la caja
+        # medida. Ese estado es un promedio entre la predicción y la medición,
+        # y en el aspecto (ancho/alto) confiaba 10 veces más en la predicción:
+        # a los 3-4 ticks/s del servicio en CPU la caja quedaba corrida hacia
+        # donde la persona ESTABA y con el ancho de cuando nació el track.
+        # El Kalman sigue haciendo su trabajo —predecir para asociar y cubrir
+        # oclusiones—, pero cuando hay medición se publica la medición: es lo
+        # que el detector vio en ESTE cuadro.
+        self.caja = caja
 
         self.score = float(score)
         self.hits += 1

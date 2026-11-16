@@ -4,6 +4,7 @@ import FilterButtons from "./FilterButtons/FilterButtons";
 import EventoItem from "./EventoItem/EventoItem";
 import VisorEvidencia from "./VisorEvidencia/VisorEvidencia";
 import CloseButton from "../CloseButton/CloseButton";
+import SkeletonLista from "../Skeleton/SkeletonLista";
 import { TIPOS_EVENTO } from "./useHistorial";
 import "./HistorialPanel.css";
 
@@ -36,6 +37,8 @@ export default function HistorialPanel({
     <div className="historial-panel" role="region" aria-label="Historial">
 
       <CloseButton onClick={onClose} />
+
+      <h2 className="panel-titulo">Historial</h2>
 
       <SearchBar
         value={query}
@@ -81,7 +84,7 @@ export default function HistorialPanel({
           )}
         </p>
       ) : cargando ? (
-        <p className="historial-panel__empty">Cargando historial...</p>
+        <SkeletonLista filas={6} alto={46} texto="Cargando historial" />
       ) : hayFiltro ? (
         <p className="historial-panel__empty">Sin resultados para esta busqueda.</p>
       ) : (

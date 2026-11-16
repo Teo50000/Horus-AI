@@ -6,6 +6,44 @@
   font-display: swap;
 }
 
+/* ─── Tokens de diseño ─────────────────────────────────────────────────
+   16/11: había diez tamaños de letra distintos (10, 11, 12, 13, 15, 16, 18,
+   20, 26 y 28 px) repartidos sin criterio entre los paneles: el título de
+   Ajustes era más grande que el de un sector, el nombre de una cámara más
+   chico que el de un contacto. Ahora hay una escala y todo la usa. */
+:root {
+  /* tipografía */
+  --fs-xs: 11px;    /* metadatos, chips, etiquetas sobre video */
+  --fs-sm: 12px;    /* texto de items y botones */
+  --fs-md: 13px;    /* inputs, nombres destacados */
+  --fs-lg: 14px;    /* títulos de sección */
+  --fs-xl: 16px;    /* títulos de modal */
+
+  /* color */
+  --c-fondo: #000;
+  --c-panel: #090326;
+  --c-borde-panel: rgba(26, 63, 142, 0.78);
+  --c-item: rgba(26, 63, 142, 0.55);
+  --c-item-hover: rgba(26, 63, 142, 0.85);
+  --c-borde-sutil: rgba(255, 255, 255, 0.12);
+  --c-acento: #ff8427;
+  --c-acento-suave: rgba(255, 132, 39, 0.18);
+  --c-texto: #fff;
+  --c-texto-2: rgba(255, 255, 255, 0.72);
+  --c-texto-3: rgba(255, 255, 255, 0.45);
+  --c-ok: #78dc96;
+  --c-aviso: #ffa94d;
+  --c-error: #ff6b6b;
+
+  /* medidas */
+  --sidebar-ancho: clamp(84px, 6.6vw, 108px);
+  --panel-ancho: clamp(300px, 26vw, 440px);
+  --panel-pad: 20px;
+  --radio: 8px;
+  --gap-lista: 8px;
+  --boton-icono: 26px;
+}
+
 html,
 body,
 #root {
@@ -14,13 +52,122 @@ body,
   font-family: 'LTWaveMono', monospace;
 }
 
+body {
+  background: var(--c-fondo);
+  color: var(--c-texto);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+/* Foco visible para teclado (y solo para teclado). */
+:focus-visible {
+  outline: 2px solid var(--c-acento);
+  outline-offset: 2px;
+}
+
 .app {
   width: 100vw;
   height: 100vh;
-
   display: flex;
   justify-content: center;
   align-items: center;
-
   background: black;
+}
+
+/* ─── Scrollbars ───────────────────────────────────────────────────────
+   16/11: solo dos de las listas tenían estilo; el historial mostraba la
+   barra gris de Windows sobre el panel azul. Ahora es una sola regla.
+   Ojo: NO usar `scrollbar-width`/`scrollbar-color` acá. En Chromium (el
+   WebView2 de Tauri) las propiedades estándar desactivan los estilos
+   ::-webkit-scrollbar y vuelven las flechitas de Windows en las puntas. */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 132, 39, 0.35);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 132, 39, 0.7);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* ─── Skeleton loader ──────────────────────────────────────────────────
+   Para todo lo que tarda en llegar (video de una cámara, listas del
+   backend): que se vea que la app está trabajando, con la forma de lo que
+   va a aparecer, en vez de un hueco o un "Cargando..." suelto. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(80, 100, 255, 0.08);
+  border-radius: var(--radio);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(140, 160, 255, 0.10) 40%,
+    rgba(255, 132, 39, 0.10) 55%,
+    transparent 100%
+  );
+  animation: skeleton-brillo 1.4s ease-in-out infinite;
+}
+
+.skeleton--fila {
+  height: 34px;
+}
+
+.skeleton--linea {
+  height: 10px;
+  border-radius: 999px;
+}
+
+@keyframes skeleton-brillo {
+  100% { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { animation: none; }
+}
+
+/* Lista de skeletons (filas) con el mismo ritmo que las listas reales. */
+.skeleton-lista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lista);
+}
+
+/* ─── Título de panel (Cámaras, Historial, Ajustes) ───────────────────── */
+.panel-titulo {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  color: var(--c-texto);
+  letter-spacing: 0.02em;
 }

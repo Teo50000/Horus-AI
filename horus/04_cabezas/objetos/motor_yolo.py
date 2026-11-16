@@ -59,23 +59,54 @@ ID_HORUS = {c: i for i, c in enumerate(DEFAULT_CLASSES)}
 CLASES_CABEZA_PROPIA = ("pistola", "humo", "llama", "paquete")
 
 
+def carpetas_modelos() -> List[str]:
+    """Dónde buscar los pesos, en orden.
+
+    16/11: antes era solo `MODELOS`, la carpeta al lado de este archivo. En la
+    instalación empaquetada (servicio_modelos.exe) esa carpeta queda ADENTRO
+    del ejecutable y vacía: los pesos los baja la app a
+    %LOCALAPPDATA%\\com.tauri-app.horusai\\modelos\\horus\\04_cabezas\\objetos\\modelos.
+    El servicio no encontraba YOLO y seguía, avisando solo en un log que nadie
+    lee, con la cabeza propia para todo (personas con cajas malas, cuchillos
+    en las luces del techo). HORUS_MODELOS_DIR la pone servicio.py con la
+    carpeta de --pesos; la de LOCALAPPDATA queda de red de seguridad.
+    """
+    dirs = []
+    extra = os.environ.get("HORUS_MODELOS_DIR")
+    if extra:
+        dirs.append(extra)
+    dirs.append(MODELOS)
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        dirs.append(os.path.join(local, "com.tauri-app.horusai", "modelos", "horus",
+                                 "04_cabezas", "objetos", "modelos"))
+    vistos, salida = set(), []
+    for d in dirs:
+        k = os.path.normcase(os.path.abspath(d))
+        if k not in vistos:
+            vistos.add(k)
+            salida.append(d)
+    return salida
+
+
+def _buscar(nombres: Sequence[str]) -> Optional[str]:
+    for d in carpetas_modelos():
+        for nombre in nombres:
+            ruta = os.path.join(d, nombre)
+            if os.path.exists(ruta):
+                return ruta
+    return None
+
+
 def pesos_por_defecto() -> Optional[str]:
     """El primero que exista: ONNX (más rápido) y si no el .pt."""
-    for nombre in ("yolo11n_416.onnx", "yolo11n.onnx", "yolo11n.pt"):
-        ruta = os.path.join(MODELOS, nombre)
-        if os.path.exists(ruta):
-            return ruta
-    return None
+    return _buscar(("yolo11n_416.onnx", "yolo11n.onnx", "yolo11n.pt"))
 
 
 def pesos_horus_por_defecto() -> Optional[str]:
     """El YOLO reentrenado con pistola, humo, llama y paquete
     (`entrenar_yolo.py`). Si está, reemplaza a la cabeza propia entera."""
-    for nombre in ("horus_yolo4_416.onnx", "horus_yolo4.onnx", "horus_yolo4.pt"):
-        ruta = os.path.join(MODELOS, nombre)
-        if os.path.exists(ruta):
-            return ruta
-    return None
+    return _buscar(("horus_yolo4_416.onnx", "horus_yolo4.onnx", "horus_yolo4.pt"))
 
 
 @dataclass

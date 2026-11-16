@@ -150,6 +150,16 @@ class ReglaIncendio(Regla):
     critico_s: float = 6.0
     ventana_crecimiento_s: float = 5.0
     crecimiento_min: float = 1.30          # +30% de área = está creciendo
+    # 16/11 — la segmentación disparaba en el PRIMER cuadro: a los tracks de
+    # objetos se les pedía 1,5 s, a la máscara nada. En el aula, una cara con
+    # desenfoque de movimiento salió "humo 3,5 %" en un cuadro y eso ya era
+    # un aviso de incendio (7 avisos falsos en 15 minutos de prueba). Ahora
+    # la máscara también tiene que sostenerse. El fuego, que es la clase más
+    # confiable, con poco; el humo, que se confunde con vapor, piel y
+    # paredes claras, con más.
+    seg_persistencia_fuego_s: float = 1.0
+    seg_persistencia_humo_s: float = 3.0
+    seg_tolerancia_s: float = 1.0          # un cuadro sin ver no corta la racha
 
     def _evaluar(self, obs: ObservacionCamara, ctx: Contexto) -> List[Hallazgo]:
         llamas = [t for t in obs.confirmados("llama")
@@ -162,8 +172,15 @@ class ReglaIncendio(Regla):
         area_humo = seg.de("humo") if seg else 0.0
         # `SegResult.area` solo trae las clases que ya pasaron su umbral de
         # área por clase, así que estar presente ES haber pasado el filtro.
-        seg_fuego = area_fuego > 0.0
-        seg_humo = area_humo > 0.0
+        # Y además tiene que venir sosteniéndose (ver seg_persistencia_*).
+        dur_fuego = self._sostenido(ctx, obs.camera_id, "fuego", area_fuego > 0.0, obs.ts)
+        dur_humo = self._sostenido(ctx, obs.camera_id, "humo", area_humo > 0.0, obs.ts)
+        # Si la otra cabeza ya lo confirma (un track sostenido), la máscara
+        # cuenta en el acto: esperar ahí solo atrasaría un crítico real.
+        seg_fuego = area_fuego > 0.0 and (
+            dur_fuego >= self.seg_persistencia_fuego_s or bool(llamas))
+        seg_humo = area_humo > 0.0 and (
+            dur_humo >= self.seg_persistencia_humo_s or bool(humos))
 
         if not (llamas or humos or seg_fuego or seg_humo):
             self._olvidar(ctx, obs.camera_id)
@@ -195,7 +212,9 @@ class ReglaIncendio(Regla):
                 sev = Severidad.ALERTA
 
         cajas = llamas + humos
-        antiguedad = max((t.visto_s for t in cajas), default=0.0)
+        antiguedad = max([t.visto_s for t in cajas]
+                         + [dur_fuego if seg_fuego else 0.0,
+                            dur_humo if seg_humo else 0.0])
         if antiguedad >= self.critico_s and conf >= 0.70:
             sev = Severidad.CRITICO
             motivo += f", sostenido {antiguedad:.0f} s"
@@ -235,6 +254,23 @@ class ReglaIncendio(Regla):
     def _olvidar(self, ctx: Contexto, cam: str) -> None:
         ctx.mem(self).get("area", {}).pop(cam, None)
 
+    def _sostenido(self, ctx: Contexto, cam: str, clase: str,
+                   presente: bool, ts: float) -> float:
+        """Segundos que lleva `clase` presente en la máscara de `cam`, sin
+        cortes más largos que `seg_tolerancia_s`."""
+        mem = ctx.mem(self).setdefault("seg_desde", {}).setdefault(cam, {})
+        racha = mem.get(clase)
+        if presente:
+            if racha is None or ts - racha[1] > self.seg_tolerancia_s:
+                racha = (ts, ts)
+            else:
+                racha = (racha[0], ts)
+            mem[clase] = racha
+            return ts - racha[0]
+        if racha is not None and ts - racha[1] > self.seg_tolerancia_s:
+            mem.pop(clase, None)
+        return 0.0
+
     def _zona(self, ctx: Contexto, tracks: Sequence[Any]) -> Optional[str]:
         for t in tracks:
             z = ctx.zona(t)
@@ -265,7 +301,9 @@ class ReglaArma(Regla):
     tipo = "arma"
     requiere = frozenset({CABEZA_OBJETOS})
 
-    persistencia_s: float = 0.4
+    # 16/11: 0,4 s alcanzaba para que un reflejo de dos cuadros fuera "Arma".
+    # Con el servicio a ~3-4 ticks/s, 1 s son 3-4 cuadros seguidos.
+    persistencia_s: float = 1.0
     contencion_min: float = 0.40           # del arma dentro de la persona
 
     def _evaluar(self, obs: ObservacionCamara, ctx: Contexto) -> List[Hallazgo]:

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 // Cada slot puede tener:
 // null → vacío
@@ -8,8 +8,46 @@ import { useState, useCallback } from "react";
 const TOTAL_SLOTS = 8;
 const slots_iniciales = Array(TOTAL_SLOTS).fill(null);
 
+// 16/11: la grilla se perdía en cada arranque y había que volver a pinear
+// todas las cámaras. Se recuerda en este equipo (localStorage). Si el
+// almacenamiento no está disponible o lo guardado no tiene la forma
+// esperada, se arranca vacía como antes.
+const CLAVE = "horus.grilla.v1";
+
+function slotValido(s) {
+  if (s === null) return true;
+  if (!s || typeof s !== "object") return false;
+  if (s.tipo === "camara") return s.id !== undefined && typeof s.nombre === "string";
+  if (s.tipo === "sector") {
+    return typeof s.nombre === "string" && Array.isArray(s.camaras)
+      && s.camaras.length > 0 && Number.isInteger(s.indice);
+  }
+  return false;
+}
+
+function leerGuardado() {
+  try {
+    const crudo = window.localStorage.getItem(CLAVE);
+    if (!crudo) return slots_iniciales;
+    const lista = JSON.parse(crudo);
+    if (!Array.isArray(lista) || lista.length !== TOTAL_SLOTS) return slots_iniciales;
+    return lista.map((s) => (slotValido(s) ? s : null)).map((s) =>
+      s?.tipo === "sector" ? { ...s, indice: Math.min(s.indice, s.camaras.length - 1) } : s);
+  } catch {
+    return slots_iniciales;
+  }
+}
+
 export function useGrid() {
-  const [slots, setSlots] = useState(slots_iniciales);
+  const [slots, setSlots] = useState(leerGuardado);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CLAVE, JSON.stringify(slots));
+    } catch {
+      // sin almacenamiento (modo privado, cuota): la grilla igual anda
+    }
+  }, [slots]);
 
   // Encuentra el primer slot vacío, o null si están todos ocupados
   const primerSlotVacio = (lista) => lista.findIndex((s) => s === null);

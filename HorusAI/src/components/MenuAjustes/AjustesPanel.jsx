@@ -4,6 +4,7 @@ import AddButton from "./AddButton/AddButton";
 import RemoveButton from "../RemoveButton/RemoveButton";
 import Toggle from "./Toggle/Toggle";
 import CloseButton from "../CloseButton/CloseButton";
+import SkeletonLista from "../Skeleton/SkeletonLista";
 import "./AjustesPanel.css";
 
 export default function AjustesPanel({
@@ -20,12 +21,13 @@ export default function AjustesPanel({
     <div className="ajustes-panel">
       <CloseButton onClick={onClose} />
       <div className="ajustes-panel__content">
+        <h2 className="panel-titulo">Ajustes</h2>
 
         <section className="ajustes-section">
           <h2 className="ajustes-section__title">Notificación de eventos</h2>
 
           {cargando ? (
-            <p className="ajustes-panel__cargando">Cargando teléfonos...</p>
+            <SkeletonLista filas={3} alto={56} texto="Cargando contactos" />
           ) : (
             <div className="ajustes-contactos-lista">
               {contactos.map((n) => (

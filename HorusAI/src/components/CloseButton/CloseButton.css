@@ -1,11 +1,10 @@
 .close-button {
   position: absolute;
-  right: -1.25vw;       /* mitad del botón sobresale del panel */
+  right: -15px;         /* mitad del botón sobresale del panel */
   top: 50%;
   transform: translateY(-50%);
   z-index: 20;
-  width: 2vw;
-  min-width: 27px;
+  width: 30px;
   border-radius: 10px;
   border-top: 2px solid #ff8427;
   border-bottom: 2px solid #ff8427;
@@ -19,8 +18,7 @@
   transition: background 0.15s, color 0.15s;
 }
 .close__icon {
-  width: 1vw;
-  min-width: 12px;
+  width: 12px;
   aspect-ratio: 1/1;
   pointer-events: none;
 }

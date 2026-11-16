@@ -8,7 +8,7 @@
   gap: 8px;
   padding: 6px 10px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   letter-spacing: 0.02em;
   margin-bottom: 8px;
 }
@@ -26,7 +26,7 @@
 .mailcfg__estado--nose { color: rgba(160, 160, 170, 0.85); background: rgba(160, 160, 170, 0.10); }
 
 .mailcfg__motivo {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   line-height: 1.45;
   color: #fff;
   opacity: 0.75;
@@ -39,7 +39,7 @@
   border: none;
   border-radius: 8px;
   padding: 7px 14px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   cursor: pointer;
   font-family: inherit;
 }
@@ -71,7 +71,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   opacity: 0.8;
 }
 
@@ -81,7 +81,7 @@
   border-radius: 8px;
   padding: 7px 10px;
   color: inherit;
-  font-size: 13px;
+  font-size: var(--fs-md);
   font-family: inherit;
 }
 
@@ -91,7 +91,7 @@
 }
 
 .mailcfg__ayuda {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   line-height: 1.5;
   opacity: 0.65;
   margin: 0;
@@ -109,7 +109,7 @@
 }
 
 .mailcfg__resultado {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   line-height: 1.45;
   margin: 0;
   padding: 7px 10px;
@@ -123,7 +123,7 @@
 .ajustes-toggle-row--muerto { opacity: 0.45; }
 
 .ajustes-nota-honesta {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   line-height: 1.45;
   color: #ffa94d;
   opacity: 0.85;

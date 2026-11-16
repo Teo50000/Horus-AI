@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Sidebar from "../components/Sidebar/Sidebar";
 import HistorialPanel from "../components/MenuHist/HistorialPanel";
 import AjustesPanel from "../components/MenuAjustes/AjustesPanel";
 import CamarasPanel from "../components/MenuCamaras/CamarasPanel";
 import CamaraGrid from "../components/CamaraGrid/CamaraGrid";
+import AyudaModal from "../components/AyudaModal/AyudaModal";
 import { useHistorial } from "../components/MenuHist/useHistorial";
 import { useAjustes } from "../components/MenuAjustes/useAjustes";
 import { useGrid } from "../components/CamaraGrid/useGrid";
@@ -15,11 +16,15 @@ import AlertModal from "../components/AlertModal/AlertModal";
 import { useAlertaActiva } from "../hooks/useAlertaActiva";
 import "./Dashboard.css";
 
-export default function Dashboard() {
-  const [activeSection, setActiveSection] = useState(null); // null, no "null" string
-  const [panelAbierto, setPanelAbierto]    = useState(null);
+const SECCION_A_PANEL = { cameras: "camaras", settings: "ajustes", history: "historial" };
 
-  // El hook va ACÁ ADENTRO, no afuera del componente
+export default function Dashboard() {
+  const [panelAbierto, setPanelAbierto] = useState(null);   // "camaras" | "ajustes" | "historial" | null
+  // El panel que se DIBUJA. Al cerrar queda montado hasta que termina la
+  // animación, así se ve cerrarse en vez de desaparecer de golpe.
+  const [panelMostrado, setPanelMostrado] = useState(null);
+  const [ayudaAbierta, setAyudaAbierta] = useState(false);
+
   const { eventos, conectado, limpiar: limpiarEnVivo } = useWebSocketEventos(WS_ALERTAS);
 
   // El servicio de modelos: si esta corriendo, el video de las camaras sale
@@ -27,139 +32,85 @@ export default function Dashboard() {
   // comentario en useServicioVideo.
   const servicio = useServicioVideo();
   const { mail } = useEstadoBackend();
-  const nCamaras = Object.keys(servicio.camaras).length;
 
   const historial = useHistorial(eventos, limpiarEnVivo);
   const ajustes   = useAjustes();
   const { alerta, cerrarAlerta } = useAlertaActiva(eventos, ajustes.alertaEnPantalla);
   const grid      = useGrid();
 
+  useEffect(() => {
+    if (panelAbierto) setPanelMostrado(panelAbierto);
+  }, [panelAbierto]);
+
   const handleSectionChange = (section) => {
-    setActiveSection(section);
-    setPanelAbierto((prev) => {
-      if (section === "cameras")  return prev === "camaras"   ? null : "camaras";
-      if (section === "settings") return prev === "ajustes"   ? null : "ajustes";
-      if (section === "history")  return prev === "historial" ? null : "historial";
-      return null;
-    });
+    const destino = SECCION_A_PANEL[section] ?? null;
+    setPanelAbierto((prev) => (prev === destino ? null : destino));
   };
 
-  const cerrarPanel = () => {
-    setPanelAbierto(null);
-    setActiveSection(null);
-  };
+  const cerrarPanel = useCallback(() => setPanelAbierto(null), []);
+  const abrirCamaras = useCallback(() => setPanelAbierto("camaras"), []);
+  const cerrarAyuda = useCallback(() => setAyudaAbierta(false), []);
+
+  const activeSection = Object.keys(SECCION_A_PANEL)
+    .find((k) => SECCION_A_PANEL[k] === panelAbierto) ?? null;
 
   return (
     <div className="dashboard">
 
-      {/* Un panel de vigilancia que perdio el websocket se ve EXACTAMENTE
-          igual que uno donde no pasa nada: pantalla tranquila, historial
-          quieto. Es el mismo problema que una regla que se calla cuando no
-          puede correr. El cartel esta para que "no hubo alertas" y "nadie las
-          esta escuchando" nunca se parezcan. */}
-      <div
-        className={`dashboard__conexion ${
-          conectado ? "dashboard__conexion--ok" : "dashboard__conexion--caida"
-        }`}
-        role="status"
-        aria-live="polite"
-        title={conectado ? WS_ALERTAS : `Sin conexion a ${WS_ALERTAS}`}
-      >
-        <span className="dashboard__conexion-punto" aria-hidden="true" />
-        {conectado ? "En vivo" : "SIN CONEXION AL BACKEND"}
-      </div>
-
-      {/* Que las camaras se vean no quiere decir que algo las este mirando.
-          Son dos procesos distintos: el backend sirve el video, el servicio
-          corre los modelos. Sin este cartel, un panel con las camaras
-          andando y los modelos apagados se ve igual que uno vigilando. */}
-      {/* Cuatro estados, no dos. "Analizando 0" era el peor de todos: verde,
-          tranquilizador, y queriendo decir que los modelos estan prendidos
-          mirando exactamente nada. Una camara de menos no puede verse igual
-          que todo en orden. */}
-      <div
-        className={`dashboard__modelos ${
-          !servicio.activo
-            ? "dashboard__modelos--no"
-            : servicio.fase === "cargando"
-              ? "dashboard__modelos--cargando"
-              : nCamaras === 0
-                ? "dashboard__modelos--sin-camaras"
-                : "dashboard__modelos--ok"
-        }`}
-        role="status"
-        title={!servicio.activo
-          ? "El servicio de modelos no esta corriendo: nadie esta mirando el video"
-          : servicio.fase === "cargando"
-            ? "Subiendo los modelos a la placa. Tarda entre 15 y 40 segundos."
-            : nCamaras === 0
-              ? "Los modelos estan cargados pero no les llega ninguna camara. " +
-                "Suele ser que el backend no esta corriendo, o que todavia no " +
-                "diste de alta ninguna camara."
-              : `${nCamaras} camara(s) en analisis`}
-      >
-        <span className="dashboard__conexion-punto" aria-hidden="true" />
-        {!servicio.activo
-          ? "MODELOS APAGADOS"
-          : servicio.fase === "cargando"
-            ? "Cargando modelos..."
-            : nCamaras === 0
-              ? "MODELOS SIN CAMARAS"
-              : `Analizando ${nCamaras}`}
-      </div>
-
-      {/* El tercer canal. Los dos carteles de arriba dicen si el panel esta
-          escuchando y si los modelos estan mirando; este dice si el aviso
-          sale de la casa. Un tablero que dice "En vivo" con el mail apagado
-          esta diciendo media verdad.
-
-          Solo aparece cuando el mail NO esta confirmado andando. Que no haya
-          cartel significa que se pregunto y la respuesta fue que si: el
-          silencio tiene que ser informacion, no ausencia de informacion. */}
-      {mail?.ok !== true && (
-        <div
-          className={`dashboard__mail ${
-            mail === null ? "dashboard__mail--nose" : "dashboard__mail--no"
-          }`}
-          role="status"
-          aria-live="polite"
-          title={mail === null
-            ? "Todavia no pude preguntarle al backend si el mail puede salir"
-            : `Las alertas se guardan y se ven aca, pero NO le llega un mail a ` +
-              `nadie. ${mail.motivo}`}
-        >
-          <span className="dashboard__conexion-punto" aria-hidden="true" />
-          {mail === null ? "MAIL: SIN DATO" : "ALERTAS SIN MAIL"}
-        </div>
-      )}
-
+      {/* 16/11: los tres carteles de estado ("En vivo", "Analizando N",
+          "Alertas sin mail") estaban fijos arriba a la derecha, encima de la
+          cámara de esa esquina. Ahora viven en el sidebar (EstadoSistema):
+          siguen siempre a la vista y siguen latiendo si algo falla, pero no
+          tapan video. Los motivos de por qué existen (18/09, 22/09) están
+          en EstadoSistema.jsx. */}
       <Sidebar
         activeSection={activeSection}
         onSectionChange={handleSectionChange}
+        onAyuda={() => setAyudaAbierta(true)}
+        conectado={conectado}
+        servicio={servicio}
+        mail={mail}
       />
 
-      {panelAbierto === "camaras" && (
-        <CamarasPanel
-          onClose={cerrarPanel}
-          onPinearCamara={grid.pinearCamara}
-          onPinearSector={grid.pinearSector}
-        />
-      )}
-      {panelAbierto === "historial" && (
-        <HistorialPanel {...historial} onClose={cerrarPanel} />
-      )}
-      {panelAbierto === "ajustes" && (
-        <AjustesPanel {...ajustes} onClose={cerrarPanel} />
-      )}
+      {/* El menú desplegable. Anima su ANCHO (no solo se desliza encima), así
+          la grilla de cámaras se reacomoda de forma continua mientras se
+          abre o se cierra, en vez de saltar de tamaño en un cuadro. */}
+      <div
+        className={`dashboard__panel ${panelAbierto ? "dashboard__panel--abierto" : ""}`}
+        onTransitionEnd={(e) => {
+          if (e.target === e.currentTarget && e.propertyName === "width" && !panelAbierto) {
+            setPanelMostrado(null);
+          }
+        }}
+        aria-hidden={!panelAbierto}
+      >
+        <div className="dashboard__panel-interior">
+          {panelMostrado === "camaras" && (
+            <CamarasPanel
+              onClose={cerrarPanel}
+              onPinearCamara={grid.pinearCamara}
+              onPinearSector={grid.pinearSector}
+            />
+          )}
+          {panelMostrado === "historial" && (
+            <HistorialPanel {...historial} onClose={cerrarPanel} />
+          )}
+          {panelMostrado === "ajustes" && (
+            <AjustesPanel {...ajustes} onClose={cerrarPanel} />
+          )}
+        </div>
+      </div>
 
       <CamaraGrid
         slots={grid.slots}
         onNavegar={grid.navegarSector}
         onVaciar={grid.vaciarSlot}
+        onAgregar={abrirCamaras}
         servicio={servicio}
       />
-      
+
       <AlertModal alerta={alerta} onClose={cerrarAlerta} />
+      <AyudaModal abierto={ayudaAbierta} onClose={cerrarAyuda} />
 
     </div>
   );

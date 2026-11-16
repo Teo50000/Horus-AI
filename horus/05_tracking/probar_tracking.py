@@ -380,7 +380,7 @@ def t_duplicados() -> Tuple[bool, str]:
             ["celular", "persona"]),
         "pistola en la mano": (lambda f: [
             _Det((100, 200, 180, 500), 0.70, "persona", 2),
-            _Det((155, 310, 180, 340), 0.48, "pistola", 3)],
+            _Det((155, 310, 180, 340), 0.62, "pistola", 3)],  # 16/11: nace con >= 0,50
             ["persona", "pistola"]),
         "paquete sostenido contra el torso": (lambda f: [
             _Det((100, 200, 180, 500), 0.70, "persona", 2),

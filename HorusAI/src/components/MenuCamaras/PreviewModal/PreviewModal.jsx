@@ -1,11 +1,18 @@
 import { useState } from "react";
 import VideoStream from "../../VideoStream/VideoStream";
+import { API_VIDEO } from "../../../config";
 import "./PreviewModal.css";
 
+// 16/11: las dos URLs estaban escritas a mano ("http://localhost:8000"), sin
+// pasar por config.js, y `urlStop` llegaba como prop pero no se usaba: la
+// vista previa de una cámara nueva (por usb_index) cortaba
+// /video/stop_feed/{index} en vez de /video/stop_preview/{index}, y la
+// webcam quedaba tomada por el backend.
 export default function PreviewModal({
   camaras = [],
   onClose,
-  urlBase = "http://localhost:8000/video/video_feed",
+  urlBase = `${API_VIDEO}/video_feed`,
+  urlStop = `${API_VIDEO}/stop_feed`,
 }) {
   const [indice, setIndice]       = useState(0);
   const [streamKey, setStreamKey] = useState(Date.now());
@@ -13,7 +20,7 @@ export default function PreviewModal({
   if (!camaras.length) return null;
 
   const detenerStream = (camaraId) => {
-    fetch(`http://localhost:8000/video/stop_feed/${camaraId}`, { method: "POST" })
+    fetch(`${urlStop}/${camaraId}`, { method: "POST" })
       .catch((err) => console.error("Error al detener stream:", err));
   };
 

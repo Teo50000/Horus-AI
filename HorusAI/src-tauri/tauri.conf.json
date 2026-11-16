@@ -34,7 +34,8 @@
     "active": true,
     "targets": "all",
     "externalBin": [
-      "binaries/backend"
+      "binaries/backend",
+      "binaries/servicio_modelos"
     ],
     "icon": [
       "icons/32x32.png",

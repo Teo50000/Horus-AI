@@ -42,7 +42,11 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, WindowEvent};
+
+const MODELOS_URL_BASE: &str = "https://horus-app-release.s3.amazonaws.com/modelos";
+const MANIFIESTO_MODELOS: &str = include_str!("../../../modelos.sha256.json");
 
 const PANEL_URL: &str = "http://localhost:1420";
 /// Carpeta de datos de la app en %LOCALAPPDATA% (es el `identifier`).
@@ -101,6 +105,18 @@ struct Estado {
     /// (puerto, pid) de lo que arrancamos, a medida que aparece escuchando.
     /// Se guarda en disco para limpiar huérfanos si Horus.exe se cae.
     registrados: Mutex<Vec<(u16, u32)>>,
+}
+
+#[derive(serde::Deserialize)]
+struct ManifiestoModelos {
+    pesos: std::collections::BTreeMap<String, InfoModelo>,
+}
+
+#[derive(serde::Deserialize)]
+struct InfoModelo {
+    ruta: String,
+    bytes: u64,
+    sha256: String,
 }
 
 impl Estado {
@@ -398,9 +414,12 @@ fn mostrar_panel(app: &AppHandle, est: &Estado, cual: Panel) {
 /// empaquetado (backend.exe, que `tauri build` deja al lado del .exe) y
 /// muestra el panel que viaja adentro.
 fn modo_empaquetado(app: AppHandle, est: Arc<Estado>) {
-    let backend = std::env::current_exe()
+    let carpeta_exe = std::env::current_exe()
         .ok()
-        .and_then(|e| e.parent().map(|p| p.join("backend.exe")))
+        .and_then(|e| e.parent().map(|p| p.to_path_buf()));
+    let backend = carpeta_exe
+        .as_ref()
+        .map(|p| p.join("backend.exe"))
         .filter(|p| p.is_file());
 
     let Some(backend) = backend else {
@@ -414,7 +433,12 @@ fn modo_empaquetado(app: AppHandle, est: Arc<Estado>) {
     };
 
     est.linea("Sin la carpeta del proyecto al lado: modo instalado.");
-    est.linea("Arranco el backend empaquetado. Los modelos NO vienen en este modo.");
+    est.linea("Verificando los modelos...");
+    if let Err(e) = preparar_modelos(&est) {
+        est.fallar(format!("No pude preparar los modelos: {e}"));
+        return;
+    }
+    est.linea("Modelos listos. Arranco el backend empaquetado.");
 
     limpiar_huerfanos(&est);
     anotar_ajenos(&est);
@@ -443,6 +467,81 @@ fn modo_empaquetado(app: AppHandle, est: Arc<Estado>) {
                 return;
             }
         }
+    }
+
+    let servicio = carpeta_exe
+        .as_ref()
+        .map(|p| p.join("servicio_modelos.exe"))
+        .filter(|p| p.is_file());
+    if let Some(servicio) = servicio {
+        let modelos = carpeta_modelos();
+        let objetos = modelos
+            .join("horus")
+            .join("04_cabezas")
+            .join("objetos")
+            .join("modelos")
+            .join("head_best_solo.pt");
+        let backbone = modelos
+            .join("horus")
+            .join("04_cabezas")
+            .join("segmentacion")
+            .join("checkpoints")
+            .join("backbone.pt");
+        if objetos.is_file() && backbone.is_file() {
+            let mut args = vec![
+                "--backend".to_string(),
+                "http://127.0.0.1:8000".to_string(),
+                "--pesos".to_string(),
+                objetos.display().to_string(),
+                "--pesos-backbone".to_string(),
+                backbone.display().to_string(),
+            ];
+            let segmentacion = modelos
+                .join("horus")
+                .join("04_cabezas")
+                .join("segmentacion")
+                .join("checkpoints")
+                .join("head_v4_produccion.pt");
+            if segmentacion.is_file() {
+                args.extend([
+                    "--segmentacion".to_string(),
+                    "--segmentacion-checkpoint".to_string(),
+                    segmentacion.display().to_string(),
+                ]);
+            }
+            let agresion = modelos
+                .join("horus")
+                .join("fight")
+                .join("checkpoints")
+                .join("modelo_fight.pt");
+            if agresion.is_file() {
+                args.extend([
+                    "--agresion".to_string(),
+                    "--agresion-checkpoint".to_string(),
+                    agresion.display().to_string(),
+                ]);
+            }
+            est.linea(format!(
+                "Arranco el servicio de modelos: {}",
+                servicio.display()
+            ));
+            match lanzar_oculto_con_args(&servicio, &args) {
+                Ok(mut hijo) => {
+                    if let Some(salida) = hijo.stdout.take() {
+                        let est2 = est.clone();
+                        thread::spawn(move || leer(salida, est2));
+                    }
+                }
+                Err(e) => est.linea(format!("No pude arrancar el servicio de modelos: {e}")),
+            }
+        } else {
+            est.linea(format!(
+                "Servicio de modelos en espera: faltan pesos en {}.",
+                modelos.display()
+            ));
+        }
+    } else {
+        est.linea("No encuentro servicio_modelos.exe en la instalación.");
     }
 
     let inicio = Instant::now();
@@ -507,8 +606,14 @@ fn lanzar_bat(raiz: &Path) -> std::io::Result<Child> {
 
 #[cfg(windows)]
 fn lanzar_oculto(exe: &Path) -> std::io::Result<Child> {
+    lanzar_oculto_con_args(exe, &[])
+}
+
+#[cfg(windows)]
+fn lanzar_oculto_con_args(exe: &Path, args: &[String]) -> std::io::Result<Child> {
     use std::os::windows::process::CommandExt;
     let mut c = Command::new(exe);
+    c.args(args);
     if let Some(d) = exe.parent() {
         c.current_dir(d);
     }
@@ -521,7 +626,12 @@ fn lanzar_oculto(exe: &Path) -> std::io::Result<Child> {
 
 #[cfg(not(windows))]
 fn lanzar_oculto(exe: &Path) -> std::io::Result<Child> {
-    Command::new(exe).stdout(Stdio::piped()).spawn()
+    lanzar_oculto_con_args(exe, &[])
+}
+
+#[cfg(not(windows))]
+fn lanzar_oculto_con_args(exe: &Path, args: &[String]) -> std::io::Result<Child> {
+    Command::new(exe).args(args).stdout(Stdio::piped()).spawn()
 }
 
 #[cfg(not(windows))]
@@ -593,12 +703,119 @@ fn archivo_procesos() -> PathBuf {
     base.join("com.tauri-app.horusai").join("procesos.txt")
 }
 
+/// Raíz persistente de los modelos descargados. Conserva la misma estructura
+/// relativa que `modelos.sha256.json` para que el servicio reciba rutas claras.
+fn carpeta_modelos() -> PathBuf {
+    let base = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    base.join("com.tauri-app.horusai").join("modelos")
+}
+
+fn preparar_modelos(est: &Estado) -> Result<(), String> {
+    let manifiesto: ManifiestoModelos = serde_json::from_str(MANIFIESTO_MODELOS)
+        .map_err(|e| format!("manifiesto inválido: {e}"))?;
+    let raiz = carpeta_modelos();
+    fs::create_dir_all(&raiz).map_err(|e| format!("no pude crear {}: {e}", raiz.display()))?;
+    let cliente = reqwest::blocking::Client::builder()
+        .user_agent("HorusAI-modelos")
+        .build()
+        .map_err(|e| format!("no pude preparar la conexión: {e}"))?;
+
+    for (nombre, info) in manifiesto.pesos {
+        let destino = raiz.join(&info.ruta);
+        if modelo_valido(&destino, &info) {
+            est.linea(format!("Modelo {nombre}: ya estaba verificado."));
+            continue;
+        }
+        let parent = destino
+            .parent()
+            .ok_or_else(|| format!("ruta inválida para el modelo {nombre}"))?;
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("no pude crear {}: {e}", parent.display()))?;
+        let temporal = destino.with_extension("bajando");
+        let archivo = Path::new(&info.ruta)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| format!("nombre inválido para el modelo {nombre}"))?;
+        let url = format!("{MODELOS_URL_BASE}/{archivo}");
+        est.linea(format!(
+            "Descargando {nombre} ({:.1} MB)...",
+            info.bytes as f64 / 1048576.0
+        ));
+
+        let mut respuesta = cliente
+            .get(&url)
+            .send()
+            .map_err(|e| format!("{nombre}: descarga fallida: {e}"))?;
+        if !respuesta.status().is_success() {
+            return Err(format!("{nombre}: S3 respondió {}", respuesta.status()));
+        }
+        let mut salida = File::create(&temporal)
+            .map_err(|e| format!("{nombre}: no pude crear temporal: {e}"))?;
+        let mut hash = Sha256::new();
+        let mut total = 0u64;
+        let mut buffer = [0u8; 1024 * 1024];
+        loop {
+            let leidos = std::io::Read::read(&mut respuesta, &mut buffer)
+                .map_err(|e| format!("{nombre}: error leyendo descarga: {e}"))?;
+            if leidos == 0 {
+                break;
+            }
+            salida
+                .write_all(&buffer[..leidos])
+                .map_err(|e| format!("{nombre}: error guardando descarga: {e}"))?;
+            hash.update(&buffer[..leidos]);
+            total += leidos as u64;
+        }
+        salida
+            .sync_all()
+            .map_err(|e| format!("{nombre}: no pude finalizar archivo: {e}"))?;
+        let obtenido = format!("{:x}", hash.finalize());
+        if total != info.bytes || obtenido != info.sha256 {
+            let _ = fs::remove_file(&temporal);
+            return Err(format!(
+                "{nombre}: verificación fallida (esperaba {} bytes y {}, recibió {} bytes y {})",
+                info.bytes, info.sha256, total, obtenido
+            ));
+        }
+        fs::rename(&temporal, &destino)
+            .map_err(|e| format!("{nombre}: no pude instalar el modelo: {e}"))?;
+        est.linea(format!("Modelo {nombre}: descargado y verificado."));
+    }
+    Ok(())
+}
+
+fn modelo_valido(ruta: &Path, info: &InfoModelo) -> bool {
+    if !ruta.is_file() || fs::metadata(ruta).map(|m| m.len()).ok() != Some(info.bytes) {
+        return false;
+    }
+    let Ok(mut archivo) = File::open(ruta) else {
+        return false;
+    };
+    let mut hash = Sha256::new();
+    let mut buffer = [0u8; 1024 * 1024];
+    loop {
+        let Ok(leidos) = archivo.read(&mut buffer) else {
+            return false;
+        };
+        if leidos == 0 {
+            break;
+        }
+        hash.update(&buffer[..leidos]);
+    }
+    format!("{:x}", hash.finalize()) == info.sha256
+}
+
 fn guardar_procesos(lista: &[(u16, u32)]) {
     let ruta = archivo_procesos();
     if let Some(d) = ruta.parent() {
         let _ = fs::create_dir_all(d);
     }
-    let texto: String = lista.iter().map(|(p, pid)| format!("{p} {pid}\n")).collect();
+    let texto: String = lista
+        .iter()
+        .map(|(p, pid)| format!("{p} {pid}\n"))
+        .collect();
     let _ = fs::write(ruta, texto);
 }
 
@@ -735,14 +952,12 @@ mod puertos {
                 let base = buf.as_ptr().add(1) as *const u8;
                 for i in 0..n {
                     let (puerto, pid) = if af == AF_INET {
-                        let f = std::ptr::read_unaligned(
-                            (base as *const MIB_TCPROW_OWNER_PID).add(i),
-                        );
+                        let f =
+                            std::ptr::read_unaligned((base as *const MIB_TCPROW_OWNER_PID).add(i));
                         (u16::from_be((f.dwLocalPort & 0xffff) as u16), f.dwOwningPid)
                     } else {
-                        let f = std::ptr::read_unaligned(
-                            (base as *const MIB_TCP6ROW_OWNER_PID).add(i),
-                        );
+                        let f =
+                            std::ptr::read_unaligned((base as *const MIB_TCP6ROW_OWNER_PID).add(i));
                         (u16::from_be((f.dwLocalPort & 0xffff) as u16), f.dwOwningPid)
                     };
                     if puertos.contains(&puerto) {
@@ -810,7 +1025,10 @@ mod job {
             }
             let proceso = hijo.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE;
             if AssignProcessToJobObject(job, proceso) == 0 {
-                return Err(format!("no pude atar HORUS.bat al job ({})", GetLastError()));
+                return Err(format!(
+                    "no pude atar HORUS.bat al job ({})",
+                    GetLastError()
+                ));
             }
             // El handle NO se cierra: tiene que vivir lo que vive Horus.exe.
             Ok(job as usize)
@@ -923,7 +1141,9 @@ mod cargador_webview2 {
             let es_la_del_exe = dir_exe.as_ref() == Some(&dir);
             let al_dia = std::fs::read(&ruta).map(|b| b == DLL).unwrap_or(false);
             if !es_la_del_exe && !al_dia {
-                if let Err(e) = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&ruta, DLL)) {
+                if let Err(e) =
+                    std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&ruta, DLL))
+                {
                     ultimo = format!("{}: {e}", ruta.display());
                     continue;
                 }
@@ -933,7 +1153,9 @@ mod cargador_webview2 {
             if !h.is_null() {
                 return Ok(());
             }
-            ultimo = format!("{}: no carga (error {})", ruta.display(), unsafe { GetLastError() });
+            ultimo = format!("{}: no carga (error {})", ruta.display(), unsafe {
+                GetLastError()
+            });
         }
         Err(ultimo)
     }
@@ -945,7 +1167,12 @@ fn cartel_error(texto: &str) {
     let t: Vec<u16> = texto.encode_utf16().chain(Some(0)).collect();
     let c: Vec<u16> = "Horus".encode_utf16().chain(Some(0)).collect();
     unsafe {
-        MessageBoxW(std::ptr::null_mut(), t.as_ptr(), c.as_ptr(), MB_OK | MB_ICONERROR);
+        MessageBoxW(
+            std::ptr::null_mut(),
+            t.as_ptr(),
+            c.as_ptr(),
+            MB_OK | MB_ICONERROR,
+        );
     }
 }
 

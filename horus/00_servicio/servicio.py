@@ -131,6 +131,7 @@ class ConfigServicio:
     # Apagada por defecto igual que caídas: cuesta una pasada de MC3-18 cada
     # 0,75 s por cámara con dos personas en cuadro.
     agresion: bool = False
+    agresion_checkpoint: Optional[str] = None
 
     # --- video ------------------------------------------------------------
     fps: float = 10.0                      # ritmo de análisis, no de la cámara
@@ -655,13 +656,17 @@ class Servicio:
                     self.detector = "YOLO11 + YOLO11 de Horus (pistola, humo, llama, paquete)"
                 else:
                     self.detector = "YOLO11 + cabeza propia (pistola, humo, llama, paquete)"
+        detector_agresion = None
+        if c.agresion and not c.simular:
+            from detector_agresion import ConfigAgresion
+            detector_agresion = ConfigAgresion(checkpoint=c.agresion_checkpoint)
         self.pipe = PipelineHorus(
             pesos=pesos_propios,
             pesos_backbone=c.pesos_backbone,
             topologia=topo, fps=c.fps, max_batch=max(c.max_batch, 1),
             cfg_tracker=cfg_tracker,
             motor_objetos=motor, motor_segmentacion=motor_seg,
-            device=c.device, detector_agresion=(c.agresion and not c.simular),
+            device=c.device, detector_agresion=detector_agresion,
             detector_caidas=det_caidas, verboso=c.verboso)
 
         cfg_al = ConfigAlerta(
@@ -1401,6 +1406,8 @@ def main() -> int:
                          "head_v4_produccion.pt")
     ap.add_argument("--agresion", action="store_true",
                     help="prender la cabeza de peleas (fight/)")
+    ap.add_argument("--agresion-checkpoint", dest="agresion_checkpoint",
+                    help="ruta al checkpoint de peleas")
     ap.add_argument("--caidas", action="store_true",
                     help="prender la cabeza de caídas (horus/fall). Cuesta una "
                          "pasada de MediaPipe por persona por frame")
@@ -1434,6 +1441,7 @@ def main() -> int:
         segmentacion=args.segmentacion,
         segmentacion_checkpoint=args.segmentacion_checkpoint,
         agresion=args.agresion,
+        agresion_checkpoint=args.agresion_checkpoint,
         caidas=args.caidas, caidas_checkpoint=args.caidas_checkpoint,
         caidas_max_personas=args.caidas_max_personas,
         evidencia=not args.sin_evidencia, clip_s=args.clip,

@@ -658,8 +658,19 @@ class Servicio:
                     self.detector = "YOLO11 + cabeza propia (pistola, humo, llama, paquete)"
         detector_agresion = None
         if c.agresion and not c.simular:
+            # Mismo armado de path que `PipelineHorus._crear_agresion`: sin
+            # esto, corriendo desde el código (HORUS.bat / Horus.exe en modo
+            # proyecto) `--agresion` cortaba el arranque con "No module named
+            # 'detector_agresion'".
+            _fight = os.path.normpath(os.path.join(_AQUI, "..", "fight"))
+            if _fight not in sys.path:
+                sys.path.insert(0, _fight)
             from detector_agresion import ConfigAgresion
-            detector_agresion = ConfigAgresion(checkpoint=c.agresion_checkpoint)
+            detector_agresion = ConfigAgresion()
+            # Sin --agresion-checkpoint queda el de por defecto: pasar None
+            # pisaba la ruta y el chequeo del archivo reventaba con TypeError.
+            if c.agresion_checkpoint:
+                detector_agresion.checkpoint = c.agresion_checkpoint
         self.pipe = PipelineHorus(
             pesos=pesos_propios,
             pesos_backbone=c.pesos_backbone,

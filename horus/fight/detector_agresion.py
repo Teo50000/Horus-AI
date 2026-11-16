@@ -103,25 +103,28 @@ class ConfigAgresion:
     umbral: float = 0.50            # de acá para arriba se etiqueta "pelea"
     tolerancia_gate_s: float = 1.5  # compuerta cerrada más que esto -> tirar clip
     max_lote: int = 8               # cámaras por forward
+    max_frames_buffer: int = 400    # tope de memoria por cámara (~20 MB a 128x128)
     dispositivo: str = "auto"
     etiqueta: str = "pelea"
     clase_persona: str = "persona"
 
     def intervalo_buffer(self) -> float:
-        """Cada cuánto entra un frame al clip.
+        """Separación entre los frames del clip, en segundos.
 
         Se muestrea **por tiempo y no por frame**: si se guardara un frame de
         cada N, el clip de 32 frames duraría 1 s con una webcam a 30 FPS y 4 s
         con el pipeline a 8 FPS, y el modelo vería el mismo movimiento
-        acelerado o frenado según la carga de la máquina. Entrenó sobre 5 s.
+        acelerado o frenado según la carga de la máquina. Entrenó sobre 5 s:
+        `01_extraer_clips.py` toma `linspace(0, total-1, 32)`, o sea 32
+        frames con 31 intervalos que cubren el clip entero.
         """
-        return self.duracion_clip_s / max(1, self.ventana)
+        return self.duracion_clip_s / max(1, self.ventana - 1)
 
 
 @dataclass
 class _EstadoCam:
     buffer: Deque[np.ndarray] = field(default_factory=deque)
-    ultimo_guardado: float = -1e9
+    tiempos: Deque[float] = field(default_factory=deque)   # ts de cada frame del buffer
     ultima_clasif: float = -1e9
     gate_abierto_ts: float = -1e9
     prob: float = 0.0
@@ -239,11 +242,25 @@ class DetectorAgresion:
 
             if personas:
                 st.gate_abierto_ts = ts
-                if ts - st.ultimo_guardado >= self.cfg.intervalo_buffer():
+                # Se guardan TODOS los frames con su ts y el clip se arma
+                # después, eligiendo el más cercano a cada uno de los 32
+                # instantes que pide el entrenamiento. Antes se guardaba uno
+                # cada `intervalo` contando desde el último guardado: a
+                # 10 FPS eso es uno cada 0,2 s (no 0,16) y el clip cubría
+                # 6,2 s en vez de 5; a 8 FPS, 7,75 s. El modelo veía el
+                # movimiento acelerado respecto de lo que aprendió.
+                if not st.tiempos or ts > st.tiempos[-1]:
                     st.buffer.append(self._preprocesar(frame))
-                    st.ultimo_guardado = ts
-                    while len(st.buffer) > self.cfg.ventana:
-                        st.buffer.popleft()
+                    st.tiempos.append(ts)
+                # se deja UN frame anterior al inicio de la ventana, para que
+                # el primer instante tenga vecino
+                inicio = ts - self.cfg.duracion_clip_s
+                while len(st.tiempos) >= 2 and st.tiempos[1] <= inicio:
+                    st.buffer.popleft()
+                    st.tiempos.popleft()
+                while len(st.buffer) > self.cfg.max_frames_buffer:
+                    st.buffer.popleft()
+                    st.tiempos.popleft()
             elif ts - st.gate_abierto_ts > self.cfg.tolerancia_gate_s:
                 # Nadie en cuadro hace rato: el clip que quedó es de otra
                 # escena. Mezclarlo con lo que venga después arma un clip
@@ -251,16 +268,17 @@ class DetectorAgresion:
                 if st.buffer:
                     self.stats["clips_tirados"] += 1
                 st.buffer.clear()
+                st.tiempos.clear()
                 st.prob, st.etiquetado = 0.0, False
 
-            listo = (len(st.buffer) >= self.cfg.ventana
+            listo = (self._cubre_clip(st)
                      and len(personas) >= self.cfg.min_personas
                      and ts - st.ultima_clasif >= self.cfg.paso_clasif_s)
             if len(personas) < self.cfg.min_personas:
                 self.stats["gate_cerrado"] += 1
                 st.prob, st.etiquetado = 0.0, False
             if listo:
-                pendientes.append((camera_id, self._armar_clip(st.buffer)))
+                pendientes.append((camera_id, self._armar_clip(st)))
                 st.ultima_clasif = ts
 
         if pendientes:
@@ -289,8 +307,7 @@ class DetectorAgresion:
 
     def resumen(self) -> Dict[str, Any]:
         return dict(self.stats, camaras=len(self._cams),
-                    listas=sum(1 for s in self._cams.values()
-                               if len(s.buffer) >= self.cfg.ventana))
+                    listas=sum(1 for s in self._cams.values() if self._cubre_clip(s)))
 
     # ------------------------------------------------------------------ #
     # Interno
@@ -335,13 +352,40 @@ class DetectorAgresion:
         rgb = arr[:, :, ::-1]
         return _resize_uint8(rgb, self.cfg.lado)
 
-    def _armar_clip(self, buffer: Deque[np.ndarray]) -> np.ndarray:
+    def _cubre_clip(self, st: _EstadoCam) -> bool:
+        """¿Hay frames que cubran los últimos `duracion_clip_s`?
+
+        Se tolera medio intervalo: el frame más viejo puede caer apenas
+        después del primer instante pedido."""
+        if len(st.tiempos) < 2:
+            return False
+        tramo = st.tiempos[-1] - st.tiempos[0]
+        return tramo >= self.cfg.duracion_clip_s - 0.5 * self.cfg.intervalo_buffer()
+
+    def indices_clip(self, st: _EstadoCam) -> np.ndarray:
+        """Qué frame del buffer va en cada uno de los `ventana` lugares.
+
+        Los instantes son los del entrenamiento: `ventana` puntos repartidos
+        parejo en los últimos `duracion_clip_s`, terminando en el frame más
+        nuevo. Para cada uno, el frame guardado más cercano (a fps bajos se
+        repite, igual que en `01_extraer_clips.py` con clips cortos).
+        """
+        t = np.asarray(st.tiempos, dtype=np.float64)
+        objetivo = t[-1] - self.cfg.duracion_clip_s + (
+            np.arange(self.cfg.ventana) * self.cfg.intervalo_buffer())
+        der = np.clip(np.searchsorted(t, objetivo), 1, len(t) - 1)
+        izq = der - 1
+        return np.where(np.abs(t[izq] - objetivo) <= np.abs(t[der] - objetivo),
+                        izq, der)
+
+    def _armar_clip(self, st: _EstadoCam) -> np.ndarray:
         """(T, lado, lado, 3) uint8 -> (T, 112, 112, 3) float32 normalizado.
 
         Center crop y sin flip: el mismo preprocesamiento que el dataset en
         modo validación.
         """
-        frames = np.stack(list(buffer)[-self.cfg.ventana:]).astype(np.float32) / 255.0
+        idx = self.indices_clip(st)
+        frames = np.stack([st.buffer[i] for i in idx]).astype(np.float32) / 255.0
         off = (self.cfg.lado - self.cfg.lado_final) // 2
         f = self.cfg.lado_final
         frames = frames[:, off:off + f, off:off + f, :]

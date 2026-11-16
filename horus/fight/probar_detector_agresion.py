@@ -130,13 +130,17 @@ def caso_buffer_se_llena_con_uno() -> Tuple[bool, str]:
 def caso_muestreo_por_tiempo() -> Tuple[bool, str]:
     """El clip cubre ~5 s a 30 FPS y a 8 FPS. Si se muestreara por frame,
     a 30 FPS duraría 1 s y el modelo vería el movimiento acelerado."""
+    # Se mide el tramo REAL que cubren los frames elegidos, con sus ts. La
+    # versión anterior multiplicaba (frames - 1) * intervalo, que es lo que el
+    # clip DEBERÍA durar, y por eso no veía que a 10 FPS duraba 6,2 s.
     medidos = {}
-    for fps in (30.0, 8.0):
+    for fps in (30.0, 10.0, 8.0):
         d = det(0.9)
         correr(d, int(fps * 12), fps, gente=2)
         st = d._cams["cam-1"]
-        medidos[fps] = (len(st.buffer) - 1) * d.cfg.intervalo_buffer()
-    ok = all(abs(v - 5.0) < 0.35 for v in medidos.values())
+        t = np.asarray(st.tiempos)[d.indices_clip(st)]
+        medidos[fps] = float(t[-1] - t[0])
+    ok = all(abs(v - 5.0) <= 0.5 / 8.0 + 1e-6 for v in medidos.values())
     return ok, " · ".join(f"{k:g} FPS -> clip de {v:.2f} s" for k, v in medidos.items())
 
 

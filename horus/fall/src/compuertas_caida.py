@@ -120,7 +120,9 @@ class PuertaCaida:
     def __init__(self, factor_pico=2.5, tau_baseline_seg=0.8, warmup_seg=0.4,
                  piso_baseline=0.05, ventana_vertical_previa_seg=2.0,
                  caida_vertical_minima=0.35, ventana_pico_a_caida_seg=1.0,
-                 bypass_historial_corto=False):
+                 bypass_historial_corto=False, suavizado_vertical_seg=0.0,
+                 exigir_pico=True, previa_percentil=100.0, previa_excluir_seg=0.0,
+                 previa_minima=None):
         self.factor_pico = factor_pico
         self.tau_baseline_seg = tau_baseline_seg
         self.warmup_seg = warmup_seg
@@ -129,6 +131,31 @@ class PuertaCaida:
         self.caida_vertical_minima = caida_vertical_minima
         self.ventana_pico_a_caida_seg = ventana_pico_a_caida_seg
         self.bypass_historial_corto = bypass_historial_corto
+        # Mediana causal de la verticalidad sobre estos segundos (0 = cruda).
+        # MediaPipe invierte el esqueleto un frame y la verticalidad salta de
+        # +1 a -1: medido a 10 fps, una "caida de torso" >= 0.5 en 1,5 s
+        # aparecia en el 49 % de los tramos caminando con la cruda y en el
+        # 24 % con mediana de 0,5 s (caidas: 85 % -> 76 %).
+        self.suavizado_vertical_seg = suavizado_vertical_seg
+        # Sin pico, la firma es solo la caida (sostenida) del torso. El pico se
+        # mide contra el movimiento "normal", que es el de caminar: 7 de las 9
+        # caidas que la puerta bloqueaba en Le2i tenian 1,7-2,8x, bajo el 2,5.
+        self.exigir_pico = exigir_pico
+        # Como se mide "estaba de pie antes". 100 = el maximo de la ventana
+        # previa (lo de siempre): un solo frame con el esqueleto mal estimado
+        # alcanza. Medido en UP-Fall: las 10 falsas de la cadena de la app son
+        # gente ACOSTADA hace 10-55 s, con la verticalidad oscilando 0..0,9 por
+        # MediaPipe; contra el maximo, cada oscilacion "prueba" que estaba
+        # parada. Con la mediana (50) y sin el ultimo tramo (`previa_excluir_seg`,
+        # que es la bajada misma) hace falta haber estado parado de verdad.
+        self.previa_percentil = previa_percentil
+        self.previa_excluir_seg = previa_excluir_seg
+        # Ademas de que el torso caiga, que ANTES haya estado vertical de
+        # verdad (None = no se exige). Alguien acostado hace rato, visto con
+        # la camara a lo largo del cuerpo, da tramos de 1 s con verticalidad
+        # 0,9 (perspectiva, no ruido): un minimo absoluto sobre la mediana de
+        # la ventana previa pide haber estado parado, no parecerlo un rato.
+        self.previa_minima = previa_minima
         self.reiniciar()
 
     def reiniciar(self):
@@ -140,13 +167,39 @@ class PuertaCaida:
         self._ultima_real_ts = None
         self._ultimo_pico_vel_ts = None
         self.ultimo_pico_ts = None          # ultima firma COMPLETA (pico + torso cayo)
-        self._historial = deque()           # (t, verticalidad)
+        self._historial = deque()           # (t, verticalidad) -- suavizada si corresponde
+        self._crudas = deque()              # (t, verticalidad cruda) para la mediana
         self.ultima_verticalidad = None
+
+    def _verticalidad(self, kp_norm, t):
+        cruda = verticalidad_de(kp_norm)
+        if self.suavizado_vertical_seg <= 0:
+            return cruda
+        self._crudas.append((t, cruda))
+        while self._crudas and t - self._crudas[0][0] > self.suavizado_vertical_seg:
+            self._crudas.popleft()
+        return float(np.median([x for _, x in self._crudas]))
+
+    def _cayo_el_torso(self, verticalidad, t):
+        cubierto = t - self._historial[0][0] if self._historial else 0.0
+        if cubierto < self.ventana_vertical_previa_seg * 0.8:
+            # recien la vemos: no puedo probar que ya estaba acostada antes.
+            # Medido: dejarlo pasar solo sumaba gente levantandose al arrancar
+            # el video.
+            return self.bypass_historial_corto
+        valores = [x for ti, x in self._historial if ti <= t - self.previa_excluir_seg]
+        if not valores:
+            return False
+        previa = (max(valores) if self.previa_percentil >= 100
+                  else float(np.percentile(valores, self.previa_percentil)))
+        if self.previa_minima is not None and previa < self.previa_minima:
+            return False
+        return (previa - verticalidad) >= self.caida_vertical_minima
 
     def actualizar(self, kp_norm, vel, t):
         """Llamar SOLO con detecciones reales. Un frame repetido para tapar un
         hueco tiene velocidad 0 y arrastraria el baseline hacia abajo."""
-        verticalidad = verticalidad_de(kp_norm)
+        verticalidad = self._verticalidad(kp_norm, t)
         self.ultima_verticalidad = verticalidad
 
         dt = (t - self._ultima_real_ts) if self._ultima_real_ts is not None else None
@@ -163,19 +216,11 @@ class PuertaCaida:
                 if v > self.baseline * self.factor_pico:
                     self._ultimo_pico_vel_ts = t
 
-                if (self._ultimo_pico_vel_ts is not None
-                        and (t - self._ultimo_pico_vel_ts) <= self.ventana_pico_a_caida_seg):
-                    cubierto = t - self._historial[0][0] if self._historial else 0.0
-                    if cubierto < self.ventana_vertical_previa_seg * 0.8:
-                        # recien la vemos: no puedo probar que ya estaba
-                        # acostada antes. Medido: dejarlo pasar solo sumaba
-                        # gente levantandose al arrancar el video.
-                        if self.bypass_historial_corto:
-                            self.ultimo_pico_ts = t
-                    else:
-                        previa = max(x for _, x in self._historial)
-                        if (previa - verticalidad) >= self.caida_vertical_minima:
-                            self.ultimo_pico_ts = t
+                pico_ok = (not self.exigir_pico) or (
+                    self._ultimo_pico_vel_ts is not None
+                    and (t - self._ultimo_pico_vel_ts) <= self.ventana_pico_a_caida_seg)
+                if pico_ok and self._cayo_el_torso(verticalidad, t):
+                    self.ultimo_pico_ts = t
 
                 alpha = 1.0 - np.exp(-dt / self.tau_baseline_seg)
                 v_ema = min(v, self.baseline * self.factor_pico)

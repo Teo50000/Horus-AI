@@ -3,7 +3,7 @@
 
 La cabeza necesita tres cosas y solo una estaba:
 
-    modelo_demo_todo.pt    el ST-GCN entrenado         ya lo tenés
+    modelo_caidas_ens3.pt  el ST-GCN (3 semillas)      lo baja bajar_modelos.py
     mediapipe              el paquete de python        se instala acá
     pose_landmarker.task   el modelo de pose de Google se baja acá
 

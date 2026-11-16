@@ -104,7 +104,7 @@ class Horario:
 class Zona:
     nombre: str
     puntos: np.ndarray                     # (N, 2) en px del frame original
-    tipo: str = "transito"                 # "transito"|"restringida"|"acceso"|"privada"
+    tipo: str = "transito"                 # "transito"|"restringida"|"acceso"|"privada"|"descanso"
     # Cuándo se PUEDE estar acá. Fuera de esta franja, estar es un evento.
     # None en una zona restringida = nunca se puede (bóveda, patio de noche).
     horario_permitido: Optional[Horario] = None

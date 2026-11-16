@@ -467,6 +467,23 @@ def caso_hueco_corto_sostiene() -> Tuple[bool, str]:
                 f"{baja_vis.count('caida')}/{len(baja_vis)} caída")
 
 
+def caso_sin_pose_con_track_sostiene() -> Tuple[bool, str]:
+    """Una caída confirmada que pierde la pose 5 s con el track presente
+    sigue siendo caída; si el track desaparece, se corta (`caso_hueco`).
+
+    Medido en Le2i con la cadena de la app (22_evaluar_app.py): en ~11 de las
+    caídas perdidas hubo firma y etiqueta, y después MediaPipe dejó de ver a
+    la persona en el piso; con el corte a los 2 s el estado se tiraba antes
+    de que ReglaCaida juntara su quietud.
+    """
+    det, pose, _ = detector()
+    guion = guion_caida(60, 3, 40) + [(88.0, 0.2)] * 50       # 5 s sin pose usable
+    sal = correr(det, pose, {1: guion}, len(guion), quieto_desde={1: 64})
+    ultimas = etiquetas(sal, 1)[-10:]
+    ok = bool(ultimas) and all(e == "caida" for e in ultimas)
+    return ok, f"a los 5 s sin pose: {ultimas.count('caida')}/{len(ultimas)} siguen caída"
+
+
 def caso_remapeo_coco() -> Tuple[bool, str]:
     """MediaPipe 33 -> COCO 17, y de recorte a píxeles del frame.
 
@@ -494,13 +511,13 @@ def caso_calentamiento_manda_pose() -> Tuple[bool, str]:
     así que el clasificador nunca va a tener firma. Antes esto salía gratis
     porque la ventana tardaba 3,2 s en llenarse a 10 FPS (el bug de fps); con
     el remuestreo la ventana es de 1,24 s a cualquier fps, y el diferimiento
-    a la geometría es explícito: `calentamiento_s` = 3,0 s desde que aparece
-    el track, más que los 2 s de `ReglaCaida.quieto_s`.
+    a la geometría es explícito: `calentamiento_s` desde que aparece el track,
+    más que `ReglaCaida.quieto_s` (noviembre: 5 s y 4 s; antes 3 y 2).
     """
     det, pose, _ = detector()
-    sal = correr(det, pose, {1: [(88.0, 0.9)] * 40}, 40, quieto_desde={1: 0})
+    sal = correr(det, pose, {1: [(88.0, 0.9)] * 60}, 60, quieto_desde={1: 0})
     primeras = [a for _, _, acs in sal[:20] for a in acs]
-    ultimas = [a for _, _, acs in sal[35:] for a in acs]
+    ultimas = [a for _, _, acs in sal[55:] for a in acs]
     ok = (primeras and all(a.fuente == CABEZA_POSE
                            and a.keypoints is not None
                            and a.keypoints.shape == (17, 3) for a in primeras)
@@ -632,6 +649,61 @@ def caso_pipeline_declara_sin_personas() -> Tuple[bool, str]:
                 f"dormidas: {sorted(dormidas) or 'ninguna'}")
 
 
+def caso_vecino_encima_no_dispara() -> Tuple[bool, str]:
+    """Otra persona tapa a la que está de pie: su esqueleto no se le pega.
+
+    MediaPipe corre con num_poses=1 sobre el recorte. Si en el recorte hay
+    dos personas, agarra cualquiera: el esqueleto de la que está de pie pasa
+    a ser el de la que está en el piso, eso es un pico de velocidad y una
+    caída del torso, y salta una falsa alarma. El backend de mentira lo
+    reproduce: lee la identidad del píxel del centro, que queda pintado con
+    el vecino. Sin el filtro de solape (max_solape > 1) tiene que fallar, para
+    que el caso pruebe algo.
+    """
+    def correr_tapado(**kw: Any) -> List[str]:
+        det, pose, _ = detector(**kw)
+        pose.guion = {1: [(2.0, 0.9)], 2: [(88.0, 0.9)]}
+        caja1 = caja_para(2.0, 1)
+        cx, cy = (caja1[0] + caja1[2]) / 2, (caja1[1] + caja1[3]) / 2
+        caja2 = (cx - 180, cy - 80, cx + 180, cy + 80)    # acostado, encima
+        out = []
+        for i in range(160):
+            ts = T0 + i * DT
+            pose.paso = i
+            cajas = {1: caja1}
+            tracks = [track(1, caja1, ts)]
+            if 60 <= i < 110:
+                cajas[2] = caja2
+                tracks.append(track(2, caja2, ts))
+            for a in det.procesar("cam-deposito", frame_con(cajas), tracks, ts=ts):
+                if a.track_id == 1:
+                    out.append(a.accion)
+        return out
+
+    con = correr_tapado()
+    sin = correr_tapado(max_solape=2.0, holgura_pose_en_caja=10.0)
+    ok = "caida" not in con and "caida" in sin
+    return ok, (f"con filtro: {con.count('caida')} caídas · "
+                f"sin filtro: {sin.count('caida')} (tiene que ser > 0)")
+
+
+def caso_pose_ajena_se_descarta() -> Tuple[bool, str]:
+    """Torso fuera de la caja del track = esqueleto del vecino."""
+    from detector_caidas import pose_dentro_de_caja, solape_con_otros
+    caja = (100.0, 100.0, 200.0, 400.0)
+    rec = (80.0, 40.0, 220.0, 460.0)
+    kp = esqueleto(2.0, jitter=0.0)
+    propio = pose_dentro_de_caja(kp, rec, caja, 0.10)
+    kp2 = kp.copy()
+    kp2[:, 0] += 0.45                        # el torso se va al margen derecho
+    ajeno = pose_dentro_de_caja(kp2, rec, caja, 0.10)
+    s_none = solape_con_otros(caja, [(300, 100, 400, 400)])
+    s_mitad = solape_con_otros(caja, [(150, 100, 250, 400)])
+    ok = propio and not ajeno and s_none == 0.0 and abs(s_mitad - 0.5) < 1e-6
+    return ok, (f"propio={propio} ajeno={ajeno} "
+                f"solape 0={s_none:.2f} mitad={s_mitad:.2f}")
+
+
 CASOS = [
     ("de_pie", caso_de_pie_no_reporta),
     ("cabeza_declarada", caso_cabeza_siempre_declarada),
@@ -641,10 +713,13 @@ CASOS = [
     ("latch", caso_latch_sostiene),
     ("levantarse", caso_se_levanta_apaga),
     ("dos_personas", caso_dos_personas_no_se_mezclan),
+    ("vecino_encima", caso_vecino_encima_no_dispara),
+    ("pose_ajena", caso_pose_ajena_se_descarta),
     ("lote", caso_lote_unico_por_frame),
     ("persona_chica", caso_persona_chica_se_descarta),
     ("visibilidad", caso_visibilidad_baja_se_descarta),
     ("hueco", caso_hueco_largo_reinicia),
+    ("sin_pose_sostiene", caso_sin_pose_con_track_sostiene),
     ("hueco_corto", caso_hueco_corto_sostiene),
     ("remapeo", caso_remapeo_coco),
     ("calentamiento", caso_calentamiento_manda_pose),

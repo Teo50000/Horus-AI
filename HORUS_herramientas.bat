@@ -449,14 +449,15 @@ rem     abajo ya lo decia. Andaba de casualidad porque los dos archivos estan.
 rem   - no miraba pose_landmarker.task: con mediapipe instalado y sin el
 rem     .task, prendia --caidas sobre una cabeza que no puede cargar.
 set FALTA_CAIDAS=
-if not exist "horus\fall\checkpoints\modelo_demo_todo.pt" set FALTA_CAIDAS=modelo_demo_todo.pt
+rem Mismo criterio que HORUS.bat: el ensamble si esta, si no el de una semilla.
+if not exist "horus\fall\checkpoints\modelo_caidas_ens3.pt" if not exist "horus\fall\checkpoints\modelo_demo_todo.pt" set FALTA_CAIDAS=modelo_caidas_ens3.pt - opcion B
 if not defined FALTA_CAIDAS if not exist "horus\fall\pose_landmarker.task" set FALTA_CAIDAS=pose_landmarker.task
 if not defined FALTA_CAIDAS %HORUS_PY% -c "import mediapipe" >nul 2>&1 || set FALTA_CAIDAS=mediapipe
 if defined FALTA_CAIDAS (
   echo  [caidas apagada: falta !FALTA_CAIDAS! - opcion 5]
 ) else (
-  rem Sin --caidas-checkpoint: el default de ConfigCaidas es
-  rem modelo_demo_todo.pt, que es EL de despliegue ("entrenado con todo").
+  rem Sin --caidas-checkpoint: ConfigCaidas elige solo
+  rem (detector_caidas.checkpoint_por_defecto).
   set FLAGS=!FLAGS! --caidas
 )
 if exist "horus\06_fusion_decision\topologia.json" (

@@ -5,6 +5,7 @@
     "transito": "se pasa por aca, es normal. Solo sirve para merodeo.",
     "acceso": "puerta, porton, caja. Merodeo mas corto y paquete abandonado sube a alerta.",
     "restringida": "estar aca fuera del horario permitido ES un evento (intrusion).",
+    "descanso": "cama, sillon: estar acostado aca es normal y la regla de caidas no alerta. Dibujar con bin/dibujar_zona.py --tipo descanso --nombre cama.",
     "privada": "no se procesa nada. Para excluir, usar zonas.json de 02_preproceso_roi, que ni siquiera mira esos pixeles."
   },
 

@@ -698,6 +698,38 @@ def caso_topologia_sin_restringida() -> Tuple[bool, str, List[Any]]:
                                % (avisa, calla)), []
 
 
+def caso_caida_en_cama() -> Tuple[bool, str, List[Any]]:
+    """Acostado dentro de una zona 'descanso' (cama, sillon) no es caida.
+
+    Es la falsa que mas queda (gente acostada tranquila: con keypoints 2D se
+    ve igual que alguien caido). La misma escena fuera de la zona tiene que
+    seguir disparando.
+    """
+    topo = Topologia.desde_dict({"camaras": {"cam-cuarto": {
+        "nombre": "Cuarto", "tam_frame": [1080, 1920],
+        "zonas": [{"nombre": "cama", "tipo": "descanso", "prioridad": 1,
+                   "puntos": [[800, 700], [1300, 700], [1300, 1000], [800, 1000]]}]}}})
+
+    def escena(caja: Sequence[float]) -> int:
+        pasos = []
+        for i in range(30):
+            t = DIA + i * 0.2
+            p = track("persona", caja, tid=5, ts=t, cam="cam-cuarto",
+                      visto_s=6.0, quieto=True, quieto_s=1.0 + i * 0.2)
+            a = AccionObs(bbox_xyxy=tuple(caja), accion="caida", score=0.81,
+                          track_id=5, camera_id="cam-cuarto", ts=t,
+                          fuente=CABEZA_ACCION)
+            pasos.append([obs("cam-cuarto", t, [p], acciones=[a],
+                              cabezas=(CABEZA_OBJETOS, CABEZA_ACCION))])
+        ev, _ = correr(pasos, motor=MotorFusion(topologia=topo, cfg=ConfigFusion()))
+        return len([e for e in ev if e.tipo == "caida"])
+
+    en_cama = escena((860, 820, 1180, 920))      # pies dentro de la cama
+    en_piso = escena((200, 820, 520, 920))       # misma postura, en el piso
+    return (en_cama == 0 and en_piso >= 1), (
+        f"en la cama: {en_cama} caídas · en el piso: {en_piso}"), []
+
+
 CASOS: Dict[str, Callable[[], Tuple[bool, str, List[Any]]]] = {
     "incendio": caso_incendio_confirmado,
     "humo_solo": caso_humo_solo,
@@ -715,6 +747,7 @@ CASOS: Dict[str, Callable[[], Tuple[bool, str, List[Any]]]] = {
     "caida_pose": caso_caida_por_pose,
     "caida_clasificador": caso_caida_por_clasificador,
     "sentarse": caso_sentarse_no_es_caida,
+    "caida_en_cama": caso_caida_en_cama,
     "accion_externa": caso_accion_externa,
     "pelea": caso_pelea,
     "pelea_de_a_uno": caso_pelea_de_a_uno,

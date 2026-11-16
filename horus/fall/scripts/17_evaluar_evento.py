@@ -62,17 +62,17 @@ def cargar_modelo(ruta, A, device):
     return cargar_checkpoint(ruta, device, canales_entrada=4)[0]
 
 
-def entrenar_sin(grupo, todos, A, device, seed):
+def entrenar_sin(grupo, todos, A, device, seed, receta=None):
     """Entrena sin el grupo dejado afuera, con la receta compartida de
     src/entrenamiento.py (la misma que usa 18_entrenar.py). Guarda la ultima
     epoca: acá el grupo afuera se reserva para MEDIR a nivel evento, no para
     elegir epoca -- si lo usara para las dos cosas, el numero saldria inflado."""
     items = [d for d in todos if d["grupo"] != grupo]
-    modelo, _, _, _ = entrenar(items, device, semilla=seed)
+    modelo, _, _, _ = entrenar(items, device, semilla=seed, receta=receta)
     return modelo.eval()
 
 
-def modelos_loso(grupos, A, device, loso_dir=LOSO_DIR, datos=TODOS, semillas=1):
+def modelos_loso(grupos, A, device, loso_dir=LOSO_DIR, datos=TODOS, semillas=1, receta=None):
     """Un modelo por sujeto dejado afuera, cacheado en `loso_dir`.
 
     Con `semillas` > 1 cada fold es un ensamble de esa cantidad de semillas.
@@ -94,7 +94,7 @@ def modelos_loso(grupos, A, device, loso_dir=LOSO_DIR, datos=TODOS, semillas=1):
                 todos = list(np.load(datos, allow_pickle=True))
             print(f"  entrenando LOSO sin {g} ({i + 1}/{len(grupos)}), semilla {k}...", flush=True)
             t0 = time.perf_counter()
-            m = entrenar_sin(g, todos, A, device, seed=i + 1000 * k)
+            m = entrenar_sin(g, todos, A, device, seed=i + 1000 * k, receta=receta)
             torch.save(m.state_dict(), ruta)
             print(f"    {time.perf_counter() - t0:.0f}s -> {ruta}")
             miembros.append(m)
@@ -260,6 +260,10 @@ if __name__ == "__main__":
                     help="cache de los modelos LOSO; una carpeta por juego de datos")
     ap.add_argument("--datos", default=TODOS,
                     help="npy con el que se entrenan los LOSO (ej. todos_con_desmayo.npy)")
+    ap.add_argument("--simular-app", type=float, default=0.0, metavar="P",
+                    help="con --loso: entrena con P de los clips armados como en la app "
+                         "(10 fps, huecos, remuestreo; dataset_stgcn.simular_camara). "
+                         "Usar una --loso-dir propia")
     ap.add_argument("--semillas", type=int, default=1,
                     help="con --loso: ensamble de N semillas por fold")
     ap.add_argument("--origen", default="le2i", choices=["le2i", "upfall"])
@@ -304,7 +308,8 @@ if __name__ == "__main__":
     A = construir_matriz_adyacencia()
     if args.loso:
         modelos = modelos_loso(grupos, A, device, loso_dir=args.loso_dir,
-                               datos=args.datos, semillas=args.semillas)
+                               datos=args.datos, semillas=args.semillas,
+                               receta=dict(simular_app=args.simular_app) if args.simular_app else None)
         modelo_de = lambda s: modelos[s["sujeto"]]
         desc_modelo = (f"LOSO ({args.loso_dir}, {os.path.basename(args.datos)}"
                        + (f", ensamble x{args.semillas}" if args.semillas > 1 else "") + ")")

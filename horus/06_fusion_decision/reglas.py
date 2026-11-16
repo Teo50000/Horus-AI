@@ -489,13 +489,27 @@ class ReglaCaida(Regla):
 
     umbral_accion: float = 0.50
     angulo_torso_min: float = 55.0         # grados desde la vertical
-    quieto_s: float = 2.0                  # sin levantarse
+    # Sin levantarse. Era 2,0. Medido con fall/scripts/22_evaluar_app.py
+    # (LOSO, Le2i + UP-Fall): 4 s deja las caidas detectadas igual (108 vs
+    # 107 de 142) y baja las falsas de 17 a 9, a cambio de ~2 s mas de
+    # latencia. Lo que se filtra es la postura de caida que dura poco: gente
+    # agachandose, sentandose o MediaPipe invirtiendo el esqueleto un rato.
+    # Si se toca: detector_caidas.ConfigCaidas.calentamiento_s tiene que
+    # seguir siendo mayor.
+    quieto_s: float = 4.0
     critico_s: float = 15.0
     # Cuanto puede faltar la postura de caida antes de que el reloj de
     # "tumbado desde" vuelva a cero. Un segundo tapa el parpadeo de un frame
     # en medio de una caida real; mas que eso, ya se levanto.
     olvido_s: float = 1.0
     aspecto_tumbado: float = 1.00          # w/h de una caja de persona acostada
+    # Zonas donde estar acostado es lo normal (cama, sillon). Es la mayor
+    # fuente de falsas que queda: medido en UP-Fall, 6 de las 9 falsas son
+    # gente acostada tranquila, y con keypoints 2D acostado y caido se ven
+    # igual. Se dibujan con bin/dibujar_zona.py --tipo descanso. Una persona
+    # esta "en" la zona si el punto medio del borde inferior de su caja cae
+    # adentro (igual que en todas las zonas).
+    zonas_sin_caida: FrozenSet[str] = frozenset({"descanso"})
     permitir_heuristica_bbox: bool = False  # sin pose ni acción; ver abajo
 
     def puede_correr(self, obs: ObservacionCamara) -> bool:
@@ -558,6 +572,10 @@ class ReglaCaida(Regla):
             desde = mem[clave]
             tumbado_s = obs.ts - desde
 
+            z = ctx.zona(persona) if persona is not None else None
+            if z is not None and z.tipo in self.zonas_sin_caida:
+                continue                   # acostado en la cama no es una caida
+
             quieto_ok = persona is None or persona.quieto or persona.quieto_s >= self.quieto_s
             if tumbado_s < self.quieto_s or not quieto_ok:
                 continue                   # todavía puede ser alguien sentándose
@@ -567,7 +585,6 @@ class ReglaCaida(Regla):
                 sev = Severidad.CRITICO
                 motivo += f", sin levantarse hace {tumbado_s:.0f} s"
 
-            z = ctx.zona(persona) if persona is not None else None
             fuera.append(Hallazgo(
                 tipo=self.tipo, severidad=sev,
                 confianza=min(0.95, conf + 0.10 * min(tumbado_s / 10.0, 1.0)),

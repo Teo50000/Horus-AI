@@ -208,7 +208,10 @@ class ConfigCaidas:
     # --- puertas que necesitan los 33 puntos (ver compuertas_caida.PuertaCaida) ---
     umbral_visibilidad: float = 0.50
     tolerancia_sin_ver_s: float = 2.0      # era 0,6: tiraba el estado en medio de la caída
-    factor_pico_velocidad: float = 2.5     # barrido: 2,5 > 3,0 en recall sin falsas extra
+    # 2,5 venia de barrer MaquinaCaida. Medido en la cadena de la app
+    # (22_evaluar_app.py, LOSO): 7 de las 9 caidas que la puerta bloqueaba en
+    # Le2i tenian 1,7-2,8x, porque el "movimiento normal" es el de caminar.
+    factor_pico_velocidad: float = 2.0
     ventana_post_pico_s: float = 4.0
     tau_baseline_s: float = 0.8            # EMA del movimiento normal, en segundos
     warmup_baseline_s: float = 0.4         # se siembra con la mediana de esto, no con un frame
@@ -217,27 +220,58 @@ class ConfigCaidas:
     caida_vertical_minima: float = 0.35
     ventana_pico_a_caida_s: float = 1.0    # el torso termina de bajar después del pico
     bypass_historial_corto: bool = False   # ver `calentamiento_s`: ese caso lo cubre la geometría
+    suavizado_vertical_s: float = 0.0      # mediana de la verticalidad (ver PuertaCaida)
+    exigir_pico: bool = True               # False: la firma es solo la caida sostenida del torso
+    previa_percentil: float = 100.0        # "estaba de pie": 100 = maximo, 50 = mediana (ver PuertaCaida)
+    previa_excluir_seg: float = 0.0        # sin el ultimo tramo de la ventana previa
+    previa_minima: Optional[float] = None  # verticalidad previa minima para "estaba de pie"
     margen_recorte: float = 0.20     # igual que en entrenamiento; ver cabecera
+
+    # --- despues de confirmar ---
+    # Si una caida ya confirmada pierde la pose (MediaPipe no la ve) pero el
+    # track sigue, se sostiene hasta estos segundos en vez de reiniciar a los
+    # `tolerancia_sin_ver_s`. Medido en Le2i: en ~11 de las caidas perdidas
+    # hubo firma y etiqueta y despues MediaPipe dejo de verla en el piso. Un
+    # track que el detector de personas sigue viendo y MediaPipe no, despues
+    # de una caida, es lo esperable: alguien tirado en una pose rara.
+    sostener_sin_pose_s: float = 10.0
+    # Histeresis del enganche: una vez confirmada, se suelta recien cuando la
+    # probabilidad baja de esto (None = umbral_reporte, sin histeresis).
+    umbral_liberar: Optional[float] = None
 
     # --- lo que agrega Horus ---
     solo_confirmados: bool = True    # el tracker ya filtró el parpadeo
     min_alto_px: int = 80            # una persona de 40 px da una pose inventada
     max_personas: int = 4            # tope de recortes por cámara por frame
+    # Varias personas: el recorte de una que está tapada (o pegada) por otra
+    # tiene DOS personas adentro, y MediaPipe (num_poses=1) agarra la que le
+    # parece más clara, que puede ser la otra. El esqueleto salta de una a la
+    # otra, eso es un "pico de velocidad" y el torso "cae": falsa alarma.
+    # Si más de esta fracción de la caja está cubierta por la caja de otra
+    # persona, no se mira la pose en ese frame (cuenta como pose perdida).
+    max_solape: float = 0.40
+    # Y aunque no se solapen las cajas: si el torso que devolvió MediaPipe
+    # cae fuera de la caja del track (con esta holgura, en fracción de la
+    # caja), es el esqueleto de otro que entró en el margen del recorte.
+    holgura_pose_en_caja: float = 0.10
     emitir_en_calentamiento: bool = True   # ver `_emitir`
     # Alguien que entra a cuadro YA tirado no tiene transición que probar: el
     # filtro de pico lo bloquea siempre. Durante sus primeros `calentamiento_s`
     # (desde que aparece o desde un reinicio), si el clasificador ve postura de
     # caída y lo único que falta es esa prueba, se le manda la pose a
     # `ReglaCaida` para que decida por geometría. Tiene que ser MAYOR que
-    # `ReglaCaida.quieto_s` (2 s), o la regla nunca llega a juntar la quietud.
-    # 3 s es lo que la ventana vieja daba de hecho a 10 fps (32 frames).
-    calentamiento_s: float = 3.0
+    # `ReglaCaida.quieto_s` (hoy 4 s), o la regla nunca llega a juntar la
+    # quietud: 5 s.
+    calentamiento_s: float = 5.0
     # Por debajo no se etiqueta "caida". Si el checkpoint trae un umbral
     # calibrado (`scripts/21_calibrar_umbral.py`), se usa ese: cada
     # entrenamiento deja las probabilidades en otra escala. OJO: no puede
     # quedar por debajo de `ReglaCaida.umbral_accion` (0,50), o la regla
     # descarta en silencio lo que esta cabeza etiquetó.
-    umbral_reporte: float = 0.50
+    # 0,60 y no 0,50: medido con 22_evaluar_app.py, junto con sostener sin
+    # pose y pico 2,0, es lo que mejora caidas y falsas A LA VEZ respecto de lo
+    # que habia (resultados/README.md, filas combo_*).
+    umbral_reporte: float = 0.60
 
     def __post_init__(self) -> None:
         if self.ventana < 4:
@@ -256,7 +290,12 @@ class ConfigCaidas:
             ventana_vertical_previa_seg=self.ventana_vertical_previa_s,
             caida_vertical_minima=self.caida_vertical_minima,
             ventana_pico_a_caida_seg=self.ventana_pico_a_caida_s,
-            bypass_historial_corto=self.bypass_historial_corto)
+            bypass_historial_corto=self.bypass_historial_corto,
+            suavizado_vertical_seg=self.suavizado_vertical_s,
+            exigir_pico=self.exigir_pico,
+            previa_percentil=self.previa_percentil,
+            previa_excluir_seg=self.previa_excluir_seg,
+            previa_minima=self.previa_minima)
 
 
 # --------------------------------------------------------------------------- #
@@ -489,6 +528,38 @@ def recorte_de_caja(frame: np.ndarray,
     return rec, (float(x1), float(y1), float(x2), float(y2))
 
 
+def solape_con_otros(caja: Sequence[float],
+                     otras: Sequence[Sequence[float]]) -> float:
+    """Fracción de `caja` cubierta por la caja de OTRA persona (la peor)."""
+    x1, y1, x2, y2 = (float(v) for v in caja)
+    area = max((x2 - x1) * (y2 - y1), 1e-6)
+    peor = 0.0
+    for o in otras:
+        ox1, oy1, ox2, oy2 = (float(v) for v in o)
+        iw = min(x2, ox2) - max(x1, ox1)
+        ih = min(y2, oy2) - max(y1, oy1)
+        if iw > 0 and ih > 0:
+            peor = max(peor, iw * ih / area)
+    return peor
+
+
+def pose_dentro_de_caja(kp: np.ndarray,
+                        caja_recorte: Tuple[float, float, float, float],
+                        caja: Sequence[float], holgura: float) -> bool:
+    """¿El centro del torso que dio MediaPipe está dentro de la caja del track?
+
+    El recorte se agranda un 20% por lado, y en ese margen entra el vecino.
+    Una caja de YOLO cubre el cuerpo entero, así que el torso de la persona
+    correcta cae adentro siempre; si cae afuera, es el esqueleto de otro.
+    """
+    rx1, ry1, rx2, ry2 = caja_recorte
+    cx = rx1 + float(np.mean(kp[list(IDX_TORSO), 0])) * (rx2 - rx1)
+    cy = ry1 + float(np.mean(kp[list(IDX_TORSO), 1])) * (ry2 - ry1)
+    x1, y1, x2, y2 = (float(v) for v in caja)
+    hx, hy = (x2 - x1) * holgura, (y2 - y1) * holgura
+    return (x1 - hx) <= cx <= (x2 + hx) and (y1 - hy) <= cy <= (y2 + hy)
+
+
 def kp_a_coco_px(kp: np.ndarray,
                  caja_recorte: Tuple[float, float, float, float]) -> np.ndarray:
     """(33, 4) del recorte -> (17, 3) COCO en píxeles del frame.
@@ -529,6 +600,7 @@ class DetectorCaidas:
             "descarte_visibilidad": 0, "descarte_chica": 0,
             "clasificaciones": 0, "reportes": 0, "calentamiento": 0,
             "bloqueadas_sin_pico": 0, "a_geometria": 0,
+            "descarte_solape": 0, "descarte_pose_ajena": 0,
         }
 
     def cargar(self) -> "DetectorCaidas":
@@ -629,6 +701,10 @@ class DetectorCaidas:
 
         self.stats["frames"] += 1
         elegidos = self._elegir(tracks)
+        # todas las personas, confirmadas o no: una tentativa que tapa a otra
+        # tapa igual
+        cajas_personas = [(int(t.track_id), t.bbox_xyxy) for t in tracks or ()
+                          if getattr(t, "clase", "") == "persona"]
         mirados: List[Tuple[Any, _EstadoTrack, Optional[np.ndarray]]] = []
         pendientes: List[_EstadoTrack] = []
 
@@ -638,10 +714,19 @@ class DetectorCaidas:
             est = self._estados.get(clave)
             if est is None:
                 est = self._estados[clave] = _EstadoTrack(cfg, ts)
+            # si el track se vio sin cortes hasta el frame anterior: es lo que
+            # decide si una caida confirmada se sostiene sin pose
+            track_continuo = (est.ultimo_toque_ts is not None
+                              and ts - est.ultimo_toque_ts <= cfg.tolerancia_sin_ver_s)
             est.ultimo_toque_ts = ts
 
             kp = kp_coco = None
-            corte = recorte_de_caja(frame, t.bbox_xyxy, cfg.margen_recorte)
+            otras = [c for tid, c in cajas_personas if tid != int(t.track_id)]
+            tapado = bool(otras) and solape_con_otros(t.bbox_xyxy, otras) > cfg.max_solape
+            corte = (None if tapado
+                     else recorte_de_caja(frame, t.bbox_xyxy, cfg.margen_recorte))
+            if tapado:
+                self.stats["descarte_solape"] += 1
             if corte is not None:
                 recorte, caja_rec = corte
                 kp = self._pose(recorte)
@@ -649,6 +734,10 @@ class DetectorCaidas:
                     self.stats["pose_falla"] += 1
                 elif visibilidad_torso(kp) < cfg.umbral_visibilidad:
                     self.stats["descarte_visibilidad"] += 1
+                    kp = None
+                elif otras and not pose_dentro_de_caja(kp, caja_rec, t.bbox_xyxy,
+                                                       cfg.holgura_pose_en_caja):
+                    self.stats["descarte_pose_ajena"] += 1
                     kp = None
                 else:
                     self.stats["pose_ok"] += 1
@@ -667,7 +756,14 @@ class DetectorCaidas:
             previa = est.ultima_vista_ts
             if kp is not None:
                 est.ultima_vista_ts = ts
-            if previa is not None and (ts - previa) > cfg.tolerancia_sin_ver_s:
+            # una caida ya confirmada se sostiene mas sin pose, pero SOLO si el
+            # track siguio (el detector de personas la ve, MediaPipe no): ver
+            # `sostener_sin_pose_s`. Si el track desaparecio, se reinicia como
+            # siempre: al reaparecer no se valida nada con datos viejos.
+            tolerancia = (max(cfg.tolerancia_sin_ver_s, cfg.sostener_sin_pose_s)
+                          if est.caida_confirmada and track_continuo
+                          else cfg.tolerancia_sin_ver_s)
+            if previa is not None and (ts - previa) > tolerancia:
                 # Hace rato que no hay pose confiable: se tira todo en vez de
                 # seguir clasificando con datos congelados. "Hace rato" son 2 s
                 # y no 0,6: MediaPipe pierde a la persona justo cuando está en
@@ -728,10 +824,12 @@ class DetectorCaidas:
         se levantó — o cuando el track se reinicia.
         """
         cfg = self.cfg
-        if est.prob < cfg.umbral_reporte:
-            est.caida_confirmada = False
-            return
         if est.caida_confirmada:
+            liberar = cfg.umbral_reporte if cfg.umbral_liberar is None else cfg.umbral_liberar
+            if est.prob < liberar:
+                est.caida_confirmada = False
+            return
+        if est.prob < cfg.umbral_reporte:
             return
         if est.puerta.firma_reciente(ts, cfg.ventana_post_pico_s):
             est.caida_confirmada = True
@@ -750,7 +848,11 @@ class DetectorCaidas:
         if est.listo:
             if est.caida_confirmada:
                 self.stats["reportes"] += 1
-                return AccionObs(accion="caida", score=float(est.prob),
+                # Con histeresis (`umbral_liberar`) la probabilidad puede estar
+                # entre los dos umbrales mientras sigue enganchada; ReglaCaida
+                # descarta todo score < su umbral_accion (0,50), asi que se
+                # reporta al menos el umbral de reporte.
+                return AccionObs(accion="caida", score=max(float(est.prob), cfg.umbral_reporte),
                                  keypoints=None, fuente=CABEZA_ACCION, **base)
 
             # El clasificador ve postura de caída pero la puerta no la deja
@@ -815,7 +917,8 @@ class DetectorCaidas:
         s = self.stats
         return (f"[caidas] {s['frames']} frames · {s['personas']} personas · "
                 f"pose {s['pose_ok']}/{s['pose_ok'] + s['pose_falla'] + s['descarte_visibilidad']} "
-                f"(vis {s['descarte_visibilidad']}, chicas {s['descarte_chica']}) · "
+                f"(vis {s['descarte_visibilidad']}, chicas {s['descarte_chica']}, "
+                f"tapadas {s['descarte_solape']}, ajenas {s['descarte_pose_ajena']}) · "
                 f"{s['clasificaciones']} clasificaciones · {s['reportes']} reportes · "
                 f"{s['bloqueadas_sin_pico']} bloqueadas sin pico · "
                 f"{s['calentamiento']} en calentamiento · "

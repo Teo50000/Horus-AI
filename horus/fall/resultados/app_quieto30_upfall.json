@@ -1,0 +1,415 @@
+{
+ "tag": "quieto30_upfall",
+ "git": "bf1a917",
+ "modelo": "app LOSO x3",
+ "fps": "10",
+ "umbral": 0.6,
+ "quieto_s": 3.0,
+ "config": {
+  "sostener_sin_pose_s": 10.0,
+  "factor_pico_velocidad": 2.0,
+  "umbral_reporte": 0.6
+ },
+ "espejo": false,
+ "resumen": {
+  "eventos": 12,
+  "detectadas": 8,
+  "recall": 0.6666666666666666,
+  "recall_con_alerta_activa": 0.6666666666666666,
+  "recall_ic90": [
+   0.4444444444444444,
+   0.9
+  ],
+  "falsas": 6,
+  "horas_normales": 0.20216361466662944,
+  "falsas_por_hora": 29.678931146408726,
+  "falsas_ic90": [
+   13.045783837050621,
+   48.42466281403478
+  ],
+  "latencia_mediana": 4.5559494366398114,
+  "latencia_p90": 5.143140968325293,
+  "causas_no_detectadas": {
+   "sin_pose": 4
+  },
+  "falsas_por_subclase": {
+   "lying": 6
+  }
+ },
+ "streams": [
+  {
+   "video": "Subject3Activity11Trial3Camera1",
+   "sujeto": "upfall_s3",
+   "tiene_caida": false,
+   "onset": NaN,
+   "fin_fallen": NaN,
+   "duracion": 59.84783681774349,
+   "alarmas": [],
+   "detectada": null,
+   "latencia": null,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 59.84783681774349
+  },
+  {
+   "video": "Subject3Activity11Trial2Camera1",
+   "sujeto": "upfall_s3",
+   "tiene_caida": false,
+   "onset": NaN,
+   "fin_fallen": NaN,
+   "duracion": 59.796214035547244,
+   "alarmas": [
+    32.585577311506086
+   ],
+   "detectada": null,
+   "latencia": null,
+   "falsas": 1,
+   "sub_falsas": [
+    6
+   ],
+   "tiempo_normal": 59.796214035547244
+  },
+  {
+   "video": "Subject3Activity11Trial1Camera1",
+   "sujeto": "upfall_s3",
+   "tiene_caida": false,
+   "onset": NaN,
+   "fin_fallen": NaN,
+   "duracion": 59.87996007490636,
+   "alarmas": [],
+   "detectada": null,
+   "latencia": null,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 59.87996007490636
+  },
+  {
+   "video": "Subject3Activity3Trial3Camera1",
+   "sujeto": "upfall_s3",
+   "tiene_caida": true,
+   "onset": 0.843951,
+   "fin_fallen": 19.658939366292213,
+   "duracion": 19.658939366292213,
+   "alarmas": [],
+   "detectada": false,
+   "latencia": null,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 0.8439510000000006
+  },
+  {
+   "video": "Subject3Activity3Trial2Camera1",
+   "sujeto": "upfall_s3",
+   "tiene_caida": true,
+   "onset": 1.187299,
+   "fin_fallen": 9.921105,
+   "duracion": 10.530511578947369,
+   "alarmas": [
+    5.791781368421053
+   ],
+   "detectada": true,
+   "latencia": 4.604482368421053,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 1.1872989999999994
+  },
+  {
+   "video": "Subject3Activity3Trial1Camera1",
+   "sujeto": "upfall_s3",
+   "tiene_caida": true,
+   "onset": 0.703886,
+   "fin_fallen": 19.96691658032252,
+   "duracion": 19.96691658032252,
+   "alarmas": [
+    5.215632563197703
+   ],
+   "detectada": true,
+   "latencia": 4.511746563197703,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 0.7038860000000007
+  },
+  {
+   "video": "Subject1Activity11Trial3Camera1",
+   "sujeto": "upfall_s1",
+   "tiene_caida": false,
+   "onset": NaN,
+   "fin_fallen": NaN,
+   "duracion": 59.878005419132144,
+   "alarmas": [
+    4.610547307692308
+   ],
+   "detectada": null,
+   "latencia": null,
+   "falsas": 1,
+   "sub_falsas": [
+    6
+   ],
+   "tiempo_normal": 59.878005419132144
+  },
+  {
+   "video": "Subject1Activity11Trial2Camera1",
+   "sujeto": "upfall_s1",
+   "tiene_caida": false,
+   "onset": NaN,
+   "fin_fallen": NaN,
+   "duracion": 59.77848493743985,
+   "alarmas": [
+    10.999701948989413,
+    52.17659667949952
+   ],
+   "detectada": null,
+   "latencia": null,
+   "falsas": 2,
+   "sub_falsas": [
+    6,
+    6
+   ],
+   "tiempo_normal": 59.77848493743985
+  },
+  {
+   "video": "Subject1Activity11Trial1Camera1",
+   "sujeto": "upfall_s1",
+   "tiene_caida": false,
+   "onset": NaN,
+   "fin_fallen": NaN,
+   "duracion": 59.871503449575876,
+   "alarmas": [
+    5.478807391140434
+   ],
+   "detectada": null,
+   "latencia": null,
+   "falsas": 1,
+   "sub_falsas": [
+    6
+   ],
+   "tiempo_normal": 59.871503449575876
+  },
+  {
+   "video": "Subject1Activity3Trial3Camera1",
+   "sujeto": "upfall_s1",
+   "tiene_caida": true,
+   "onset": 0.486,
+   "fin_fallen": 19.6503522446966,
+   "duracion": 19.6503522446966,
+   "alarmas": [
+    5.105997039960534
+   ],
+   "detectada": true,
+   "latencia": 4.619997039960534,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 0.48600000000000065
+  },
+  {
+   "video": "Subject1Activity3Trial2Camera1",
+   "sujeto": "upfall_s1",
+   "tiene_caida": true,
+   "onset": 0.733,
+   "fin_fallen": 19.86361165048544,
+   "duracion": 19.86361165048544,
+   "alarmas": [
+    5.307472954230236
+   ],
+   "detectada": true,
+   "latencia": 4.574472954230236,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 0.7330000000000005
+  },
+  {
+   "video": "Subject1Activity3Trial1Camera1",
+   "sujeto": "upfall_s1",
+   "tiene_caida": true,
+   "onset": 0.744,
+   "fin_fallen": 19.93479391013739,
+   "duracion": 19.93479391013739,
+   "alarmas": [
+    5.281425919049386
+   ],
+   "detectada": true,
+   "latencia": 4.537425919049387,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 0.7439999999999998
+  },
+  {
+   "video": "Subject2Activity11Trial3Camera1",
+   "sujeto": "upfall_s2",
+   "tiene_caida": false,
+   "onset": NaN,
+   "fin_fallen": NaN,
+   "duracion": 59.820995325854696,
+   "alarmas": [],
+   "detectada": null,
+   "latencia": null,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 59.820995325854696
+  },
+  {
+   "video": "Subject2Activity11Trial2Camera1",
+   "sujeto": "upfall_s2",
+   "tiene_caida": false,
+   "onset": NaN,
+   "fin_fallen": NaN,
+   "duracion": 59.901459218585,
+   "alarmas": [],
+   "detectada": null,
+   "latencia": null,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 59.901459218585
+  },
+  {
+   "video": "Subject2Activity11Trial1Camera1",
+   "sujeto": "upfall_s2",
+   "tiene_caida": false,
+   "onset": NaN,
+   "fin_fallen": NaN,
+   "duracion": 59.848797051934824,
+   "alarmas": [],
+   "detectada": null,
+   "latencia": null,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 59.848797051934824
+  },
+  {
+   "video": "Subject2Activity3Trial3Camera1",
+   "sujeto": "upfall_s2",
+   "tiene_caida": true,
+   "onset": 0.715949,
+   "fin_fallen": 19.845457066727874,
+   "duracion": 19.845457066727874,
+   "alarmas": [
+    5.115967685757044
+   ],
+   "detectada": true,
+   "latencia": 4.400018685757044,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 0.7159489999999984
+  },
+  {
+   "video": "Subject2Activity3Trial2Camera1",
+   "sujeto": "upfall_s2",
+   "tiene_caida": true,
+   "onset": 0.24716,
+   "fin_fallen": 20.00688330180576,
+   "duracion": 20.00688330180576,
+   "alarmas": [
+    6.61097013450973
+   ],
+   "detectada": true,
+   "latencia": 6.3638101345097295,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 0.24716000000000093
+  },
+  {
+   "video": "Subject2Activity3Trial1Camera1",
+   "sujeto": "upfall_s2",
+   "tiene_caida": true,
+   "onset": 0.478278,
+   "fin_fallen": 19.81896306403237,
+   "duracion": 19.81896306403237,
+   "alarmas": [
+    5.011044638349094
+   ],
+   "detectada": true,
+   "latencia": 4.532766638349093,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 0.47827799999999954
+  },
+  {
+   "video": "Subject4Activity11Trial3Camera1",
+   "sujeto": "upfall_s4",
+   "tiene_caida": false,
+   "onset": NaN,
+   "fin_fallen": NaN,
+   "duracion": 59.84912097752809,
+   "alarmas": [],
+   "detectada": null,
+   "latencia": null,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 59.84912097752809
+  },
+  {
+   "video": "Subject4Activity11Trial2Camera1",
+   "sujeto": "upfall_s4",
+   "tiene_caida": false,
+   "onset": NaN,
+   "fin_fallen": NaN,
+   "duracion": 59.875142393226724,
+   "alarmas": [],
+   "detectada": null,
+   "latencia": null,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 59.875142393226724
+  },
+  {
+   "video": "Subject4Activity11Trial1Camera1",
+   "sujeto": "upfall_s4",
+   "tiene_caida": false,
+   "onset": NaN,
+   "fin_fallen": NaN,
+   "duracion": 59.87720809839168,
+   "alarmas": [
+    10.206342289498581
+   ],
+   "detectada": null,
+   "latencia": null,
+   "falsas": 1,
+   "sub_falsas": [
+    6
+   ],
+   "tiempo_normal": 59.87720809839168
+  },
+  {
+   "video": "Subject4Activity3Trial3Camera1",
+   "sujeto": "upfall_s4",
+   "tiene_caida": true,
+   "onset": 1.094957,
+   "fin_fallen": 19.687829461538463,
+   "duracion": 19.687829461538463,
+   "alarmas": [],
+   "detectada": false,
+   "latencia": null,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 1.0949570000000008
+  },
+  {
+   "video": "Subject4Activity3Trial2Camera1",
+   "sujeto": "upfall_s4",
+   "tiene_caida": true,
+   "onset": 0.891412,
+   "fin_fallen": 20.018540255330862,
+   "duracion": 20.018540255330862,
+   "alarmas": [],
+   "detectada": false,
+   "latencia": null,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 0.891411999999999
+  },
+  {
+   "video": "Subject4Activity3Trial1Camera1",
+   "sujeto": "upfall_s4",
+   "tiene_caida": true,
+   "onset": 1.438393,
+   "fin_fallen": 19.814747256410254,
+   "duracion": 19.814747256410254,
+   "alarmas": [],
+   "detectada": false,
+   "latencia": null,
+   "falsas": 0,
+   "sub_falsas": [],
+   "tiempo_normal": 1.4383930000000014
+  }
+ ]
+}

@@ -88,7 +88,8 @@ def entrenar(items_train, device, semilla, items_val=None, receta=None,
     generador = torch.Generator()
     generador.manual_seed(semilla)
     train_loader = DataLoader(
-        DatasetLista(items_train, entrenamiento=True, ventana=r["ventana"]),
+        DatasetLista(items_train, entrenamiento=True, ventana=r["ventana"],
+                     simular_app=r.get("simular_app", 0.0)),
         batch_size=r["batch"], shuffle=True, generator=generador,
         worker_init_fn=lambda wid: _init_worker(wid, semilla),
     )

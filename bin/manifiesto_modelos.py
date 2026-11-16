@@ -51,8 +51,13 @@ PESOS = [
      "el tronco compartido; sin esto no carga ninguna cabeza"),
     ("agresion",     "horus/fight/checkpoints/modelo_fight.pt",
      "peleas"),
-    ("caidas",       "horus/fall/checkpoints/modelo_demo_todo.pt",
-     "desmayos y caidas (el ST-GCN)"),
+    # El ensamble de 3 semillas (fall/scripts/18_entrenar.py --semillas 3),
+    # que reemplaza a modelo_demo_todo.pt: mas recall con menos falsas
+    # alarmas, y sin la loteria de la semilla (ver fall/resultados/README.md,
+    # filas mej_*). HORUS.bat y detector_caidas.py siguen aceptando el viejo
+    # si es lo unico que hay, asi una instalacion vieja no se rompe.
+    ("caidas",       "horus/fall/checkpoints/modelo_caidas_ens3.pt",
+     "desmayos y caidas (ST-GCN, ensamble de 3 semillas)"),
 ]
 
 

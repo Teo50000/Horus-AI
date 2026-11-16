@@ -26,10 +26,10 @@
       "para": "peleas"
     },
     "caidas": {
-      "ruta": "horus/fall/checkpoints/modelo_demo_todo.pt",
-      "bytes": 459617,
-      "sha256": "fafa30d2773b06cfd8c0ba560ab1641d536cb2c12c34086b22e8028b9cab460a",
-      "para": "desmayos y caidas (el ST-GCN)"
+      "ruta": "horus/fall/checkpoints/modelo_caidas_ens3.pt",
+      "bytes": 1392325,
+      "sha256": "e5f7daab9ff30364e603aa76bbeeecca3bc518085db1458e269ec2167966a697",
+      "para": "desmayos y caidas (ST-GCN, ensamble de 3 semillas)"
     }
   }
 }

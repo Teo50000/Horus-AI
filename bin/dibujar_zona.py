@@ -466,7 +466,8 @@ def main() -> None:
     ap.add_argument("--puntos", help='esquinas a mano: "x,y x,y x,y"')
     ap.add_argument("--nombre", default="restringida", help="nombre de la zona")
     ap.add_argument("--tipo", default="restringida",
-                    choices=["restringida", "transito", "acceso", "privada"])
+                    choices=["restringida", "transito", "acceso", "privada", "descanso"],
+                    help="descanso = cama o sillon: ahi estar acostado no es una caida")
     ap.add_argument("--merodeo-s", type=float, default=20.0,
                     help="segundos quieto dentro de la zona para que sea merodeo")
     ap.add_argument("--topologia", default=TOPO_DEFECTO)

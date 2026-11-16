@@ -803,13 +803,7 @@ class Servicio:
         c = self.cfg
         try:
             from motor_yolo import ConfigYolo, MotorYolo
-            dev = c.device or "cpu"
-            if dev != "cpu":
-                try:
-                    import torch
-                    dev = "cuda" if torch.cuda.is_available() else "cpu"
-                except Exception:                        # noqa: BLE001
-                    dev = "cpu"
+            dev = self._device_yolo()
             return MotorYolo(ConfigYolo(
                 pesos=None if c.yolo == "auto" else c.yolo, tam=c.yolo_tam,
                 bolsos=c.yolo_bolsos, device=dev, verboso=c.verboso))
@@ -823,6 +817,23 @@ class Servicio:
             _log(c, "=" * 70)
             return None
 
+    def _device_yolo(self) -> str:
+        """Dónde corren los YOLO: la placa si hay, salvo que se pida --cpu.
+
+        16/11: decía `dev = c.device or "cpu"` (y "cpu" fijo en el YOLO de
+        Horus). Como HORUS.bat no pasa --device, `c.device` es None y los dos
+        YOLO corrían SIEMPRE en CPU, aunque hubiera una RTX y PyTorch con
+        CUDA: el resto de las cabezas (segmentación, agresión, caídas) sí
+        elegían la placa solas. Ahora se comportan igual que ellas.
+        """
+        if self.cfg.device:
+            return self.cfg.device
+        try:
+            import torch
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except Exception:                                # noqa: BLE001
+            return "cpu"
+
     def _cargar_yolo_horus(self):
         """El YOLO de 4 clases de `entrenar_yolo.py`, si está en modelos/."""
         c = self.cfg
@@ -832,7 +843,7 @@ class Servicio:
             if ruta is None:
                 return None
             return MotorYolo(ConfigYolo(pesos=ruta, tam=c.yolo_tam,
-                                        device="cpu" if not c.device else c.device,
+                                        device=self._device_yolo(),
                                         verboso=c.verboso))
         except Exception as e:                           # noqa: BLE001
             _log(c, f"aviso: el YOLO de Horus no carga ({type(e).__name__}: {e}); "

@@ -198,8 +198,10 @@ class MotorYolo:
             t0 = time.perf_counter()
             n = self._frames.get(cam, 0)
             self._frames[cam] = n + 1
+            # En la placa, media precisión: ~2x más rápido y la misma caja.
             r = self.modelo.predict(frame, imgsz=c.tam, conf=c.conf, iou=c.iou,
-                                    verbose=False, device=c.device)[0]
+                                    verbose=False, device=c.device,
+                                    half=str(c.device).startswith("cuda"))[0]
             dets: List[Detection] = []
             if r.boxes is not None and len(r.boxes):
                 cls = r.boxes.cls.cpu().numpy().astype(int)

@@ -65,6 +65,7 @@
 /* ─── Números de emergencia ──────────────────────────────────── */
 .ajustes-contactos-lista {
   height: 40vh;
+  width: 100%;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -223,9 +224,9 @@
 
 /* ── Fila con checkbox en modo borrado ── */
 .ajustes-contacto-row {
-  display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
 }
 
 .ajustes-checkbox {

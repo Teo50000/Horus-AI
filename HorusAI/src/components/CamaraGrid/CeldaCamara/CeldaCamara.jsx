@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import VideoStream from "../../VideoStream/VideoStream";
 import { API_URL, SERVICIO_URL } from "../../../config";
 import "./CeldaCamara.css";
@@ -29,7 +29,9 @@ function anchoParaCelda() {
  */
 function urlVideo(camaraId, servicio, ancho) {
   if (!servicio?.consultado) return null;            // todavía no sé: skeleton
-  if (servicio.activo) {
+  // Mientras el servicio no esté AUSENTE (un reinicio, un tick lento) se le
+  // sigue pidiendo a él: VideoStream reintenta solo. Ver useServicioVideo.
+  if (servicio.activo || !servicio.ausente) {
     const cam = servicio.camaras?.[camaraId]?.camara ?? `cam-${camaraId}`;
     return `${SERVICIO_URL}/camaras/${cam}/stream?ancho=${ancho}&g=${servicio.generacion ?? 0}`;
   }
@@ -51,8 +53,27 @@ function avisoDe(camaraId, servicio) {
   return null;
 }
 
+/** Cuando el video pasa del backend al servicio, el backend tiene que
+ *  soltar la webcam: si no, el servicio recibe cuadros negros. */
+function useSoltarAlCambiar(camaraId, url) {
+  const anterior = useRef(url);
+  useEffect(() => {
+    const antes = anterior.current;
+    anterior.current = url;
+    if (camaraId == null || !antes || antes === url) return;
+    if (antes.startsWith(`${API_URL}/video/`) && !(url ?? "").startsWith(`${API_URL}/video/`)) {
+      fetch(`${API_URL}/video/stop_feed/${camaraId}`, { method: "POST" }).catch(() => {});
+    }
+  }, [camaraId, url]);
+}
+
 export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar, onAgregar, servicio }) {
   const [ancho] = useState(anchoParaCelda);
+  const idActual = slot
+    ? (slot.tipo === "sector" ? slot.camaras[slot.indice]?.id : slot.id)
+    : null;
+  const urlActual = slot ? urlVideo(idActual, servicio, ancho) : null;
+  useSoltarAlCambiar(idActual, urlActual);
 
   if (!slot) {
     return (
@@ -77,7 +98,7 @@ export default function CeldaCamara({ slot, slotIdx, onNavegar, onVaciar, onAgre
     <div className="celda-camara">
       <VideoStream
         key={camaraActual.id}
-        src={urlVideo(camaraActual.id, servicio, ancho)}
+        src={urlActual}
         alt={camaraActual.nombre}
         aviso={avisoDe(camaraActual.id, servicio)}
       />

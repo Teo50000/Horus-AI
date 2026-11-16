@@ -74,6 +74,7 @@ def estado_servicio(timeout: float = 3.0) -> Tuple[str, Optional[dict]]:
     import socket
     try:
         with _SIN_PROXY.open(f"{SERVICIO_URL}/estado", timeout=timeout) as r:
+            _SERVICIO_VISTO["ts"] = time.time()
             return "arriba", json.loads(r.read().decode("utf-8"))
     except urllib.error.URLError as e:
         motivo = getattr(e, "reason", None)
@@ -88,6 +89,19 @@ def estado_servicio(timeout: float = 3.0) -> Tuple[str, Optional[dict]]:
         return "apagado", None
     except Exception:  # noqa: BLE001
         return "ocupado", None
+
+
+# 16/11 — cuándo contestó el servicio por última vez. Si se cayó hace unos
+# segundos casi seguro se está reiniciando: abrir la webcam acá en ese rato
+# es quitársela, y al volver el servicio recibe cuadros negros (Windows le da
+# la cámara a un solo proceso) y se queda sin analizar.
+_SERVICIO_VISTO: Dict[str, float] = {"ts": 0.0}
+GRACIA_REINICIO_S = 20.0
+
+
+def _reiniciando(fase: str) -> bool:
+    return (fase == "apagado"
+            and time.time() - _SERVICIO_VISTO["ts"] < GRACIA_REINICIO_S)
 
 
 def servicio_tiene(config_id: int) -> Optional[str]:
@@ -113,7 +127,12 @@ def _indices_del_servicio(estado: Optional[dict]) -> Dict[int, str]:
 
 def _no_la_abro(fase: str, estado: Optional[dict]) -> JSONResponse:
     """La respuesta cuando la c?mara es del servicio pero todav?a no la sirve."""
-    if fase == "ocupado":
+    if fase == "apagado":
+        detalle = (
+            "el servicio de modelos se está reiniciando; la cámara es de él "
+            "y en unos segundos el video sale de ahí"
+        )
+    elif fase == "ocupado":
         detalle = (
             "el servicio de modelos est? corriendo pero tard? en contestar; "
             "la c?mara es de ?l y no se la saco"
@@ -153,7 +172,7 @@ def _abrir(fuente):
 
 
 @video_router.get("/video_feed/{camara_config_id}", tags=["Streaming video"])
-def video_feed(camara_config_id: int):
+def video_feed(camara_config_id: int, ancho: int = 0):
     with Session(engine) as session:
         config = session.get(CamaraConfig, camara_config_id)
         if not config:
@@ -173,11 +192,16 @@ def video_feed(camara_config_id: int):
             )
 
         fase, estado = estado_servicio()
+        if _reiniciando(fase):
+            return _no_la_abro(fase, estado)
         if fase != "apagado":
             for c in (estado or {}).get("camaras", []):
                 if c.get("config_id") == camara_config_id:
+                    # 16/11: se pasa el ancho que pidió el panel, así el
+                    # servicio codifica al tamaño en que se va a mostrar.
+                    extra = f"?ancho={ancho}" if ancho > 0 else ""
                     return RedirectResponse(
-                        url=f"{SERVICIO_URL}/camaras/{c.get('camara')}/stream",
+                        url=f"{SERVICIO_URL}/camaras/{c.get('camara')}/stream{extra}",
                         status_code=307,
                     )
             return _no_la_abro(fase, estado)
@@ -376,7 +400,7 @@ def stop_stream(camara_config_id: int):
 @video_router.get("/preview/{usb_index}", tags=["Streaming video"])
 def video_preview(usb_index: int):
     fase, estado = estado_servicio()
-    if fase == "ocupado":
+    if fase == "ocupado" or _reiniciando(fase):
         return _no_la_abro(fase, estado)
     cam = _indices_del_servicio(estado).get(usb_index) if fase == "arriba" else None
     if cam:

@@ -173,6 +173,25 @@ app = FastAPI(lifespan=lifespan)
 
 app.title =  "Horus AI Backend"
 
+# 16/11 — un error 500 se veía en el panel como error de CORS ("No
+# 'Access-Control-Allow-Origin' header"): Starlette arma la respuesta de un
+# error no atrapado AFUERA del middleware de CORS, sin sus cabeceras, y el
+# navegador esconde el error real. Este middleware va ADENTRO del de CORS
+# (se registra antes), así el 500 sale con cabeceras y con el motivo.
+@app.middleware("http")
+async def _errores_con_cors(request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger("horus").exception(
+            "error no atrapado en %s %s", request.method, request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Error interno del backend",
+                     "detalle": f"{type(exc).__name__}: {exc}"[:500]},
+        )
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[

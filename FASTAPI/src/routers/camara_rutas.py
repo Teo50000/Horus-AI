@@ -226,7 +226,11 @@ def agregar_telefono(nuevo_tel: NumeroEmergencia):
 
 # metodo put para el config de camaras
 @camara_router.put("/config/{id}", tags=["Camaras"])
-def actualizar_camara(id: int, cam: CamaraConfig) -> List[CamaraConfig]:
+# 16/11: decía `-> List[CamaraConfig]` y devuelve UNA cámara. El cambio se
+# guardaba en la base, pero FastAPI fallaba al validar la respuesta y
+# contestaba 500, que el navegador muestra como error de CORS: el panel decía
+# "Error al guardar nombre" aunque se había guardado.
+def actualizar_camara(id: int, cam: CamaraConfig) -> CamaraConfig:
     with Session(engine) as session:
         # 1. Buscar el registro en la base de datos
         db_item = session.get(CamaraConfig, id)
@@ -245,7 +249,7 @@ def actualizar_camara(id: int, cam: CamaraConfig) -> List[CamaraConfig]:
         return db_item
 
 @camara_router.put("/emergencia/{id}", tags=["Telefonos"])
-def actualizar_telefono(id: int, tel: NumeroEmergencia) -> List[NumeroEmergencia]:
+def actualizar_telefono(id: int, tel: NumeroEmergencia) -> NumeroEmergencia:  # 16/11: mismo bug que arriba
     with Session(engine) as session:
     # 1. buscarlo en la DB
         tel_db = session.get(NumeroEmergencia, id)

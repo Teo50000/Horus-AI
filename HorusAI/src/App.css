@@ -36,7 +36,11 @@
   --c-error: #ff6b6b;
 
   /* medidas */
-  --sidebar-ancho: clamp(84px, 6.6vw, 108px);
+  /* Fijo: con un ancho que dependía de la ventana, en pantallas chicas los
+     estados se cortaban ("En ...") y los botones cambiaban de tamaño. */
+  --sidebar-ancho: 92px;
+  --sidebar-boton: 40px;
+  --sidebar-icono: 22px;
   --panel-ancho: clamp(300px, 26vw, 440px);
   --panel-pad: 20px;
   --radio: 8px;

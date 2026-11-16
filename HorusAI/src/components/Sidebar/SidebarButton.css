@@ -1,17 +1,16 @@
+/* 16/11: tamaño FIJO. Antes el botón era el 100% del ancho del sidebar
+   (hasta 52 px, con el ícono al 70 %): en pantallas chicas se veía pesado y
+   en grandes enorme, y no tenía relación con el resto de los íconos (los de
+   los paneles miden 26 px, el "?" 22 px). Ahora: botón de 40 px e ícono de
+   22 px, la misma medida que el ícono de ayuda. */
 .sidebar-button {
-  /* Cuadrado con aspect-ratio; con tope para que no crezca en pantallas
-     anchas (antes era el 100% de un sidebar de 7vw). */
-  width: 100%;
-  max-width: 52px;
-  aspect-ratio: 1;
-  height: auto;  /* se ignora por aspect-ratio, pero es bueno para el fallback */
-
-  /* Evitar que flex-parent le imponga otra altura */
+  width: var(--sidebar-boton);
+  height: var(--sidebar-boton);
   flex-shrink: 0;
 
   background: transparent;
-  border-top: 2px solid #ff8427;
-  border-bottom: 2px solid #ff8427;
+  border-top: 2px solid var(--c-acento);
+  border-bottom: 2px solid var(--c-acento);
   border-left: 2px solid transparent;
   border-right: 2px solid transparent;
   border-radius: 40%;
@@ -27,17 +26,17 @@
 }
 
 .sidebar-button img {
-  /* El ícono ocupa el máximo espacio posible dentro del botón */
-  width: 70%;
-  height: 70%;
+  width: var(--sidebar-icono);
+  height: var(--sidebar-icono);
   object-fit: contain;
   display: block;
 }
-.sidebar-button:hover{
-  background-color: color-mix(in srgb, rgba(255, 132, 39, 1), #090326)  ;
 
+.sidebar-button:hover {
+  background-color: color-mix(in srgb, var(--c-acento) 35%, var(--c-panel));
 }
+
 .sidebar-button.active {
-  background-color: rgba(255, 132, 39, 1);
-  box-shadow: 0 0 12px rgba(255, 132, 39, 0.35);
+  background-color: var(--c-acento);
+  box-shadow: 0 0 10px rgba(255, 132, 39, 0.35);
 }

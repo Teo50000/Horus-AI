@@ -17,6 +17,8 @@ import { SERVICIO_URL } from "../config";
  * que ademas es el que uno quiere ver. Si el servicio no esta, el panel se cae
  * solo al video crudo del backend.
  */
+const AUSENTE_MS = 15000;
+
 export function useServicioVideo(cadaMs = 4000) {
   const [activo, setActivo]   = useState(false);
   const [fase, setFase]       = useState(null); // "cargando" | "listo" | null
@@ -31,6 +33,15 @@ export function useServicioVideo(cadaMs = 4000) {
   // cuando el servicio vuelve, el video se reconecta solo.
   const [generacion, setGeneracion] = useState(0);
   const arranque = useRef(null);
+  // 16/11: "ausente" = no hay servicio de verdad (nunca contestó, o no
+  // contesta hace más de AUSENTE_MS). Un reinicio tarda unos segundos, y si
+  // en ese rato el panel le pedía el video al backend, el backend abría la
+  // webcam y el servicio, al volver, recibía cuadros negros: Windows le da
+  // la cámara a uno solo. Solo cuando el servicio falta de verdad se usa el
+  // video crudo del backend.
+  const [ausente, setAusente] = useState(false);
+  const fallaDesde = useRef(null);
+  const vistoAlgunaVez = useRef(false);
   const vivo = useRef(true);
 
   useEffect(() => {
@@ -52,6 +63,9 @@ export function useServicioVideo(cadaMs = 4000) {
         setFase(e.fase ?? "listo");
         setActivo(true);
         setConsultado(true);
+        setAusente(false);
+        fallaDesde.current = null;
+        vistoAlgunaVez.current = true;
         // Hora (aprox.) en que arrancó el servicio. Si se corre más de 5 s,
         // es otro proceso: reconectar los videos.
         const inicio = Date.now() - (Number(e.arriba_s) || 0) * 1000;
@@ -67,6 +81,9 @@ export function useServicioVideo(cadaMs = 4000) {
         setFase(null);
         setCamaras({});
         setConsultado(true);
+        fallaDesde.current = fallaDesde.current ?? Date.now();
+        setAusente(!vistoAlgunaVez.current
+          || Date.now() - fallaDesde.current >= AUSENTE_MS);
         if (arranque.current !== null) {
           arranque.current = null;
           setGeneracion((g) => g + 1);
@@ -93,5 +110,5 @@ export function useServicioVideo(cadaMs = 4000) {
     return { url: null, conIA: false, estado: null, error: null };
   };
 
-  return { activo, fase, camaras, consultado, generacion, urlDe };
+  return { activo, fase, camaras, consultado, generacion, ausente, urlDe };
 }

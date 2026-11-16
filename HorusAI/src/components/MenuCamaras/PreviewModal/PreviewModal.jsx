@@ -54,7 +54,7 @@ export default function PreviewModal({
         <div className="preview-modal__screen">
           <VideoStream
             key={streamKey}
-            src={`${urlBase}/${camara.id}?t=${streamKey}`}
+            src={`${urlBase}/${camara.id}?t=${streamKey}&ancho=960`}
             alt={camara.nombre}
           />
           <span className="preview-modal__label">{camara.nombre}</span>

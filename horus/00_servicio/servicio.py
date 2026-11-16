@@ -137,6 +137,7 @@ class ConfigServicio:
     fps: float = 10.0                      # ritmo de análisis, no de la cámara
     max_batch: int = 4
     reconexion_s: float = 3.0
+    negro_max_s: float = 4.0               # imagen en cero absoluto = cámara tomada
     ancho_captura: int = 1280              # 0 = lo que dé la cámara
     alto_captura: int = 720
     # Una RTSP puede anunciar 4K aunque el modelo y el panel trabajen en
@@ -238,6 +239,7 @@ class FuenteCamara:
 
         self.estado = "conectando"         # conectando | ok | caida
         self.frames_leidos = 0
+        self._negro_desde: Optional[float] = None
         self.reconexiones = 0
         self.ultimo_error = ""
 
@@ -367,6 +369,32 @@ class FuenteCamara:
                 cap = None
                 continue
 
+            # 16/11 — "no se me conecta la cámara": imagen negra a 1 fps.
+            # Cuando otro proceso (el backend, Zoom, la app Cámara) tiene la
+            # webcam, DirectShow igual la "abre" y devuelve cuadros en CERO
+            # absoluto, con `read()` diciendo que todo bien. Antes eso no se
+            # veía como falla: el servicio se quedaba en negro para siempre,
+            # aunque el otro programa ya hubiera soltado la cámara. Una escena
+            # oscura de verdad nunca es cero exacto (el sensor tiene ruido), así
+            # que cero sostenido = cámara tomada: se avisa y se reconecta.
+            if self._es_negro(frame):
+                ahora = time.time()
+                self._negro_desde = self._negro_desde or ahora
+                if ahora - self._negro_desde >= self.cfg.negro_max_s:
+                    self.estado = "caida"
+                    self.ultimo_error = ("la cámara entrega imagen negra: la tiene "
+                                         "otro programa o está tapada")
+                    _log(self.cfg, f"  [{self.cam_id}] {self.ultimo_error}; reconecto")
+                    self._negro_desde = None
+                    cap.release()
+                    cap = None
+                    self._parar.wait(self.cfg.reconexion_s)
+                    continue
+            else:
+                self._negro_desde = None
+                if self.ultimo_error.startswith("la cámara entrega imagen negra"):
+                    self.ultimo_error = ""
+
             frame = self._limitar_frame(frame)
             with self._lock:
                 self._frame = frame
@@ -374,10 +402,19 @@ class FuenteCamara:
                 self._seq += 1
                 self._nuevo.notify_all()
             self.frames_leidos += 1
-            self.estado = "ok"
+            if self._negro_desde is None:
+                self.estado = "ok"
 
         if cap is not None:
             cap.release()
+
+    @staticmethod
+    def _es_negro(frame: np.ndarray) -> bool:
+        """Cero absoluto (con margen mínimo), mirado sobre una muestra."""
+        try:
+            return int(frame[::16, ::16].max()) <= 2
+        except Exception:                                # noqa: BLE001
+            return False
 
     def resumen(self) -> Dict[str, Any]:
         return {"camara": self.cam_id, "config_id": self.config_id,

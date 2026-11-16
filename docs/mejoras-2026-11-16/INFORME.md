@@ -307,7 +307,62 @@ Los cambios que ya tenías sin commitear en `HorusAI/src-tauri/Cargo.toml` y
 - Una cámara pineada que después se borra queda en la grilla recordada
   (muestra "Esperando video…"); se saca con la ✕.
 
-## 8. Cómo probarlo
+## 8. Segunda ronda (misma fecha): cámara negra, "error de CORS" e íconos
+
+### "No se me conecta la cámara" (imagen negra)
+
+La webcam andaba (probada directo: 24 fps con imagen normal). El problema
+era una pelea entre procesos:
+
+1. Si el servicio de modelos se reiniciaba, el panel caía enseguida al video
+   del backend, y el backend abría la webcam.
+2. El servicio volvía y abría la cámara mientras el backend la tenía.
+   Windows le daba cuadros en **cero absoluto a 1 fps**, con `read()` OK.
+3. Como la lectura "andaba", el servicio no reconectaba nunca.
+
+Arreglos, en tres capas:
+
+- `servicio.py` (`FuenteCamara`): cero absoluto sostenido 4 s (una escena
+  oscura de verdad nunca es cero, el sensor tiene ruido) → la cámara figura
+  caída con el motivo, se suelta y se reabre. Probado con una cámara falsa:
+  reconecta y vuelve la imagen.
+- `useServicioVideo.js` + `CeldaCamara.jsx`: el panel solo usa el video del
+  backend si el servicio falta **de verdad** (nunca contestó, o no contesta
+  hace 15 s). Durante un reinicio sigue pidiéndole al servicio y reintenta.
+  Si pasa del backend al servicio, le avisa al backend que suelte la cámara.
+- `video_rutas.py`: si el servicio contestó hace menos de 20 s, el backend
+  asume que se está reiniciando y no abre la webcam (contesta 503 y el panel
+  reintenta). Cubre también la vista previa y cualquier otro cliente.
+
+### "Access to fetch … blocked by CORS policy" al renombrar una cámara
+
+No era CORS. `PUT /camaras/config/{id}` guardaba el nombre en la base, pero
+la función declaraba que devolvía una *lista* y devolvía un objeto: FastAPI
+fallaba al validar y contestaba 500. Starlette arma ese 500 por fuera del
+middleware de CORS, sin cabeceras, y el navegador lo muestra como CORS.
+
+- `camara_rutas.py`: corregido el tipo de retorno en `PUT /camaras/config/{id}`
+  y en `PUT /camaras/emergencia/{id}` (editar un contacto tenía el mismo bug).
+- `main.py`: un middleware dentro del de CORS convierte cualquier error no
+  atrapado en un 500 con cabeceras y con el motivo real.
+
+Verificado: el `PUT` con `Origin: http://localhost:1420` responde 200 con
+`access-control-allow-origin`.
+
+### Íconos del menú
+
+Eran el 100 % del ancho del sidebar (hasta 52 px, ícono al 70 %). Ahora
+tienen tamaño fijo y coherente con el resto: botón de 40 px, ícono de 22 px
+(la misma medida que el "?"), logo de 34 px y sidebar de 92 px fijo, así los
+estados no se cortan ("En ..."). Tokens `--sidebar-boton` y `--sidebar-icono`
+en `App.css`.
+
+### Vista previa
+
+`PreviewModal` pide el video a 960 px y el backend pasa ese ancho al
+redirigir al servicio: etiquetas legibles y menos datos.
+
+## 9. Cómo probarlo
 
 ```bash
 git checkout mejoras-ia-video-ui

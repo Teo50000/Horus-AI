@@ -171,6 +171,64 @@ def t_objeto_quieto() -> Tuple[bool, str]:
                 f"{ult[0].quieto_s:.1f} s" if ult else "sin track")
 
 
+def _tracker_como_servicio(fps: float) -> TrackerLocal:
+    """Persona como la arma servicio.py: nace con 0,40, se sostiene con 0,10."""
+    cfg = ConfigTracker(fps=fps)
+    p = cfg.params("persona")
+    p.score_alto, p.score_bajo = 0.40, 0.10
+    return TrackerLocal("cam-0", cfg)
+
+
+def t_caida() -> Tuple[bool, str]:
+    """Una persona que se cae sigue siendo el MISMO track en el piso.
+
+    18/11 — "cuando se caen la detección no lo sigue". A 4 FPS (CPU), la caja
+    pasa de alta a ancha en dos ticks, YOLO le da 0,30 acostada y después
+    no la ve por 3 s (pasa en un tercio de los cuadros en el piso). Antes:
+    gating + IoU 0,45 rechazaban la caja nueva y el track moría a los 1,5 s;
+    la cabeza de caídas recibía otro track_id y no veía la caída.
+    """
+    tk, fps = _tracker_como_servicio(4.0), 4.0
+    pie, piso = (300, 100, 360, 400), (220, 330, 420, 400)
+    guion = ([(pie, 0.85)] * 12 + [((270, 250, 400, 400), 0.45)]
+             + [(piso, 0.30)] * 4 + [None] * 12 + [(piso, 0.25)] * 4)
+    ids, cajas_perdido = set(), []
+    for f, item in enumerate(guion):
+        dets = [] if item is None else [_Det(item[0], item[1], "persona", 0)]
+        for t in tk.actualizar(dets, frame_idx=f, ts=f / fps):
+            if t.clase != "persona":
+                continue
+            if t.confirmado:
+                ids.add(t.track_id)
+            elif item is None:
+                cajas_perdido.append(t.bbox_xyxy)
+    vivo_al_final = any(t.confirmado for t in tk.actualizar(
+        [_Det(piso, 0.25, "persona", 0)], frame_idx=len(guion), ts=len(guion) / fps))
+    quieta = all(max(abs(a - b) for a, b in zip(c, piso)) < 1.0 for c in cajas_perdido)
+    ok = len(ids) == 1 and vivo_al_final and quieta and len(cajas_perdido) >= 10
+    return ok, (f"{len(ids)} id(s) de pie -> piso, {len(cajas_perdido)} ticks perdido "
+                f"con la caja {'quieta' if quieta else 'CORRIDA'}")
+
+
+def t_sale_caminando() -> Tuple[bool, str]:
+    """Alguien que se va caminando NO hereda los 4 s del tumbado.
+
+    Los perdidos se dibujan (naranja): si un track parado siguiera vivo 4 s
+    donde la persona ya no está, vuelve el "cuadrado que se queda".
+    """
+    tk, fps = _tracker_como_servicio(10.0), 10.0
+    ultimo_visto = None
+    for f in range(60):
+        x = 100 + 12 * f
+        dets = [_Det((x, 100, x + 60, 400), 0.8, "persona", 0)] if f < 30 else []
+        tr = [t for t in tk.actualizar(dets, frame_idx=f, ts=f / fps) if t.clase == "persona"]
+        if tr:
+            ultimo_visto = f / fps
+    vida = (ultimo_visto or 0.0) - 2.9
+    ok = vida <= 1.8
+    return ok, f"el track sobrevivió {vida:.1f} s después de irse (tope 1,5 s + 1 tick)"
+
+
 def t_oclusion() -> Tuple[bool, str]:
     """Un paquete tapado 3 s por alguien que pasa por delante sobrevive."""
     tk = TrackerLocal("cam-0", ConfigTracker(fps=10.0))
@@ -452,6 +510,8 @@ PRUEBAS = [
     ("duplicados sobre un objeto", t_duplicados),
     ("objeto quieto", t_objeto_quieto),
     ("oclusión de 3 s", t_oclusion),
+    ("caída: mismo track en el piso", t_caida),
+    ("se va caminando: muere rápido", t_sale_caminando),
     ("ReID entre cámaras", t_reid_entre_camaras),
     ("ReID filtro de calidad", t_reid_calidad),
     ("ReID latencia", t_reid_latencia),

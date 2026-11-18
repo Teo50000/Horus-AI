@@ -101,6 +101,14 @@ class ParametrosClase:
     score_bajo: float = 0.15      # de acá para arriba, etapa 2 (solo sostiene)
     kalman: bool = True           # False para lo que no se traslada
     gating: bool = True           # prohibir asociaciones geométricamente absurdas
+    # Gating también en la etapa 2 (detecciones dudosas). Ver persona.
+    gating_dudosas: bool = True
+
+    # Un track que se perdió TUMBADO (última caja medida más ancha que alta,
+    # `aspecto_tumbado`) sobrevive `ventana_tumbado_s` en vez de `ventana_s`
+    # y se queda quieto donde estaba. 0 = sin trato especial. Ver persona.
+    ventana_tumbado_s: float = 0.0
+    aspecto_tumbado: float = 1.0
 
     # Etapa 3, recuperación. `buffer` agranda las cajas antes de medir IoU,
     # para que un objeto que se movió más que su propio ancho siga teniendo
@@ -160,10 +168,35 @@ class ParametrosClase:
 #   paquete   ventana larguísima (5 s): un paquete se queda quieto y hay que
 #             sobrevivir a que alguien pase por delante y lo tape. Sin Kalman,
 #             no se mueve. Confirmación de 1 s contra el parpadeo.
+#   persona   18/11 — "cuando se caen la detección no lo sigue". Medido con
+#             YOLO + este tracker sobre los 40 videos de caída de CAUCAFall:
+#             solo el 50% (10 fps) / 40% (4 fps) seguía siendo el mismo track
+#             de pie y en el piso, y en el piso había track confirmado en el
+#             45% de los cuadros. Tres causas, las tres en este archivo:
+#               - YOLO le da 0,80 a una persona parada y 0,30 a una acostada
+#                 (mediana); en el 45% de los cuadros en el piso, menos de
+#                 0,20. Sostener exigía 0,20 (servicio.py). Ahora 0,10 —
+#                 SOLO sostiene a un track ya confirmado: nacer sigue
+#                 pidiendo 0,40, así que no aparecen fantasmas.
+#               - Al caer, la caja pasa de alta a ancha en uno o dos ticks.
+#                 El gating del Kalman y el IoU 0,45 de la etapa 2 lo leían
+#                 como "otra cosa". Etapa 2 sin gating y con IoU 0,20.
+#               - En un tercio de los cuadros en el piso YOLO no ve NADA, ni
+#                 a 0,10, y el track moría a los 1,5 s. Si se perdió
+#                 tumbado, aguanta 4 s quieto (una persona caída no se
+#                 mueve). Uno que se va caminando sigue muriendo a los 1,5 s:
+#                 los perdidos se dibujan, y no queremos rastros naranjas.
+#             Resultado (servicio con 0,40 / 0,10): mismo track de pie ->
+#             piso 50 -> 65% a 10 fps y 40 -> 70% a 4 fps; track en el piso
+#             45 -> 62% de los cuadros. En las 38 actividades normales, los
+#             duplicados no se mueven (0,6 -> 0,7%) y bajan los cambios de
+#             identidad (1,24 -> 1,13 ids por persona). Apagar el gating
+#             también en la etapa 1 no agrega nada: queda solo en la 2.
 PARAMETROS_POR_CLASE: Dict[str, ParametrosClase] = {
     "persona": ParametrosClase(
-        ventana_s=1.5, confirmar_s=0.30, iou_alto=0.25, iou_bajo=0.45,
+        ventana_s=1.5, confirmar_s=0.30, iou_alto=0.25, iou_bajo=0.20,
         score_alto=0.25, score_bajo=0.10, kalman=True,
+        gating_dudosas=False, ventana_tumbado_s=4.0, aspecto_tumbado=1.0,
         buffer_recuperacion=1.0, iou_recuperacion=0.20,
         dedup_iou=0.60, dedup_contencion=0.85,
         nacer_iou_max=0.55, nacer_contencion_max=0.85),
@@ -425,9 +458,26 @@ class _Track:
         self.centros.append(c)
         self._actualizar_quietud(ts, radio_quieto)
 
+    @property
+    def tumbado(self) -> bool:
+        """La última caja medida es más ancha que alta: alguien acostado o
+        caído. Solo cuenta si la clase pide trato especial."""
+        if self.p.ventana_tumbado_s <= 0:
+            return False
+        x1, y1, x2, y2 = self.caja
+        return (x2 - x1) >= self.p.aspecto_tumbado * max(y2 - y1, 1e-6)
+
     def perdido(self) -> np.ndarray:
-        """Frame sin asociación: se propaga la predicción, no se corrige."""
+        """Frame sin asociación: se propaga la predicción, no se corrige.
+
+        Salvo tumbado: ahí se queda donde se lo vio por última vez. La
+        velocidad que trae es la de la caída, y seguir proyectándola corre
+        la caja fuera de la persona — que en el piso no se mueve."""
         self.sin_ver += 1
+        if self.tumbado:
+            if self.kf is not None and self.media is not None:
+                self.media = np.concatenate([xyxy_a_cxcyah(self.caja), np.zeros(4)])
+            return self.caja
         if self.kf is not None and self.media is not None:
             self.caja = np.asarray(cxcyah_a_xyxy(self.media), dtype=np.float64)
         return self.caja
@@ -627,7 +677,8 @@ class TrackerLocal:
             elegibles = [i for i in libres
                          if tracks[i].estado != "tentativo"]
             siguen_libres, _ = self._emparejar(
-                tracks, elegibles, cajas_pred, bajas, p, p.iou_bajo, ts, frame_idx)
+                tracks, elegibles, cajas_pred, bajas, p, p.iou_bajo, ts, frame_idx,
+                usar_gating=p.gating_dudosas)
             emparejados = set(elegibles) - set(siguen_libres)
             libres = [i for i in libres if i not in emparejados]
 
@@ -685,6 +736,8 @@ class TrackerLocal:
         # 8. Promociones y bajas.
         min_hits = max(2, self._frames(p.confirmar_s))
         tol_tentativo = self._frames(p.tentativo_s)
+        max_tumbado = (self._frames(p.ventana_tumbado_s)
+                       if p.ventana_tumbado_s > 0 else max_c)
         vivos: List[_Track] = []
         for t in tracks:
             if t.estado == "tentativo":
@@ -693,7 +746,7 @@ class TrackerLocal:
                 elif t.sin_ver > tol_tentativo:
                     continue          # el fantasma muere acá, y muere barato
             elif t.estado == "perdido":
-                if t.sin_ver > max_c:
+                if t.sin_ver > (max_tumbado if t.tumbado else max_c):
                     continue
                 if t.sin_ver == 0:
                     t.estado = "confirmado"

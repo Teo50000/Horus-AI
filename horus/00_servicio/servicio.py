@@ -171,7 +171,8 @@ class ConfigServicio:
     # los pesos en modelos/ y ultralytics instalado; si no, se sigue como antes
     # y se dice fuerte. "no" = solo la cabeza propia. Otra cosa = ruta.
     yolo: str = "auto"
-    yolo_tam: int = 416
+    # None = automático: 640 con placa de video, 416 en CPU. Ver `_tam_yolo`.
+    yolo_tam: Optional[int] = None
     yolo_bolsos: bool = False
 
     # --- evidencia (07_alerta/evidencia.py) ------------------------------
@@ -724,8 +725,14 @@ class Servicio:
                 # Otra escala de scores: YOLO le da 0,6-0,9 a una persona de
                 # verdad y la silla con ropa le llega a 0,3-0,4 (medido en
                 # los 293 cuadros vacíos: 33 cuadros >= 0,25, 8 >= 0,40).
+                # Nacer pide 0,40 por eso. Sostener, 0,10: a una persona
+                # ACOSTADA YOLO le da 0,30 de mediana y en el 45% de los
+                # cuadros menos de 0,20 — con 0,20 el track se cortaba justo
+                # en la caída. Sostener solo vale para tracks ya confirmados,
+                # así que una silla no puede fundar uno (ver persona en
+                # 05_tracking/local/tracker_local.py).
                 p = cfg_tracker.params("persona")
-                p.score_alto, p.score_bajo = 0.40, 0.20
+                p.score_alto, p.score_bajo = 0.40, 0.10
                 if propio is None:
                     self.detector = "YOLO11"
                 elif hasattr(propio, "mapa"):
@@ -804,8 +811,9 @@ class Servicio:
         try:
             from motor_yolo import ConfigYolo, MotorYolo
             dev = self._device_yolo()
+            tam, pesos = self._tam_yolo(dev)
             return MotorYolo(ConfigYolo(
-                pesos=None if c.yolo == "auto" else c.yolo, tam=c.yolo_tam,
+                pesos=pesos, tam=tam,
                 bolsos=c.yolo_bolsos, device=dev, verboso=c.verboso))
         except Exception as e:                           # noqa: BLE001
             if c.yolo != "auto":
@@ -834,6 +842,34 @@ class Servicio:
         except Exception:                                # noqa: BLE001
             return "cpu"
 
+    def _tam_yolo(self, dev: str) -> Tuple[int, Optional[str]]:
+        """(lado de entrada, pesos) del YOLO de personas.
+
+        18/11 — "cuando se caen la detección no lo sigue". A una persona
+        ACOSTADA, YOLO a 416 la ve con >= 0,40 en el 35% de los cuadros; a
+        640, en el 49% (40 videos de caída de CAUCAFall). Con el tracker
+        nuevo, el mismo track de pie y en el piso pasa de 65% a 82,5%, y los
+        duplicados en actividades normales bajan de 0,7% a 0%.
+        En placa no cuesta nada (medido: 41 ms a 640 contra 53 a 416, ruido).
+        En CPU sí: 208 -> 312 ms por cuadro. Por eso: 640 con placa, 416 sin.
+        Con placa se usa el .pt, no el .onnx: el `yolo11n_416.onnx` tiene la
+        entrada fija en 416, y el ONNX acá corre en CPU de todos modos.
+        `--yolo-tam` explícito manda siempre, como antes.
+        """
+        c = self.cfg
+        pesos = None if c.yolo == "auto" else c.yolo
+        if c.yolo_tam:
+            return int(c.yolo_tam), pesos
+        # Un modelo propio (--yolo RUTA) sigue a 416 como siempre: si es un
+        # .onnx exportado con entrada fija, otro tamaño lo rompe.
+        if pesos is not None or not str(dev).startswith("cuda"):
+            return 416, pesos
+        from motor_yolo import _buscar
+        pt = _buscar(("yolo11n.pt",))
+        if pt is None:                 # sin el .pt: lo de siempre, a 416
+            return 416, None
+        return 640, pt
+
     def _cargar_yolo_horus(self):
         """El YOLO de 4 clases de `entrenar_yolo.py`, si está en modelos/."""
         c = self.cfg
@@ -842,7 +878,9 @@ class Servicio:
             ruta = pesos_horus_por_defecto()
             if ruta is None:
                 return None
-            return MotorYolo(ConfigYolo(pesos=ruta, tam=c.yolo_tam,
+            # Siempre 416 salvo --yolo-tam: el automático a 640 es para el de
+            # personas; este se entrenó a otro tamaño y no se midió.
+            return MotorYolo(ConfigYolo(pesos=ruta, tam=c.yolo_tam or 416,
                                         device=self._device_yolo(),
                                         verboso=c.verboso))
         except Exception as e:                           # noqa: BLE001
@@ -1776,7 +1814,9 @@ def main() -> int:
                     help="cortar solo después de N segundos (para probar)")
     ap.add_argument("--yolo", default="auto",
                     help='"auto" (default), "no", o la ruta a un .onnx/.pt de YOLO')
-    ap.add_argument("--yolo-tam", dest="yolo_tam", type=int, default=416)
+    ap.add_argument("--yolo-tam", dest="yolo_tam", type=int, default=None,
+                    help="lado de entrada del YOLO de personas (default: 640 "
+                         "con placa de video, 416 en CPU)")
     ap.add_argument("--yolo-bolsos", dest="yolo_bolsos", action="store_true",
                     help="mochila/cartera/valija cuentan como paquete (apagado: "
                          "en una casa hay bolsos por todos lados)")
